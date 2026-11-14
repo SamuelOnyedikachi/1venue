@@ -88,6 +88,33 @@ Linking rules (table `oauth_identities`, one row per Google account):
 * Otherwise → create a new user (email already verified), unless `GOOGLE_ALLOW_SIGNUP=false`.
 * The button is hidden when `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are not set.
 
+### Continue with Apple
+
+Same linking rules as Google (table `oauth_identities`, provider `apple`), with these differences
+(details and Apple Developer setup in [APPLE_SIGNIN.md](APPLE_SIGNIN.md)):
+
+* `GET /auth/apple/start` → Apple; Apple **POSTs** back to `/auth/apple/callback`
+  (`response_mode=form_post`). That cross-site POST carries no CSRF token, so the callback checks
+  the signed flow cookie (`SameSite=None; Secure`, 10 minutes): its `state` must match the posted
+  state and its `nonce` must match the ID token's.
+* The client secret is an ES256 JWT signed on the server with the `.p8` key (valid 5 minutes).
+* The ID token is verified against Apple's JWKS (`iss`, `aud` = Services ID, `exp`, `nonce`).
+* Apple sends the user's name only on the first sign-in; it becomes the display name then.
+* "Hide My Email" users get a `@privaterelay.appleid.com` address; their username is made from
+  their first name (or `member`), never from the relay address.
+
+### Delete account (Settings → Danger zone)
+
+1. `POST /api/auth/delete/start {password}`: checks the password (skipped for Google/Apple-only
+   accounts) and emails a 6-digit code (`AUTH_DELETE_CODE_TTL_MIN`, default 10 minutes; one code
+   a minute; 5 per minute per account). Only a hash of the code is stored
+   (`account_deletion_codes`).
+2. `POST /api/auth/delete/verify {code}`: 5 wrong codes lock it (ask for a new one). Returns a
+   10-minute deletion grant bound to the account.
+3. `POST /api/auth/delete/confirm {grant}`: deletes, clears cookies, emails "Your account was
+   deleted". What is deleted vs anonymised is listed in `src/features/auth/deletion.js` and in
+   the privacy policy ("Deleting your account"). This meets Apple's in-app deletion rule for iOS.
+
 ### Accounts without a password
 
 Some accounts have no password: Google-only sign-ups, and imported accounts that only had a
@@ -139,6 +166,10 @@ user row, id, profile, follows and events, and marks them `needs_password_setup`
 | `AUTH_COOKIE_SECURE` | auto | `true` unless `PUBLIC_URL` is `http://` |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | empty | empty = no Google button |
 | `GOOGLE_ALLOW_SIGNUP` | `true` | `false` = Google only signs in existing users |
+| `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | empty | all four set = "Continue with Apple" ([APPLE_SIGNIN.md](APPLE_SIGNIN.md)) |
+| `APPLE_ALLOW_SIGNUP` | `true` | `false` = Apple only signs in existing users |
+| `AUTH_DELETE_CODE_TTL_MIN` | `10` | account deletion code lifetime (5–60) |
+| `MAIL_ASSET_URL` | `PUBLIC_URL` if https, else `https://1venue.live` | where email images load from |
 | `SMTP_HOST` | empty | empty = no email sent (links logged outside production) |
 | `SMTP_PORT` | `587` | |
 | `SMTP_SECURE` | `true` only for port 465 | 587 uses STARTTLS |

@@ -20,6 +20,7 @@ module.exports = async function handle(req, res, parsed) {
       allowLocalSignup: config.ALLOW_LOCAL_SIGNUP,
       auth: {
         google: google.enabled(),
+        apple: require('../features/auth/apple').enabled(),
         googleSignup: google.enabled() && config.AUTH.google.allowSignup,
         allowSignup: config.ALLOW_LOCAL_SIGNUP,
         requireVerifiedEmail: config.AUTH.requireVerifiedEmail,

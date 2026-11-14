@@ -8,14 +8,41 @@ const { render, kinds } = require('../src/features/mail/templates');
 
 test('every template has subject, text and escaped HTML with the link', () => {
   for (const k of kinds) {
-    const m = render(k, { app: '1venue', url: 'https://1venue.example.com', name: '<b>Ada</b>', link: 'https://1venue.example.com/x?t=a&b=1', expires: '1 hour', newEmail: 'n@ex.test' });
+    const m = render(k, { app: '1venue', url: 'https://1venue.example.com', name: '<b>Ada</b>', link: 'https://1venue.example.com/x?t=a&b=1', expires: '1 hour', newEmail: 'n@ex.test', code: '482913' });
     assert.ok(m.subject && m.text && m.html, k);
     assert.ok(!m.html.includes('<b>Ada</b>'), k + ': name is escaped');
-    if (k !== 'emailChanged') {
+    if (k === 'deleteCode') {
+      assert.ok(m.text.includes('482913') && m.html.includes('482913'), k + ': has the code');
+    } else if (k !== 'emailChanged') {
       assert.ok(m.text.includes('https://1venue.example.com/x?t=a&b=1'), k + ': text has the raw link');
       assert.ok(m.html.includes('https://1venue.example.com/x?t=a&amp;b=1'), k + ': html has the escaped link');
     }
   }
+});
+
+test('emails follow the brand design: hosted PNG art, privacy + terms footer, mobile + dark mode', () => {
+  for (const k of kinds) {
+    const m = render(k, { app: '1venue', url: 'http://localhost:3000', name: 'Ada', link: 'https://1venue.live/x', expires: '1 hour', newEmail: 'n@ex.test', code: '123456' });
+    assert.match(m.html, /src="https:\/\/1venue\.live\/email\/mark\.png"/, k + ': site icon from https (never localhost)');
+    assert.match(m.html, /src="https:\/\/1venue\.live\/email\/hero\.png"/, k + ': laptop art');
+    assert.doesNotMatch(m.html, /\.svg"/, k + ': no SVG images (Gmail drops them)');
+    assert.match(m.html, /href="http:\/\/localhost:3000\/privacy"[^>]*>Privacy Policy</, k + ': footer links follow PUBLIC_URL');
+    assert.match(m.html, /href="http:\/\/localhost:3000\/terms"[^>]*>Terms of Service</, k);
+    assert.doesNotMatch(m.html, /facebook|twitter|linkedin|youtube|instagram/i, k + ': no social links');
+    assert.match(m.html, /@media only screen and \(max-width:620px\)/, k + ': stacks on phones');
+    assert.match(m.html, /prefers-color-scheme:dark/, k + ': dark mode palette');
+    assert.match(m.html, /role="presentation"/, k + ': table layout');
+    assert.match(m.text, /Privacy Policy: http:\/\/localhost:3000\/privacy/, k + ': plain-text footer');
+    if (k !== 'deleteCode') assert.ok(!m.html.includes('123456'), k + ': codes only appear in the code email');
+  }
+  const fs = require('node:fs');
+  const path = require('node:path');
+  for (const f of ['hero', 'mark', 'people', 'i-link', 'i-time', 'i-shield', 'i-lock']) {
+    const p = path.join(__dirname, '..', 'public', 'email', f + '.png');
+    assert.ok(fs.existsSync(p), f); assert.ok(fs.statSync(p).size < 200 * 1024, f + ' under 200 KB');
+  }
+  const saved = process.env.MAIL_ASSET_URL; process.env.MAIL_ASSET_URL = 'https://cdn.example.com/';
+  try { assert.match(render('verify', { app: '1venue', url: 'https://1venue.live', link: 'x', expires: '1 day' }).html, /src="https:\/\/cdn\.example\.com\/email\/hero\.png"/); } finally { if (saved === undefined) delete process.env.MAIL_ASSET_URL; else process.env.MAIL_ASSET_URL = saved; }
 });
 
 test('send() uses the transport with from/to/subject/text/html', async () => {

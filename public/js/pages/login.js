@@ -1,11 +1,20 @@
-// Sign in, create account, forgot password. Also hosts "Continue with Google" when configured.
+// Sign in, create account, forgot password. Also hosts "Continue with Google" / "Continue with Apple" when configured.
 import { LOGO, icon } from '../icons.js';
 import { h, api, toastErr, toast } from '../ui.js';
 import { state, navigate, refreshSession } from '../app.js';
 
 export const GOOGLE_G = '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
 
+export const APPLE_LOGO = '<svg width="18" height="18" viewBox="0 0 814 1000" aria-hidden="true" fill="currentColor"><path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105.6-57-155.5-127C46.7 790.7 0 663 0 541.8c0-194.4 126.4-297.5 250.8-297.5 66.1 0 121.2 43.4 162.7 43.4 39.5 0 101.1-46 176.3-46 28.5 0 130.9 2.6 198.3 99.2zm-234-181.5c31.1-36.9 53.1-88.1 53.1-139.3 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.6-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 135.5-71.3z"/></svg>';
+
 const GOOGLE_ERRORS = {
+  'apple-cancelled': 'Apple sign-in was cancelled.',
+  'apple-expired': 'That Apple sign-in took too long. Please try again.',
+  'apple-state': 'That Apple sign-in could not be confirmed. Please try again.',
+  'apple-unverified': 'Your Apple email address is not verified yet.',
+  'apple-signup-closed': 'There is no 1venue account for that Apple ID yet.',
+  'apple-off': 'Apple sign-in is not set up on this server.',
+  apple: 'Apple sign-in did not work. Please try again.',
   'google-cancelled': 'Google sign-in was cancelled.',
   'google-expired': 'That Google sign-in took too long. Please try again.',
   'google-state': 'That Google sign-in could not be confirmed. Please try again.',
@@ -30,6 +39,11 @@ export function safeNext(raw) {
 export function googleButton(next, label = 'Continue with Google') {
   if (!state.config?.auth?.google) return null;
   return h('a', { class: 'btn block lg google-btn', href: '/auth/google/start?next=' + encodeURIComponent(next), html: GOOGLE_G + '<span>' + label + '</span>' });
+}
+/** "Continue with Apple" (only when configured). Apple posts back to /auth/apple/callback. */
+export function appleButton(next, label = 'Continue with Apple') {
+  if (!state.config?.auth?.apple) return null;
+  return h('a', { class: 'btn block lg google-btn apple-btn', href: '/auth/apple/start?next=' + encodeURIComponent(next), html: APPLE_LOGO + '<span>' + label + '</span>' });
 }
 
 export const passwordInput = (placeholder = 'Password', autocomplete = 'current-password') => {
@@ -136,9 +150,15 @@ const brandBtn = (text, type = 'submit') => h('button', { class: 'au-btn au-prim
 const orLine = () => h('div', { class: 'au-or' }, h('span', null, 'OR'));
 export const AUTH_SUB = 'Get the full 1venue experience: host live rooms, share files and images, and more.';
 
+/** Social sign-in pills (Google, Apple), or null when neither is configured. */
 function googlePill(next) {
-  if (!state.config?.auth?.google) return null;
-  return h('a', { class: 'au-btn au-outline', href: '/auth/google/start?next=' + encodeURIComponent(next), html: GOOGLE_G + '<span>Continue with Google</span>' });
+  const a = state.config?.auth || {};
+  const pills = [
+    a.google ? h('a', { class: 'au-btn au-outline', href: '/auth/google/start?next=' + encodeURIComponent(next), html: GOOGLE_G + '<span>Continue with Google</span>' }) : null,
+    a.apple ? h('a', { class: 'au-btn au-outline au-apple', href: '/auth/apple/start?next=' + encodeURIComponent(next), html: APPLE_LOGO + '<span>Continue with Apple</span>' }) : null,
+  ].filter(Boolean);
+  if (!pills.length) return null;
+  return pills.length === 1 ? pills[0] : h('div', { class: 'au-social' }, ...pills);
 }
 
 async function finishSignIn(next, { signup = false } = {}) {

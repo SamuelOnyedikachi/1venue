@@ -8,12 +8,15 @@ const config = require('../../config');
 const data = require('./data');
 const mail = require('../mail/mailer');
 const google = require('./google');
+const apple = require('./apple');
+const deletion = require('./deletion');
+const jwt = require('jsonwebtoken');
 const { parseUsername } = require('./username');
 const { normalizePhone } = require('./phone');
 
 const A = config.AUTH;
 const BAD_LOGIN = 'Email or password is incorrect.';
-const LOGIN_HINT = 'No password yet, or signed up with Google? Use “Forgot password” to get a link to set one, or Continue with Google.';
+const LOGIN_HINT = 'No password yet, or signed up with Google or Apple? Use “Forgot password” to get a link to set one, or continue with Google or Apple.';
 const FORGOT_OK = 'If that email has an account, a link is on its way. Check your inbox (and spam).';
 
 module.exports = function routes(route, kit) {
@@ -144,6 +147,7 @@ module.exports = function routes(route, kit) {
       user: { ...auth.publicUser(u), phone: row.phone || null, phoneVerified: !!row.phone_verified },
       identities: (await data.identitiesFor(u.id)).map((i) => ({ provider: i.provider, email: i.email, linkedAt: i.created_at })),
       google: google.enabled(),
+      apple: apple.enabled(),
       requireVerifiedEmail: A.requireVerifiedEmail,
       passwordMin: A.passwordMin,
     };
@@ -283,5 +287,48 @@ module.exports = function routes(route, kit) {
       mail.sendLater('emailChanged', row.email, { newEmail: email });
     }
     return { ok: true, pending: email, message: `Check ${email} for a confirmation link. Your email changes once you open it.` };
+  });
+
+  /* ---------- delete account: password -> emailed code -> final confirm ---------- */
+  const GRANT_AUD = 'account-delete';
+  route('POST', '/api/auth/delete/start', async (ctx) => {
+    const u = await me(ctx, { allowUnverified: true });
+    const b = await ctx.body(4096);
+    limit('del:start:' + u.id, 5);
+    const row = await auth.userById(u.id);
+    if (row.password_hash) {
+      if (!(await auth.verifyPassword(str(b.password, 200), row.password_hash))) throw httpError(400, 'That password is not right');
+    }
+    const ago = await deletion.lastSentAgo(u.id);
+    if (ago !== null && ago < 60) throw httpError(429, `We just sent a code. Wait ${60 - ago} seconds to ask for another.`);
+    const code = await deletion.issueCode(u.id, row.email, A.deleteCodeTtlMin);
+    mail.sendLater('deleteCode', row.email, { name: row.display_name || row.username, code, expires: mins(A.deleteCodeTtlMin) });
+    const masked = String(row.email).replace(/^(.)(.*)(.@.*)$/, (m, a, mid, z) => a + '•'.repeat(Math.min(6, mid.length)) + z);
+    return { ok: true, email: masked, expiresInMin: A.deleteCodeTtlMin, passwordChecked: !!row.password_hash };
+  });
+  route('POST', '/api/auth/delete/verify', async (ctx) => {
+    const u = await me(ctx, { allowUnverified: true });
+    const b = await ctx.body(4096);
+    limit('del:verify:' + u.id, 10);
+    const r = await deletion.checkCode(u.id, str(b.code, 20));
+    if (r === 'wrong') throw httpError(400, 'That code is not right. Check the latest email and try again.');
+    if (r === 'locked') throw httpError(429, 'Too many wrong codes. Ask for a new code.');
+    if (r === 'expired') throw httpError(400, 'That code has expired. Ask for a new one.');
+    if (r !== 'ok') throw httpError(400, 'Start again: enter your password to get a code.');
+    const grant = jwt.sign({ sub: String(u.id) }, config.JWT_SECRET, { expiresIn: 600, audience: GRANT_AUD });
+    return { ok: true, grant };
+  });
+  route('POST', '/api/auth/delete/confirm', async (ctx) => {
+    const u = await me(ctx, { allowUnverified: true });
+    const b = await ctx.body(4096);
+    limit('del:confirm:' + u.id, 5);
+    let g;
+    try { g = jwt.verify(str(b.grant, 2000), config.JWT_SECRET, { audience: GRANT_AUD }); } catch (_) { throw httpError(400, 'This confirmation expired. Start again.'); }
+    if (String(g.sub) !== String(u.id)) throw httpError(403, 'This confirmation is for a different account.');
+    const out = await deletion.deleteAccount(u.id);
+    auth.forgetUser(u.id);
+    auth.clearCookies(ctx.res);
+    if (out && out.email) mail.sendLater('accountDeleted', out.email, { name: out.name, link: `${ctx.origin}/` });
+    return { ok: true, deleted: true };
   });
 };

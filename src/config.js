@@ -35,6 +35,7 @@ const AUTH = {
   requireVerifiedEmail: bool('AUTH_REQUIRE_VERIFIED_EMAIL', false), // false = allow, show a banner
   verifyTtlHours: int('AUTH_VERIFY_TTL_HOURS', 48),
   resetTtlMin: int('AUTH_RESET_TTL_MIN', 60),
+  deleteCodeTtlMin: Math.min(60, Math.max(5, int('AUTH_DELETE_CODE_TTL_MIN', 10))), // account deletion email code
   ratePerMin: int('AUTH_RATE_PER_MIN', 20), // per IP for sign-in / sign-up / reset endpoints
   // Secure cookies unless PUBLIC_URL is plain http (local dev)
   cookieSecure: bool('AUTH_COOKIE_SECURE', !/^http:\/\//i.test(env('PUBLIC_URL', ''))),
@@ -43,6 +44,19 @@ const AUTH = {
     clientSecret: env('GOOGLE_CLIENT_SECRET', ''),
     discoveryUrl: env('GOOGLE_DISCOVERY_URL', 'https://accounts.google.com/.well-known/openid-configuration'),
     allowSignup: bool('GOOGLE_ALLOW_SIGNUP', true),
+  },
+  // Sign in with Apple (web). See docs/APPLE_SIGNIN.md. Needs a paid Apple Developer account.
+  apple: {
+    clientId: env('APPLE_CLIENT_ID', ''), // the Services ID, e.g. live.1venue.signin
+    teamId: env('APPLE_TEAM_ID', ''),
+    keyId: env('APPLE_KEY_ID', ''),
+    // Contents of the .p8 key. "\n" escapes (one-line env values) are turned back into newlines.
+    privateKey: env('APPLE_PRIVATE_KEY', '').replace(/\\n/g, '\n').trim(),
+    issuer: env('APPLE_ISSUER', 'https://appleid.apple.com'), // tests point these at a mock
+    authUrl: env('APPLE_AUTH_URL', 'https://appleid.apple.com/auth/authorize'),
+    tokenUrl: env('APPLE_TOKEN_URL', 'https://appleid.apple.com/auth/token'),
+    jwksUrl: env('APPLE_JWKS_URL', 'https://appleid.apple.com/auth/keys'),
+    allowSignup: bool('APPLE_ALLOW_SIGNUP', true),
   },
 };
 const ALLOW_LOCAL_SIGNUP = bool('ALLOW_LOCAL_SIGNUP', true);

@@ -49,7 +49,7 @@ async function send(kind, to, data = {}) {
   const msg = render(kind, { app: config.APP_NAME || '1venue', url: config.PUBLIC_URL || '', ...data });
   const t = getTransport(s);
   if (!t) {
-    if (s.logLinks) console.log(`[mail] (SMTP not configured) to=${to} subject="${msg.subject}"${data.link ? ' link=' + data.link : ''}`);
+    if (s.logLinks) console.log(`[mail] (SMTP not configured) to=${to} subject="${msg.subject}"${data.link ? ' link=' + data.link : ''}${data.code ? ' code=' + data.code : ''}`);
     else console.warn(`[mail] SMTP not configured; "${kind}" email to ${String(to).replace(/^(.).*(@.*)$/, '$1***$2')} was not sent`);
     return { sent: false, reason: 'not-configured' };
   }
