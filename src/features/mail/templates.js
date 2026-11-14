@@ -6,8 +6,9 @@
  * a dark-mode palette for clients that honour prefers-color-scheme. Every value is escaped.
  *
  * Images are PNGs in public/email/ (SVG does not render in Gmail), loaded from MAIL_ASSET_URL,
- * which defaults to PUBLIC_URL when it is https, else https://1venue.live. All art is illustrated
- * (no photos). Regenerate the laptop art from scripts/email-art/hero.html (see the README there).
+ * which defaults to PUBLIC_URL when it is https, else https://1venue.live. The laptop's video
+ * tiles are licensed Unsplash photos (scripts/email-art/CREDITS.md); the rest is drawn.
+ * Regenerate the art from scripts/email-art/ (see the README there).
  */
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -15,7 +16,10 @@ const BLUE = '#003EA8';
 const NAVY = '#0B1B3F';
 const SUB = '#4A5878';
 const FAINT = '#7A87A3';
-const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+// Same stack as the site (public/css/app.css body font). Headings follow the site's scale too:
+// only a little larger than body text and weight 600, not heavy display type.
+const FONT = "Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans',Helvetica,Arial,sans-serif";
+const ASSET_V = '2'; // bump when a PNG in public/email/ changes, so mail clients and proxies refetch it
 const TAGLINE = 'Meet · Collaborate · Achieve';
 
 function assetBase(url) {
@@ -39,12 +43,13 @@ a{color:${BLUE}}
   .stack{display:block!important;width:100%!important;max-width:100%!important}
   .hero-art{padding:22px 0 0!important}
   .hero-art img{width:100%!important;max-width:320px!important;height:auto!important;margin:0 auto!important}
-  .h1{font-size:30px!important;line-height:36px!important}
+  .h1{font-size:22px!important;line-height:29px!important}
+  .hero-bg{width:100%!important;max-width:320px!important;height:241px!important;background-size:contain!important;margin:0 auto!important}
   .tag{display:none!important}
   .brand-art{width:96px!important}
-  .brand-art img{width:96px!important;height:auto!important}
+  .brand-art .deco{width:96px!important;height:67px!important;background-size:96px 67px!important}
   .foot td{display:block!important;width:100%!important;text-align:left!important;padding-top:6px!important}
-  .code{font-size:30px!important;letter-spacing:8px!important}
+  .code{font-size:26px!important;letter-spacing:7px!important}
 }
 @media (prefers-color-scheme:dark){
   .bg{background:#0A1020!important}
@@ -61,10 +66,20 @@ a{color:${BLUE}}
 [data-ogsc] .t2{color:#B9C4DE!important}
 `;
 
+/**
+ * A purely decorative image that cannot be clicked, saved or opened: a background image on an
+ * empty block (no <img>, no link), so Gmail shows no download/zoom overlay on it. Outlook for
+ * Windows ignores CSS backgrounds, so it gets the same image through VML.
+ */
+function deco(url, w, h, cls = '') {
+  return `<!--[if mso]><v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:${w}px;height:${h}px"><v:fill type="frame" src="${url}" color="#F7F9FF" /></v:rect><![endif]-->`
+    + `<!--[if !mso]><!--><div role="presentation" aria-hidden="true" class="deco ${cls}" style="width:${w}px;height:${h}px;background-image:url('${url}');background-size:${w}px ${h}px;background-repeat:no-repeat;background-position:center;pointer-events:none;user-select:none;-webkit-user-select:none;font-size:0;line-height:0">&nbsp;</div><!--<![endif]-->`;
+}
+
 /** One icon row (link card, expiry, security note). `body` is already-escaped HTML. */
 function iconRow(src, body, { card = false } = {}) {
   const inner = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-<td width="40" valign="top" style="width:40px;padding:0 16px 0 0"><img src="${src}" width="40" height="40" alt="" style="width:40px;height:40px"></td>
+<td width="40" valign="top" style="width:40px;padding:0 16px 0 0">${deco(src, 40, 40)}</td>
 <td valign="middle" class="t2" style="font-family:${FONT};font-size:14px;line-height:21px;color:${SUB}">${body}</td></tr></table>`;
   return card
     ? `<tr><td class="px" style="padding:8px 40px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate"><tr><td class="card" style="background:#F6F9FF;border:1px solid #E1E8F6;border-radius:18px;padding:18px 20px">${inner}</td></tr></table></td></tr>`
@@ -73,20 +88,21 @@ function iconRow(src, body, { card = false } = {}) {
 
 function layout(d) {
   const { app = '1venue', url = '', title, heading, intro, button, link, showCode: code, expiryNote, note, preheader } = d;
-  const A = assetBase(url);
+  const base = assetBase(url);
+  const img = (name) => `${base}/email/${name}.png?v=${ASSET_V}`;
   const S = site(url);
   const host = S.replace(/^https?:\/\//, '');
   const h = heading || title;
 
   const buttonHtml = button && link ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" class="btn" style="margin:26px 0 0;border-collapse:separate"><tr>
-<td bgcolor="${BLUE}" style="border-radius:14px;background:${BLUE};box-shadow:0 8px 18px -8px rgba(0,62,168,.55)"><a href="${esc(link)}" target="_blank" style="display:inline-block;padding:15px 26px;font-family:${FONT};font-size:16px;line-height:20px;font-weight:600;color:#FFFFFF;text-decoration:none;border-radius:14px">${esc(button)}&nbsp;&rarr;</a></td></tr></table>` : '';
+<td bgcolor="${BLUE}" style="border-radius:14px;background:${BLUE};box-shadow:0 8px 18px -8px rgba(0,62,168,.55)"><a href="${esc(link)}" target="_blank" style="display:inline-block;padding:15px 26px;font-family:${FONT};font-size:15px;line-height:20px;font-weight:600;color:#FFFFFF;text-decoration:none;border-radius:14px">${esc(button)}&nbsp;&rarr;</a></td></tr></table>` : '';
   const codeHtml = code ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 0;border-collapse:separate"><tr>
-<td class="card" style="background:#FFFFFF;border:1px solid #D7E2F7;border-radius:16px;padding:14px 22px"><span class="code t1" style="font-family:'SF Mono',Menlo,Consolas,'Courier New',monospace;font-size:34px;line-height:40px;font-weight:700;letter-spacing:10px;color:${NAVY}">${esc(code)}</span></td></tr></table>` : '';
+<td class="card" style="background:#FFFFFF;border:1px solid #D7E2F7;border-radius:16px;padding:14px 22px"><span class="code t1" style="font-family:'SF Mono',Menlo,Consolas,'Courier New',monospace;font-size:30px;line-height:38px;font-weight:600;letter-spacing:9px;color:${NAVY}">${esc(code)}</span></td></tr></table>` : '';
 
   const rows = [];
-  if (button && link) rows.push(iconRow(`${A}/email/i-link.png`, `Or paste this link into your browser:<br><a class="lnk" href="${esc(link)}" target="_blank" style="color:${BLUE};text-decoration:underline;word-break:break-all;font-size:13px;line-height:20px">${esc(link)}</a>`, { card: true }));
-  if (expiryNote) rows.push(iconRow(`${A}/email/i-time.png`, esc(expiryNote)));
-  if (note) rows.push(iconRow(`${A}/email/${note.icon || 'i-shield'}.png`, esc(note.text)));
+  if (button && link) rows.push(iconRow(img('i-link'), `Or paste this link into your browser:<br><a class="lnk" href="${esc(link)}" target="_blank" style="color:${BLUE};text-decoration:underline;word-break:break-all;font-size:13px;line-height:20px">${esc(link)}</a>`, { card: true }));
+  if (expiryNote) rows.push(iconRow(img('i-time'), esc(expiryNote)));
+  if (note) rows.push(iconRow(img(note.icon || 'i-shield'), esc(note.text)));
 
   const html = `<!doctype html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
@@ -105,8 +121,8 @@ function layout(d) {
 <tr><td class="px" style="padding:30px 40px 22px">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
     <td valign="middle"><a href="${esc(S)}" target="_blank" style="text-decoration:none"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-      <td valign="middle" style="padding:0 10px 0 0"><img src="${A}/email/mark.png" width="40" height="40" alt="" style="width:40px;height:40px;border-radius:11px"></td>
-      <td valign="middle" class="t1" style="font-family:${FONT};font-size:25px;line-height:28px;font-weight:800;letter-spacing:-0.5px;color:${NAVY}">${esc(app)}</td>
+      <td valign="middle" style="padding:0 10px 0 0"><img src="${img('mark')}" width="36" height="36" alt="" style="width:36px;height:36px;border-radius:10px"></td>
+      <td valign="middle" class="t1" style="font-family:${FONT};font-size:19px;line-height:24px;font-weight:600;letter-spacing:-0.2px;color:${NAVY}">${esc(app)}</td>
     </tr></table></a></td>
     <td valign="middle" align="right" class="tag t2" style="font-family:${FONT};font-size:12px;line-height:16px;color:${SUB};white-space:nowrap">${esc(TAGLINE)}</td>
   </tr></table>
@@ -116,11 +132,11 @@ function layout(d) {
 <tr><td class="px" style="padding:30px 40px 14px">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
     <td class="stack" valign="middle" width="270" style="width:270px">
-      <h1 class="h1 t1" style="margin:0;font-family:${FONT};font-size:34px;line-height:40px;font-weight:800;letter-spacing:-0.8px;color:${NAVY}">${esc(h)}</h1>
-      <p class="t2" style="margin:16px 0 0;font-family:${FONT};font-size:16px;line-height:25px;color:${SUB}">${esc(intro)}</p>
+      <h1 class="h1 t1" style="margin:0;font-family:${FONT};font-size:24px;line-height:31px;font-weight:600;letter-spacing:-0.2px;color:${NAVY}">${esc(h)}</h1>
+      <p class="t2" style="margin:12px 0 0;font-family:${FONT};font-size:15px;line-height:24px;color:${SUB}">${esc(intro)}</p>
       ${codeHtml}${buttonHtml}
     </td>
-    <td class="stack hero-art" valign="middle" align="right" width="250" style="width:250px;padding:0 0 0 0"><img src="${A}/email/hero.png" width="250" height="188" alt="1venue on a laptop: a live meeting with slides, video tiles, a live poll and engagement stats" style="width:250px;height:188px"></td>
+    <td class="stack hero-art" valign="middle" align="right" width="250" style="width:250px;padding:0">${deco(img('hero'), 250, 188, 'hero-bg')}</td>
   </tr></table>
 </td></tr>
 
@@ -130,11 +146,11 @@ ${rows.join('\n')}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate"><tr><td class="brand" style="background:#E7EEFF;background-image:linear-gradient(120deg,#EDF3FF 0%,#DDE7FF 100%);border-radius:22px;padding:24px 26px">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
       <td valign="middle">
-        <div class="t1" style="font-family:${FONT};font-size:26px;line-height:30px;font-weight:800;letter-spacing:-0.5px;color:${NAVY}">${esc(app)}</div>
-        <div class="t2" style="margin:8px 0 0;font-family:${FONT};font-size:15px;line-height:22px;color:${SUB};max-width:250px">Your premium meeting platform for meaningful connections.</div>
+        <div class="t1" style="font-family:${FONT};font-size:19px;line-height:24px;font-weight:600;letter-spacing:-0.2px;color:${NAVY}">${esc(app)}</div>
+        <div class="t2" style="margin:6px 0 0;font-family:${FONT};font-size:15px;line-height:22px;color:${SUB};max-width:250px">Your premium meeting platform for meaningful connections.</div>
         <div style="margin:14px 0 0;width:44px;height:3px;border-radius:3px;background:${BLUE};line-height:3px;font-size:0">&nbsp;</div>
       </td>
-      <td valign="middle" align="right" width="150" class="brand-art" style="width:150px"><img src="${A}/email/people.png" width="150" height="104" alt="" style="width:150px;height:104px"></td>
+      <td valign="middle" align="right" width="150" class="brand-art" style="width:150px">${deco(img('people'), 150, 104)}</td>
     </tr></table>
   </td></tr></table>
 </td></tr>

@@ -23,8 +23,20 @@ test('every template has subject, text and escaped HTML with the link', () => {
 test('emails follow the brand design: hosted PNG art, privacy + terms footer, mobile + dark mode', () => {
   for (const k of kinds) {
     const m = render(k, { app: '1venue', url: 'http://localhost:3000', name: 'Ada', link: 'https://1venue.live/x', expires: '1 hour', newEmail: 'n@ex.test', code: '123456' });
-    assert.match(m.html, /src="https:\/\/1venue\.live\/email\/mark\.png"/, k + ': site icon from https (never localhost)');
-    assert.match(m.html, /src="https:\/\/1venue\.live\/email\/hero\.png"/, k + ': laptop art');
+    assert.match(m.html, /src="https:\/\/1venue\.live\/email\/mark\.png\?v=\d+"/, k + ': site icon from https (never localhost), cache-busted');
+    assert.match(m.html, /background-image:url\('https:\/\/1venue\.live\/email\/hero\.png\?v=\d+'\)/, k + ': laptop art');
+    assert.match(m.html, /<v:fill type="frame" src="https:\/\/1venue\.live\/email\/hero\.png/, k + ': Outlook VML fallback');
+    // decoration is never an <img> or a link: only the logo is an image, and it links to the site
+    const imgs = m.html.match(/<img\b[^>]*>/g) || [];
+    assert.equal(imgs.length, 1, k + ': only the logo is an <img>');
+    assert.match(imgs[0], /mark\.png/);
+    for (const d of ['hero', 'people', 'i-link', 'i-time', 'i-shield', 'i-lock']) {
+      for (const a of m.html.match(/<a\b[\s\S]*?<\/a>/g) || []) assert.ok(!a.includes(`/email/${d}.png`), `${k}: ${d} is not inside a link`);
+    }
+    assert.match(m.html, /class="deco[^"]*"[^>]*pointer-events:none/, k + ': decoration ignores clicks');
+    assert.match(m.html, /font-size:24px;line-height:31px;font-weight:600/, k + ': heading in the site scale');
+    assert.doesNotMatch(m.html, /font-weight:(7|8|9)00/, k + ': no heavy display weights');
+    assert.match(m.html, /font-family:Inter,ui-sans-serif,system-ui/, k + ': site font stack');
     assert.doesNotMatch(m.html, /\.svg"/, k + ': no SVG images (Gmail drops them)');
     assert.match(m.html, /href="http:\/\/localhost:3000\/privacy"[^>]*>Privacy Policy</, k + ': footer links follow PUBLIC_URL');
     assert.match(m.html, /href="http:\/\/localhost:3000\/terms"[^>]*>Terms of Service</, k);
@@ -39,10 +51,10 @@ test('emails follow the brand design: hosted PNG art, privacy + terms footer, mo
   const path = require('node:path');
   for (const f of ['hero', 'mark', 'people', 'i-link', 'i-time', 'i-shield', 'i-lock']) {
     const p = path.join(__dirname, '..', 'public', 'email', f + '.png');
-    assert.ok(fs.existsSync(p), f); assert.ok(fs.statSync(p).size < 200 * 1024, f + ' under 200 KB');
+    assert.ok(fs.existsSync(p), f); assert.ok(fs.statSync(p).size < (f === 'hero' ? 150 : 200) * 1024, f + ' small enough');
   }
   const saved = process.env.MAIL_ASSET_URL; process.env.MAIL_ASSET_URL = 'https://cdn.example.com/';
-  try { assert.match(render('verify', { app: '1venue', url: 'https://1venue.live', link: 'x', expires: '1 day' }).html, /src="https:\/\/cdn\.example\.com\/email\/hero\.png"/); } finally { if (saved === undefined) delete process.env.MAIL_ASSET_URL; else process.env.MAIL_ASSET_URL = saved; }
+  try { assert.match(render('verify', { app: '1venue', url: 'https://1venue.live', link: 'x', expires: '1 day' }).html, /url\('https:\/\/cdn\.example\.com\/email\/hero\.png\?v=\d+'\)/); } finally { if (saved === undefined) delete process.env.MAIL_ASSET_URL; else process.env.MAIL_ASSET_URL = saved; }
 });
 
 test('send() uses the transport with from/to/subject/text/html', async () => {
