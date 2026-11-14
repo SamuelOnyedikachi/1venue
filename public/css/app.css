@@ -1131,6 +1131,8 @@ body:has(.hero) .view > .hero { margin-top: 0; }
 .au-outline { background: var(--s1); color: var(--text); border: 1px solid var(--line-2); }
 .au-outline:hover { background: var(--s2); }
 .au-outline svg { flex: none; }
+.au-social { display: flex; flex-direction: column; gap: .6rem; }
+.au-apple svg, .apple-btn svg { color: var(--text); margin-top: -2px; }
 .au-primary { background: var(--brand); color: #fff; border: 0; }
 .au-primary:hover { background: var(--brand-hi); }
 .au-primary:focus-visible, .au-outline:focus-visible { outline: 3px solid color-mix(in srgb, var(--brand) 35%, transparent); outline-offset: 2px; }
@@ -1175,3 +1177,14 @@ body:has(.hero) .view > .hero { margin-top: 0; }
 /* read-out button while the cloud voice is being generated */
 .icon-btn.busy { position: relative; }
 .icon-btn.busy::after { content: ''; position: absolute; inset: 2px; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--accent); animation: spin .8s linear infinite; }
+
+/* Settings → Danger zone (delete account) */
+.danger-zone { border: 1px solid color-mix(in srgb, #dc2626 28%, var(--line-2)); }
+.danger-zone .set-h { color: #dc2626; }
+.del-steps { display: flex; gap: .35rem; }
+.del-steps span { flex: 1; height: 4px; border-radius: 4px; background: var(--line-2); transition: background .25s; }
+.del-steps span.on { background: #dc2626; }
+.del-list { margin: 0; padding-left: 1.1rem; display: grid; gap: .25rem; }
+.del-code { text-align: center; font: 700 1.6rem/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .5em; padding-left: .5em; }
+.del-final { display: flex; gap: .75rem; align-items: flex-start; padding: .85rem 1rem; border-radius: 14px; background: color-mix(in srgb, #dc2626 9%, transparent); color: var(--text); }
+.del-final > span { color: #dc2626; flex: none; display: flex; }

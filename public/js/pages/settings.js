@@ -3,7 +3,7 @@ import { h, esc, toast } from '../ui.js';
 import { state, setPrefs, ACCENTS, FONT_SIZES, loginUrl } from '../app.js';
 import { promptInstall, canInstall } from '../pwa.js';
 import { translationSelect } from './bible.js';
-import { accountCard } from './account.js';
+import { accountCard, deleteAccountCard } from './account.js';
 
 const CAPTION_LANGS = [['', 'Auto (device language)'], ['en', 'English (Nigerian)'], ['yo', 'Yorùbá'], ['ig', 'Igbo'], ['ha', 'Hausa'], ['pcm', 'Naija Pidgin']];
 
@@ -45,6 +45,9 @@ export async function mount(view) {
       card('About', 'info',
         row('shield', 'admin', 'Privacy policy', 'How 1venue uses your information', h('a', { class: 'btn sm', href: '/privacy' }, 'Read')),
         row('file', 'admin', 'Terms of service', 'The rules for using 1venue', h('a', { class: 'btn sm', href: '/terms' }, 'Read')))));
-  if (state.user) await accountCard(card, row).then((sec) => view.querySelector('.set-grid').append(sec)).catch(() => {});
+  if (state.user) {
+    await accountCard(card, row).then((sec) => view.querySelector('.set-grid').append(sec)).catch(() => {});
+    await deleteAccountCard(card).then((sec) => { if (sec) view.querySelector('.set-grid').append(sec); }).catch(() => {});
+  }
   if (location.hash) setTimeout(() => { const el = document.getElementById(location.hash.slice(1)); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('flash'); } }, 120);
 }

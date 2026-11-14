@@ -81,7 +81,7 @@ Every setting is an environment variable, documented in [.env.example](.env.exam
 | Area | Variables | Docs |
 |---|---|---|
 | Core | `PUBLIC_URL`, `CORS_ORIGINS`, `CANONICAL_HOST`, `JWT_SECRET`, `TRUST_PROXY` | [DEPLOY-1venue.live.md](docs/DEPLOY-1venue.live.md) |
-| Accounts | `ALLOW_LOCAL_SIGNUP`, `AUTH_*`, `BCRYPT_COST`, `GOOGLE_*` | [AUTH.md](docs/AUTH.md) |
+| Accounts | `ALLOW_LOCAL_SIGNUP`, `AUTH_*`, `BCRYPT_COST`, `GOOGLE_*`, `APPLE_*` | [AUTH.md](docs/AUTH.md) |
 | Email | `SMTP_*`, `MAIL_FROM`, `MAIL_REPLY_TO` | [AUTH.md](docs/AUTH.md) |
 | Database | `DATABASE_URL`, `DATABASE_POOL_MAX`, `AUTO_MIGRATE` | |
 | Media | `LIVEKIT_*`, `SIMULCAST`, `VIDEO_*`, `MAX_PARTICIPANTS`, `MAX_AUDIENCE` | [livekit-coolify.md](docs/livekit-coolify.md) |
@@ -95,6 +95,9 @@ Full details, Google Cloud Console steps and SMTP examples: [docs/AUTH.md](docs/
 
 - Email + password sign-up (`ALLOW_LOCAL_SIGNUP`), email confirmation, forgot/reset password, change password and change email (re-confirmed).
 - "Continue with Google" (OpenID Connect with PKCE) when `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are set; hidden otherwise.
+- "Continue with Apple" when the four `APPLE_*` values are set ([docs/APPLE_SIGNIN.md](docs/APPLE_SIGNIN.md)); hidden otherwise.
+- Delete account in Settings → Danger zone: password, then a 6-digit code by email, then a final confirm.
+- Branded, mobile-friendly emails (table HTML + plain text); art in `public/email/`, sources in `scripts/email-art/`.
 - Short-lived access token plus a rotating refresh token stored hashed in Postgres, in host-only `HttpOnly; Secure; SameSite=Lax` cookies. Settings → Account lists every signed-in device, with sign out per device and "Sign out everywhere".
 - Guests can join rooms with just a name.
 
