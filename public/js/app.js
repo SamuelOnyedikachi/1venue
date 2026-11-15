@@ -149,6 +149,7 @@ async function route() {
     if (typeof extra === 'string') params[extra] = decodeURIComponent(m[1]); else if (extra) Object.assign(params, extra);
     try { currentPage && currentPage.unmount && currentPage.unmount(); } catch { /* ignore */ }
     currentPage = null;
+    delete document.body.dataset.page;
     const seq = ++routeSeq;
     const view = $('#view'); view.replaceChildren(); view.className = 'main page-enter';
     void view.offsetWidth;

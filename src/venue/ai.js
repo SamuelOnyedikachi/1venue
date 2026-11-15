@@ -331,6 +331,8 @@ function mock(useCase, messages, opts) {
         'Romans 8:28 | All things work together for good',
       ].join('\n');
     }
+    case 'finetune':
+      return require('../features/ai/finetune').mockFineTune(input);
     default:
       return lines.length ? `Here is what I found in the session:\n${lines.slice(-4).map((l) => `- ${l}`).join('\n')}` : 'I do not have enough context yet. Ask again once the session has a transcript.';
   }
@@ -373,6 +375,10 @@ module.exports = {
     { role: 'system', content: 'Translate the user text. Output only the translation.' },
     { role: 'user', content: `Translate to ${lang}:\n${String(text).slice(0, 2000)}` },
   ], { maxTokens: 400, temperature: 0.1 }),
+  fineTune: (text) => chat('finetune', [
+    { role: 'system', content: require('../features/ai/finetune').SYSTEM },
+    { role: 'user', content: String(text).slice(0, 2000) },
+  ], { maxTokens: 500, temperature: 0.2 }),
   titleDescription: (notes, category) => chat('title', [
     { role: 'system', content: 'Write a catchy event title (max 80 chars), description (max 400 chars), and 3–8 short discovery tags (lowercase, no #, max 32 chars each). Also pick the event colour pair that best fits its mood from exactly one of: Ocean, Violet, Rose, Sunset, Gold, Emerald, Teal, Graphite. If the notes name a category, pick one of: talk_show, presentation, seminar, sermon, webinar, workshop, meeting, concert, class, other. If they name a place or venue, put it in "venue". If they name a date or time, copy that phrase into "when". Do not invent a date, venue, title topic, or fact that is not in the notes. Reply as JSON {"title":"","description":"","tags":["tag1","tag2"],"palette":"Emerald","category":"workshop","venue":"","when":""}.' },
     { role: 'user', content: `Category: ${category || 'event'}\nNotes: ${String(notes).slice(0, 4000)}` },

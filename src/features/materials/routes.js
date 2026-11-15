@@ -36,8 +36,9 @@ module.exports = function routes(route, kit) {
     const u = await getAuthUser(ctx.req, ctx.res);
     const ev = await data.getEventById(Number(id), u?.id);
     if (!ev) throw httpError(404, 'Event not found');
-    // public scheduled events can expose material list to host only for now
-    if (!u || ev.host.id !== u.id) throw httpError(403, 'Only the host can manage event materials');
+    const isHost = !!(u && ev.host && u.id === ev.host.id);
+    const isPrivate = ev.visibility === 'private' || ev.visibility === 'unlisted';
+    if (isPrivate && !isHost) throw httpError(403, 'Only the host can see materials for a private event');
     return { materials: await data.listEventMaterials(Number(id)) };
   });
   route('PUT', '/api/events/(\\d+)/materials', async (ctx, [id]) => {

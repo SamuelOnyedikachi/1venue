@@ -137,6 +137,16 @@ function render() {
     b.addEventListener('click', () => run(c));
     actionsEl.append(b);
   });
+  fitCompactLabels();
+}
+function fitCompactLabels() {
+  if (!actionsEl || !bar) return;
+  const narrow = typeof window !== 'undefined' && window.matchMedia('(max-width: 820px)').matches && !bar.classList.contains('typing');
+  actionsEl.classList.remove('compact-lbl');
+  if (!narrow || !current.length) return;
+  actionsEl.classList.add('compact-lbl');
+  // If labels don't fit, drop them and rely on tooltips + aria-label.
+  if (actionsEl.scrollWidth > actionsEl.clientWidth + 2) actionsEl.classList.remove('compact-lbl');
 }
 function run(c) {
   const q = input.value;

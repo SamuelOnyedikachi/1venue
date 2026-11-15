@@ -2,7 +2,6 @@ import { icon } from '../icons.js';
 import { h, api, esc, fmtNum, fmtDur, timeAgo, avatar } from '../ui.js';
 import { state, requireLogin } from '../app.js';
 import { eventCard, sectionHead, empty, personRow } from '../components.js';
-import { inlineBanner } from '../pwa.js';
 
 function listMore(items, render, { limit = 5, moreHref, moreLabel = 'See more' } = {}) {
   const shown = items.slice(0, limit);
@@ -60,7 +59,6 @@ export async function mount(view) {
       stat('eye', 'social', 'Total audience', fmtNum(s.audience), `Peak ${fmtNum(s.peak)} live`),
       stat('captions', 'ai', 'Transcript lines', fmtNum(s.transcriptLines || s.captions || 0))),
     d.activity?.length ? h('div', { class: 'card pad layer dash-activity' }, h('div', { class: 'tiny muted', style: { marginBottom: '.4rem' } }, 'Activity · 14 days'), spark) : null,
-    inlineBanner('dashboard') || '',
     d.live?.length ? h('div', { class: 'dash-block' }, sectionHead('Live now', 'radio', h('a', { class: 'btn sm ghost', href: '/discover?status=live', 'data-link': '' }, 'All')), h('div', { class: 'hscroll cards-row' }, d.live.map((e) => eventCard(e)))) : '',
     h('div', { class: 'split dash-split' },
       h('div', { class: 'col dash-main-col' },

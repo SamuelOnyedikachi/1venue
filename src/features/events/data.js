@@ -107,7 +107,7 @@ async function getEventByCode(code) {
 /**
  * Discovery: full-text + trigram fuzzy search across public events.
  */
-async function discover({ q: term, category, status, tag, limit = 24, offset = 0, viewerId } = {}) {
+async function discover({ q: term, category, status, tag, host, limit = 24, offset = 0, viewerId } = {}) {
   const where = ["e.visibility='public'", "e.status <> 'draft'", "e.status <> 'cancelled'"];
   const params = [viewerId || 0];
   let rank = 'e.started_at DESC NULLS LAST, e.starts_at ASC NULLS LAST';
@@ -116,6 +116,11 @@ async function discover({ q: term, category, status, tag, limit = 24, offset = 0
   else if (status === 'past') where.push("e.status='ended'");
   if (category && CATEGORIES.includes(category)) { params.push(category); where.push(`e.category=$${params.length}`); }
   if (tag) { params.push(String(tag).toLowerCase()); where.push(`$${params.length} = ANY(e.tags)`); }
+  if (host) {
+    const h = String(host).trim();
+    if (/^\d+$/.test(h)) { params.push(Number(h)); where.push(`e.host_user_id=$${params.length}`); }
+    else { params.push(h.toLowerCase()); where.push(`LOWER(u.username)=$${params.length}`); }
+  }
   if (term && String(term).trim()) {
     const t = String(term).trim().slice(0, 100);
     params.push(t);
