@@ -72,9 +72,10 @@ The cheaper `openai/whisper` (T4, ~US$0.0008 per run) can be used through `STT_R
 
 ## AI covers
 
-**Flow:** Create event → Cover → **Design with AI**.
+**Flow:** Create event → Cover → the host clicks **Design with AI**. Upload your own is the main option. The remaining tries for today (for example "8 of 10 left today") come from the server.
 
-- It also runs automatically when "Write it for me" fills the title, and once when the cover step scrolls into view.
+- Covers are never generated automatically (not when the cover step scrolls into view, and not after "Write it for me").
+- **Write it for me:** if the title and description together have fewer than about 15 words, a "Tell us about your event" overlay asks for notes (with voice typing). The draft comes back as an editable preview (Use this / Try again / Edit). Fields the host already filled are not overwritten unless they tick a box. Dates such as "next Friday at 6pm" are parsed with the same chrono-node helper as spoken dates.
 - **Model:** `black-forest-labs/flux-schnell`, 16:9, webp, 4 steps, with a text-free prompt (`src/features/covers/prompt.js`).
 - **Count:** `AI_COVER_OPTIONS` images (2) per generation, and `AI_COVER_DAILY_LIMIT` generations (10) per user per day.
 - **Cost:** about US$0.003 per image, so at most about US$0.06 per user per day.
@@ -115,7 +116,8 @@ GET  /api/admin/promotions/candidates?type=event|post&q=
 GET  /api/stt/config                    → { allowed, signedIn, secondsLeft, captionSecondsLeft, ... }
 POST /api/stt?mode=dictate|caption&lang  (audio body, X-Audio-Ms header; signed-in user or room participant)
 POST /api/voice/date {text, tzOffset}    → { start, end, hasTime }   (chrono-node)
-GET  /api/covers/config   POST /api/covers/generate {title, description, category}
+GET  /api/covers/config  → { enabled, dailyLimit, left, used, options }
+POST /api/covers/generate {title, description, category}
 POST /api/covers/pick {token, title}     → { url, materialId }
 /api/books/*                              (scripture; /api/bible/* kept as an alias)
 ```

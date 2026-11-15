@@ -254,6 +254,7 @@ class Session {
   }
 }
 
+export async function listenOn(el) { return begin(el); }
 async function begin(el) {
   const kind = voiceKind(el);
   if (!kind || !voicePrefs.enabled) return;

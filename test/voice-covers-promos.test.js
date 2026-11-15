@@ -56,6 +56,57 @@ test('spoken dates -> datetime-local (chrono-node, speaker’s timezone, mishear
   assert.equal(parseSpokenDate('a seminar on animal protection', { now, tzOffset: tz }), null);
 });
 
+
+test('Write it for me needs enough input; dates and venues are pulled out of free text', () => {
+  const draft = require('../src/features/ai/draft');
+  assert.equal(draft.wordCount(''), 0);
+  assert.equal(draft.isRichInput('', ''), false, 'empty');
+  assert.equal(draft.isRichInput('Meetup', 'A talk.'), false, 'thin — well under 15 words');
+  assert.equal(draft.isRichInput('Sunday hangout', 'Come through.'), false, 'thin');
+  const richTitle = 'A workshop for young founders building climate tools in Lagos';
+  const richDesc = 'We will share lessons from shipping two products and leave time for questions.';
+  assert.ok(draft.wordCount(richTitle + ' ' + richDesc) >= 15);
+  assert.equal(draft.isRichInput(richTitle, richDesc), true, 'rich');
+  assert.equal(draft.MIN_WORDS, 15);
+
+  const now = new Date('2026-11-15T04:00:00Z'); const tz = -60; // Lagos
+  const notes = 'A workshop for young founders in Lagos next Friday at 6pm at the Civic Centre.';
+  const hints = draft.enrichDraft(notes, {}, { now, tzOffset: tz, category: 'workshop' });
+  assert.equal(hints.start, '2026-11-20T18:00');
+  assert.equal(hints.hasTime, true);
+  assert.match(hints.venue, /Civic Centre/i);
+  assert.equal(hints.category, 'workshop');
+  assert.equal(draft.extractVenue('Join us at 6pm for a chat'), null, 'a time is not a venue');
+  assert.equal(draft.extractVenue('Held at the National Theatre, Lagos'), 'National Theatre, Lagos');
+});
+
+test('create page: Write-it-for-me overlay when input is thin; covers generate only on click', async () => {
+  const create = read('public/js/pages/create.js');
+  const client = await import('../public/js/event-draft.js');
+  assert.equal(client.MIN_WORDS, 15);
+  assert.equal(client.isRichInput('', ''), false);
+  assert.equal(client.isRichInput('Hi', 'There'), false);
+  assert.equal(client.isRichInput('A workshop for young founders building climate tools in Lagos', 'We will share lessons from shipping two products and leave time for questions.'), true);
+  assert.match(create, /isRichInput\(/);
+  assert.match(create, /Tell us about your event/);
+  assert.match(create, /What's it about, who's it for, when and where, who's speaking, anything special\?/);
+  assert.match(create, /listenOn\(box\)/);
+  assert.match(create, /Use this/);
+  assert.match(create, /Try again/);
+  assert.match(create, /'Edit'\)\)/);
+  assert.match(create, /Replace the .+ I already filled/);
+  assert.match(create, /Design with AI/);
+  assert.match(create, /Upload your own/);
+  assert.match(create, /of \$\{coverLimit\} left today/);
+  assert.doesNotMatch(create, /IntersectionObserver/, 'covers are not generated when the step scrolls into view');
+  assert.doesNotMatch(create, /autoDone/);
+  // generateCovers is only wired to the Design with AI button, never after Write it for me
+  assert.match(create, /if \(genBtn\) genBtn\.onclick = \(\) => generateCovers\(\)/);
+  assert.doesNotMatch(create, /generateCovers\(\);\s*\n\s*toast/);
+  const writeBlock = create.slice(create.indexOf("aiBtn.onclick"), create.indexOf("const submit ="));
+  assert.ok(!writeBlock.includes('generateCovers('), 'Write it for me does not start a cover generation');
+});
+
 test('voice typing never listens in password / email / phone / code / payment fields', async () => {
   const { voiceKind } = await import('../public/js/voice-fields.js');
   const el = (tag, attrs = {}, extra = {}) => ({ tagName: tag, disabled: false, readOnly: false, dataset: {}, ...extra, getAttribute: (k) => (k in attrs ? attrs[k] : null), name: attrs.name || '', id: attrs.id || '', closest: (sel) => (sel === '.cmdbar' && extra.inBar ? {} : null) });
@@ -124,7 +175,7 @@ test('layout: / bar typing area is 50% at every width; Discover header; /u allow
     assert.ok(src.includes('/api/books/'), f);
   }
   const sw = read('public/sw.js');
-  assert.doesNotMatch(sw, /v18-/, 'service worker bumped');
+  assert.doesNotMatch(sw, /v19-/, 'service worker bumped');
 });
 
 test('Discover filter picker: labels animate as hints only; filtering happens on pick (DOM-free check)', () => {
@@ -252,15 +303,32 @@ test('AI covers (flux-schnell 16:9) + Write for me colour: only the picked cover
     assert.equal((await client(s.base).post('/api/covers/generate', { title: 'x' })).status, 401);
     const cfg = await (await fetch(s.base + '/api/config')).json();
     assert.deepEqual(cfg.covers, { enabled: true, dailyLimit: 2, options: 2 });
+    const quota = await c.get('/api/covers/config');
+    assert.equal(quota.status, 200);
+    assert.equal(quota.body.enabled, true);
+    assert.equal(quota.body.dailyLimit, 2);
+    assert.equal(quota.body.left, 2);
+    assert.equal(quota.body.used, 0);
+    const beforeGen = mock.calls.filter((x) => x.url.includes('flux-schnell')).length;
+    assert.equal(beforeGen, 0, 'nothing is generated without a generate click / POST');
 
-    const w = await c.post('/api/ai/title', { notes: 'a seminar on animal protection', category: 'seminar' });
+    const w = await c.post('/api/ai/title', { notes: 'A seminar on animal protection for young people in Lagos next Friday at 6pm at the Civic Centre', category: 'seminar', tzOffset: -60, now: '2026-11-15T04:00:00Z' });
     assert.equal(w.status, 200);
     assert.match(w.body.theme.accent, /^#[0-9a-f]{6}$/);
     assert.ok(['Emerald', 'Teal', 'Ocean'].includes(w.body.theme.name), w.body.theme.name);
+    assert.equal(w.body.start, '2026-11-20T18:00', 'date pulled out of free text');
+    assert.equal(w.body.hasTime, true);
+    assert.match(w.body.venue || '', /Civic Centre/i);
+    assert.equal(w.body.category, 'seminar');
+    // thin / empty notes still get a response (the overlay decides whether to call), but not the old placeholder title
+    const thin = await c.post('/api/ai/title', { notes: 'Talk shows', category: 'talk_show' });
+    assert.equal(thin.status, 200);
+    assert.doesNotMatch(thin.body.title || '', /Conversations on Category/i);
 
     const g = await c.post('/api/covers/generate', { title: 'A seminar on animal protection', category: 'seminar', accent: '#059669', accent2: '#0891b2' });
     assert.equal(g.status, 200, JSON.stringify(g.body));
     assert.equal(g.body.options.length, 2); assert.equal(g.body.left, 1);
+    assert.equal((await c.get('/api/covers/config')).body.left, 1);
     const input = mock.calls.find((x) => x.url.includes('flux-schnell')).body.input;
     assert.equal(input.aspect_ratio, '16:9'); assert.equal(input.num_outputs, 2); assert.equal(input.output_format, 'webp');
     assert.match(input.prompt, /animal protection/); assert.match(input.prompt, /no text/);

@@ -461,6 +461,7 @@ button.list-item:hover { background: var(--s2); }
 
 /* sheets & modals */
 .scrim { position: fixed; inset: 0; z-index: 80; background: rgba(4,8,18,.45); backdrop-filter: blur(3px); animation: fade .2s both; }
+.scrim.heavy { background: rgba(6,10,22,.36); backdrop-filter: saturate(1.5) blur(16px); -webkit-backdrop-filter: saturate(1.5) blur(16px); }
 @keyframes fade { from { opacity: 0; } }
 .sheet {
   position: fixed; z-index: 81; left: 50%; bottom: 0; transform: translateX(-50%); width: min(560px, 100%); max-height: min(88dvh, 860px);
@@ -1277,3 +1278,12 @@ body:has(.hero) .view > .hero { margin-top: 0; }
 .cover-opt.on { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
 .cover-use { position: absolute; right: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: .25rem; font-size: .74rem; font-weight: 600; color: #fff; background: rgba(0,0,0,.45); backdrop-filter: blur(8px); border-radius: 999px; padding: 3px 9px; opacity: 0; transition: opacity .2s; }
 .cover-opt:hover .cover-use, .cover-opt.on .cover-use, .cover-opt:focus-visible .cover-use { opacity: 1; }
+
+/* ---------- Write-it-for-me overlay ---------- */
+.tell-box { position: relative; }
+.tell-box .tell-notes { min-height: 160px; padding-right: 3.1rem; padding-bottom: 2.8rem; resize: vertical; width: 100%; }
+.tell-mic { position: absolute; right: 8px; bottom: 8px; }
+.draft-chk { display: inline-flex; align-items: center; gap: .4rem; font-size: .8rem; color: var(--muted); cursor: pointer; }
+.draft-chk input { margin: 0; }
+.draft-actions { justify-content: flex-end; gap: .5rem; margin-top: 1.1rem; }
+.cover-quota { min-height: 1.1em; }
