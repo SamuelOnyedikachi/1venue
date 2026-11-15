@@ -27,7 +27,7 @@ async function issueCode(userId, email, ttlMin) {
   const code = genCode();
   await db.q(
     `INSERT INTO account_deletion_codes (user_id, code_hash, email, attempts, expires_at, verified_at, created_at)
-     VALUES ($1, $2, $3, 0, NOW() + make_interval(mins => $4), NULL, NOW())
+     VALUES ($1, $2, $3, 0, ${db.USE_PG ? 'NOW() + make_interval(mins => $4)' : "strftime('%Y-%m-%dT%H:%M:%fZ','now',$4 || ' minutes')"}, NULL, NOW())
      ON CONFLICT (user_id) DO UPDATE SET code_hash = EXCLUDED.code_hash, email = EXCLUDED.email, attempts = 0,
        expires_at = EXCLUDED.expires_at, verified_at = NULL, created_at = NOW()`,
     [userId, hashCode(userId, code), email, ttlMin]);
@@ -36,7 +36,7 @@ async function issueCode(userId, email, ttlMin) {
 
 /** Seconds since the last code was sent (null when none). */
 async function lastSentAgo(userId) {
-  const r = (await db.q('SELECT EXTRACT(EPOCH FROM (NOW() - created_at))::int AS s FROM account_deletion_codes WHERE user_id = $1 AND verified_at IS NULL', [userId])).rows[0];
+  const r = (await db.q(`SELECT ${db.USE_PG ? 'EXTRACT(EPOCH FROM (NOW() - created_at))::int' : "CAST((julianday('now')-julianday(created_at))*86400 AS INTEGER)"} AS s FROM account_deletion_codes WHERE user_id = $1 AND verified_at IS NULL`, [userId])).rows[0];
   return r ? r.s : null;
 }
 
@@ -66,6 +66,7 @@ async function deleteAccount(userId) {
   const out = await db.tx(async (c) => {
     const user = (await c.query('SELECT id, email, username, display_name FROM users WHERE id = $1 FOR UPDATE', [id])).rows[0];
     if (!user) return null;
+    await require('../wallet/data').assertCanDelete(c, id);
     const counts = {};
     const run = async (name, sql, p) => { counts[name] = (await c.query(sql, p)).rowCount; };
     const files = (await c.query('SELECT id, driver, object_key FROM files WHERE owner_user_id = $1', [id])).rows;

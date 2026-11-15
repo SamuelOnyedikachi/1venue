@@ -9,7 +9,7 @@ const { boot, client, signupPayload } = require('./helpers/server');
 
 const root = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
-const skip = !process.env.DATABASE_URL ? 'set DATABASE_URL' : false;
+const skip = !process.env.DATABASE_URL && process.env.DB_DRIVER !== 'sqlite' ? 'set DATABASE_URL' : false;
 const tokenOf = (link) => new URL(link).searchParams.get('token');
 
 test('auth pages: overlay + one-page sign-up, no wordy helper text', () => {

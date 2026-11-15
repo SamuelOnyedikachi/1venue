@@ -9,7 +9,7 @@ const path = require('node:path');
 
 let base = process.env.TEST_BASE_URL;
 let child;
-const skip = !base && !process.env.DATABASE_URL ? 'set TEST_BASE_URL or DATABASE_URL' : false;
+const skip = !base && !process.env.DATABASE_URL && process.env.DB_DRIVER !== 'sqlite' ? 'set TEST_BASE_URL or DATABASE_URL' : false;
 
 test.before(async () => {
   if (skip || base) return;

@@ -114,6 +114,7 @@ const ROUTES = [
   [/^\/feed\/?$/, () => import('./pages/feed.js')],
   [/^\/u\/([\w.-]+)\/?$/, () => import('./pages/profile.js'), 'id'],
   [/^\/me\/?$/, () => import('./pages/profile.js'), { me: true }],
+  [/^\/wallet\/?$/, () => import('./pages/wallet.js')],
   [/^\/settings\/?$/, () => import('./pages/settings.js')],
   [/^\/books\/?$/, () => import('./pages/bible.js')],
   // Legacy /bible → /books (same page; Qur’an is a first-class peer, not an afterthought)
@@ -266,6 +267,7 @@ function renderUserSlot() {
     b.onclick = () => menu(b, [
       { label: state.user.displayName, icon: 'user', hint: '@' + state.user.username, run: () => navigate(profilePath(state.user)) },
       { label: 'Dashboard', icon: 'dashboard', run: () => navigate('/dashboard') },
+      { label: 'Credit wallet', icon: 'creditCard', run: () => navigate('/wallet') },
       { label: 'My sessions', icon: 'history', run: () => navigate('/sessions') },
       { label: 'My whiteboard', icon: 'board', group: 'content', run: () => navigate('/whiteboard') },
       { label: 'Settings', icon: 'settings', group: 'settings', run: () => navigate('/settings') },
@@ -370,6 +372,7 @@ function registerGlobal() {
     { id: 'feed', label: 'Social feed', short: 'Feed', icon: 'feed', group: 'social', keywords: ['timeline', 'posts'], run: go('/feed') },
     { id: 'post', label: 'New post', icon: 'pen', group: 'social', keywords: ['write', 'share update', 'status'], run: go('/feed?compose=1') },
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', group: 'nav', keywords: ['stats', 'analytics'], run: go('/dashboard') },
+    { id: 'wallet', label: 'Credit wallet', short: 'Credits', icon: 'creditCard', group: 'settings', keywords: ['credits', 'balance', 'payments', 'paystack', 'top up', 'buy credits'], when: () => !!state.user, run: go('/wallet') },
     { id: 'materials', label: 'Materials library', short: 'Materials', icon: 'folder', group: 'content', keywords: ['decks', 'slides', 'pdf', 'pptx', 'present', 'library', 'uploads'], when: () => !!state.user, run: go('/materials') },
     { id: 'profile', label: 'My profile', icon: 'user', group: 'people', keywords: ['me', 'account', 'timeline', 'public page'], run: () => navigate(state.user ? profilePath(state.user) : '/me') },
     { id: 'edit-profile', label: 'Edit profile', icon: 'pen', group: 'people', keywords: ['bio', 'avatar', 'name', 'handle'], run: go('/me?edit=1') },

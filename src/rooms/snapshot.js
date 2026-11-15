@@ -95,7 +95,7 @@ async function discardSnapshot(code) {
 /** End meetings whose snapshot was never picked up (nobody came back in time). */
 async function expireSnapshots() {
   const r = await db.q(
-    `DELETE FROM meeting_snapshots WHERE created_at < NOW() - ($1::text || ' milliseconds')::interval RETURNING code, history_id, state`,
+    `DELETE FROM meeting_snapshots WHERE created_at < ${db.USE_PG ? "NOW() - ($1::text || ' milliseconds')::interval" : "strftime('%Y-%m-%dT%H:%M:%fZ','now',(-$1/1000.0) || ' seconds')"} RETURNING code, history_id, state`,
     [String(config.RESTART.restoreMaxMs)]
   ).catch(() => ({ rows: [] }));
   for (const row of r.rows) {

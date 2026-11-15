@@ -38,8 +38,9 @@ function migrationFiles() {
   }
   return [...byName.keys()].sort().map((name) => ({ name, file: byName.get(name) }));
 }
-const USE_PG = true;
-const DB_PATH = null;
+const USE_PG = process.env.DB_DRIVER !== 'sqlite';
+const sqlite = USE_PG ? null : require('./src/db/sqlite');
+const DB_PATH = sqlite ? sqlite.DB_PATH : null;
 
 let pool = null;
 let ready = null;
@@ -53,6 +54,7 @@ function slugArtifact() {
 }
 
 function getPool() {
+  if (sqlite) throw new Error('PostgreSQL pool is unavailable in SQLite mode');
   if (!pool) {
     if (!DATABASE_URL) {
       throw new Error('DATABASE_URL is required (postgres://user:pass@host:5432/db)');
@@ -73,6 +75,7 @@ function getPool() {
 }
 
 async function migrate({ log = console.log } = {}) {
+  if (sqlite) return sqlite.migrate({ log });
   const p = getPool();
   const client = await p.connect();
   try {
@@ -106,6 +109,7 @@ async function migrate({ log = console.log } = {}) {
 }
 
 function ensureReady() {
+  if (sqlite) return sqlite.ensureReady();
   if (!ready) {
     ready = (async () => {
       getPool();
@@ -119,11 +123,13 @@ function ensureReady() {
 }
 
 async function q(text, params = []) {
+  if (sqlite) return sqlite.q(text, params);
   await ensureReady();
   return getPool().query(text, params);
 }
 
 async function tx(fn) {
+  if (sqlite) return sqlite.tx(fn);
   await ensureReady();
   const client = await getPool().connect();
   try {
@@ -140,6 +146,7 @@ async function tx(fn) {
 }
 
 async function close() {
+  if (sqlite) return sqlite.close();
   if (pool) await pool.end();
   pool = null;
   ready = null;

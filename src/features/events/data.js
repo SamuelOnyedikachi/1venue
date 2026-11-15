@@ -1,3 +1,4 @@
+const { USE_PG } = require('../../../db');
 /**
  * events queries (PostgreSQL, parameterised). Split out of src/venue/data.js;
  * src/venue/data.js still re-exports everything for older call sites.
@@ -115,7 +116,7 @@ async function discover({ q: term, category, status, tag, host, limit = 24, offs
   else if (status === 'upcoming') where.push("e.status='scheduled'");
   else if (status === 'past') where.push("e.status='ended'");
   if (category && CATEGORIES.includes(category)) { params.push(category); where.push(`e.category=$${params.length}`); }
-  if (tag) { params.push(String(tag).toLowerCase()); where.push(`$${params.length} = ANY(e.tags)`); }
+  if (tag) { params.push(String(tag).toLowerCase()); where.push(USE_PG ? `$${params.length} = ANY(e.tags)` : `EXISTS (SELECT 1 FROM json_each(e.tags) WHERE value=$${params.length})`); }
   if (host) {
     const h = String(host).trim();
     if (/^\d+$/.test(h)) { params.push(Number(h)); where.push(`e.host_user_id=$${params.length}`); }
@@ -125,8 +126,16 @@ async function discover({ q: term, category, status, tag, host, limit = 24, offs
     const t = String(term).trim().slice(0, 100);
     params.push(t);
     const i = params.length;
-    where.push(`(e.search @@ plainto_tsquery('simple', $${i}) OR e.title % $${i} OR e.title ILIKE '%' || $${i} || '%' OR e.host_name ILIKE '%' || $${i} || '%')`);
-    rank = `(e.status='live') DESC, ts_rank(e.search, plainto_tsquery('simple', $${i})) + similarity(e.title, $${i}) DESC`;
+    if (USE_PG) {
+      where.push(`(e.search @@ plainto_tsquery('simple', $${i}) OR e.title % $${i} OR e.title ILIKE '%' || $${i} || '%' OR e.host_name ILIKE '%' || $${i} || '%')`);
+      rank = `(e.status='live') DESC, ts_rank(e.search, plainto_tsquery('simple', $${i})) + similarity(e.title, $${i}) DESC`;
+    } else {
+      const words = t.toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+      const fts = words.map((word) => `"${word.replace(/"/g, '')}"*`).join(' ');
+      if (fts) params.push(fts);
+      where.push(`(${fts ? `e.id IN (SELECT rowid FROM event_search WHERE event_search MATCH $${params.length}) OR ` : ''}e.title LIKE '%' || $${i} || '%' OR e.host_name LIKE '%' || $${i} || '%')`);
+      rank = `(e.status='live') DESC, (lower(e.title)=lower($${i})) DESC, e.started_at DESC NULLS LAST`;
+    }
   } else {
     rank = `(e.status='live') DESC, (e.status='scheduled') DESC, ${rank}`;
   }

@@ -4,6 +4,14 @@
 const { spawn } = require('node:child_process');
 const net = require('node:net');
 const path = require('node:path');
+const fs = require('node:fs');
+const os = require('node:os');
+if (process.env.DB_DRIVER === 'sqlite' && !process.env.SQLITE_PATH) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'venue-integration-'));
+  process.env.SQLITE_PATH = path.join(dir, 'test.sqlite');
+  process.env.STORAGE_DIR = path.join(dir, 'uploads');
+  process.on('exit', () => fs.rmSync(dir, { recursive: true, force: true }));
+}
 
 const freePort = () => new Promise((resolve, reject) => {
   const srv = net.createServer();
@@ -83,4 +91,3 @@ function signupPayload(extra = {}) {
 }
 
 module.exports = { boot, jar, client, freePort, signupPayload };
-

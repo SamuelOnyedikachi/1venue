@@ -11,7 +11,7 @@ const { boot, client, signupPayload } = require('./helpers/server');
 
 const root = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
-const skip = !process.env.DATABASE_URL ? 'set DATABASE_URL' : false;
+const skip = !process.env.DATABASE_URL && process.env.DB_DRIVER !== 'sqlite' ? 'set DATABASE_URL' : false;
 const tokenOf = (link) => new URL(link).searchParams.get('token');
 
 /* ------------------------------------------------------------ pure units */
@@ -339,11 +339,11 @@ test('AI covers (flux-schnell 16:9) + Write for me colour: only the picked cover
     assert.equal((await fetch(s.base + g.body.options[0].url, { headers: { cookie: other.jar.header() } })).status, 404, 'previews are private');
 
     const uid = (await db.q('SELECT id FROM users WHERE username=$1', [me.username])).rows[0].id;
-    assert.equal(Number((await db.q("SELECT COUNT(*) FROM files WHERE owner_user_id=$1", [uid])).rows[0].count), 0, 'nothing stored before a pick');
+    assert.equal(Number((await db.q("SELECT COUNT(*) AS count FROM files WHERE owner_user_id=$1", [uid])).rows[0].count), 0, 'nothing stored before a pick');
     const pick = await c.post('/api/covers/pick', { token: g.body.options[1].token, title: 'A seminar on animal protection' });
     assert.equal(pick.status, 200, JSON.stringify(pick.body));
     assert.match(pick.body.url, /^\/files\/[\w-]+\/cover-a-seminar-on-animal-protection\.webp$/);
-    assert.equal(Number((await db.q("SELECT COUNT(*) FROM files WHERE owner_user_id=$1 AND purpose='cover'", [uid])).rows[0].count), 1, 'only the picked one');
+    assert.equal(Number((await db.q("SELECT COUNT(*) AS count FROM files WHERE owner_user_id=$1 AND purpose='cover'", [uid])).rows[0].count), 1, 'only the picked one');
     const mats = (await c.get('/api/materials')).body.materials;
     const m = mats.find((x) => x.id === pick.body.materialId);
     assert.ok(m && m.kind === 'image' && m.title.startsWith('Cover · '));

@@ -4,7 +4,7 @@
  * Each block answers its path and returns; unmatched requests fall through (return false).
  */
 const {
-  db, config, parseBody, sendJSON, getAuthUser, 
+  db, config, parseBody, sendJSON, getAuthUser,
 } = require('../../core/http-kit');
 
 module.exports = async function handle(req, res, parsed) {

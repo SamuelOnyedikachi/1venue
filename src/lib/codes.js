@@ -10,7 +10,7 @@ const codeLink = (c) => `/${normCode(c)}`;
 // plans (minimum base length): free 5 + "-venue" < premium 5 < slug3 3 < slug2 2
 const PLANS = ['free', 'premium', 'slug3', 'slug2'];
 const planRank = (p) => Math.max(0, PLANS.indexOf(String(p || 'free')));
-const RESERVED = new Set(['api', 'www', 'new', 'login', 'signup', 'logout', 'venues', 'venue', 'v', 'r', 'j', 'm', 'e', 'u', 'me', 'admin', 'settings', 'discover', 'feed', 'bible', 'dashboard', 'create', 'session', 'sessions', 'whiteboard', 'static', 'files', 'ws', 'profile', 'home', 'help', 'css', 'js', 'brand', 'icons', 'plan']);
+const RESERVED = new Set(['api', 'www', 'new', 'login', 'signup', 'logout', 'venues', 'venue', 'v', 'r', 'j', 'm', 'e', 'u', 'me', 'admin', 'settings', 'discover', 'feed', 'bible', 'dashboard', 'create', 'session', 'sessions', 'whiteboard', 'static', 'files', 'ws', 'profile', 'home', 'help', 'css', 'js', 'brand', 'icons', 'plan', 'wallet', 'payments']);
 const slugifyBase = (s) => String(s || '').toLowerCase().replace(/-venue$/, '').replace(/[^a-z0-9]/g, '');
 const SLUG_ROUTE_RE = /^(?:[a-z0-9]{2,16}|[a-z0-9]{5,16}-venue)$/;
 

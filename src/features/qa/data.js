@@ -1,3 +1,4 @@
+const { USE_PG } = require('../../../db');
 /**
  * qa queries (PostgreSQL, parameterised). Split out of src/venue/data.js;
  * src/venue/data.js still re-exports everything for older call sites.
@@ -32,12 +33,23 @@ async function addHostAnswer(id, text, byName) {
   const t = String(text || '').trim().slice(0, 2000);
   if (!t) return null;
   const ans = { id: 'ha-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), text: t, by: String(byName || 'Host').slice(0, 80), at: new Date().toISOString() };
-  const r = await one(`UPDATE questions SET host_answers = host_answers || $2::jsonb WHERE id=$1 RETURNING *`, [id, JSON.stringify([ans])]);
+  const r = USE_PG
+    ? await one(`UPDATE questions SET host_answers = host_answers || $2::jsonb WHERE id=$1 RETURNING *`, [id, JSON.stringify([ans])])
+    : await one(`UPDATE questions SET host_answers=json_insert(host_answers,'$[#]',json($2)) WHERE id=$1 RETURNING *`, [id, JSON.stringify(ans)]);
   return r ? questionOut(r) : null;
 }
 async function editHostAnswer(id, answerId, text) {
   const t = String(text || '').trim().slice(0, 2000);
   if (!t) return null;
+  if (!USE_PG) {
+    return tx(async (c) => {
+      const row = (await c.query('SELECT * FROM questions WHERE id=$1', [id])).rows[0];
+      if (!row) return null;
+      const answers = (row.host_answers || []).map((a) => a.id === answerId ? { ...a, text: t } : a);
+      const updated = (await c.query('UPDATE questions SET host_answers=$2 WHERE id=$1 RETURNING *', [id, JSON.stringify(answers)])).rows[0];
+      return questionOut(updated);
+    });
+  }
   const r = await one(`UPDATE questions SET host_answers = (
     SELECT COALESCE(jsonb_agg(CASE WHEN (elem->>'id') = $3 THEN jsonb_set(elem, '{text}', to_jsonb($4::text)) ELSE elem END), '[]'::jsonb)
     FROM jsonb_array_elements(host_answers) elem
@@ -45,6 +57,15 @@ async function editHostAnswer(id, answerId, text) {
   return r ? questionOut(r) : null;
 }
 async function deleteHostAnswer(id, answerId) {
+  if (!USE_PG) {
+    return tx(async (c) => {
+      const row = (await c.query('SELECT * FROM questions WHERE id=$1', [id])).rows[0];
+      if (!row) return null;
+      const answers = (row.host_answers || []).filter((a) => a.id !== answerId);
+      const updated = (await c.query('UPDATE questions SET host_answers=$2 WHERE id=$1 RETURNING *', [id, JSON.stringify(answers)])).rows[0];
+      return questionOut(updated);
+    });
+  }
   const r = await one(`UPDATE questions SET host_answers = (
     SELECT COALESCE(jsonb_agg(elem), '[]'::jsonb)
     FROM jsonb_array_elements(host_answers) elem
