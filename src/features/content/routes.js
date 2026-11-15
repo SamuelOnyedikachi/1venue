@@ -8,42 +8,46 @@ module.exports = function routes(route, kit) {
   const { readRaw, rateLimit, getAuthUser, can, httpError, roomParticipant } = kit;
 
   // Convert office decks without blocking room signalling. Room credentials also support guest presenters.
+  // Say once at boot whether PPTX conversion can work here (LibreOffice + poppler in the image).
+  if (process.env.NODE_ENV !== 'test') setTimeout(() => {
+    const { execFile } = require('node:child_process');
+    const probe = (bin, args) => new Promise((r) => execFile(bin, args, { timeout: 20000 }, (err, so, se) => r(err ? null : String(so || se).split('\n')[0].trim())));
+    Promise.all([probe('soffice', ['--version']).then((v) => v || probe('libreoffice', ['--version'])), probe('pdftoppm', ['-v'])]).then(([lo, pp]) => {
+      if (lo && pp) log.info('pptx', 'converter ready', { libreoffice: lo.slice(0, 60), poppler: pp.slice(0, 40) });
+      else log.warn('pptx', 'converter MISSING: PPTX uploads will fail', { libreoffice: lo || 'not found', poppler: pp || 'not found', fix: 'build with the repo Dockerfile (installs libreoffice-impress-nogui + poppler-utils)' });
+    });
+  }, 3000).unref();
+
+  // Convert office decks without blocking room signalling. Room credentials also support guest presenters.
   route('POST', '/api/convert/pptx', async (ctx) => {
-    const rp = roomParticipant(ctx.req);
-    const u = rp ? null : await getAuthUser(ctx.req, ctx.res);
-    if (!rp && !u) throw httpError(401, 'Sign in or join a meeting to present');
-    if (rp && !can(rp.meeting, rp.participant, 'screenShare')) throw httpError(403, 'The host controls who can present');
-    const key = rp ? `room:${rp.code}:${rp.participant.id}` : `user:${u.id}`;
-    if (!rateLimit('pptx:' + key, 4)) throw httpError(429, 'Please wait before converting another deck');
-    const converter = require('../../venue/pptx');
-    const mime = String(ctx.req.headers['content-type'] || '').split(';')[0].toLowerCase();
-    if (!converter.MIMES.has(mime)) throw httpError(415, 'Choose a PPTX presentation');
-    if (Number(ctx.req.headers['content-length']) > converter.MAX_BYTES) throw httpError(413, 'PPTX must be 50 MB or smaller');
     const t0 = Date.now();
-    log.info('pptx', 'received', { who: key, bytes: Number(ctx.req.headers['content-length']) || 0 });
-    const buf = await readRaw(ctx.req, converter.MAX_BYTES);
-    // Optional filename from query or header for nicer slide titles
-    const qTitle = String(ctx.url.searchParams.get('title') || '').trim();
-    const title = (qTitle || 'Slides').slice(0, 80);
-    let out;
+    const f = { bytes: Number(ctx.req.headers['content-length']) || 0, mime: String(ctx.req.headers['content-type'] || '').split(';')[0].toLowerCase(), title: String(ctx.url.searchParams.get('title') || '').slice(0, 80) };
+    log.info('pptx', 'received', f); // very first thing, before auth / limits, so every attempt is visible
     try {
-      out = await converter.convertPptxToSlides(buf, {
+      const rp = roomParticipant(ctx.req);
+      const u = rp ? null : await getAuthUser(ctx.req, ctx.res);
+      f.who = rp ? `room:${rp.code}:${rp.participant.id}` : u ? `user:${u.id}` : 'anon';
+      if (!rp && !u) throw httpError(401, 'Sign in or join a meeting to present');
+      if (rp && !can(rp.meeting, rp.participant, 'screenShare')) throw httpError(403, 'The host controls who can present');
+      if (!rateLimit('pptx:' + f.who, 4)) throw httpError(429, 'Please wait a minute before converting another deck');
+      const converter = require('../../venue/pptx');
+      if (!converter.MIMES.has(f.mime)) throw httpError(415, 'Choose a PPTX presentation');
+      if (f.bytes > converter.MAX_BYTES) throw httpError(413, 'PPTX must be 50 MB or smaller');
+      const buf = await readRaw(ctx.req, converter.MAX_BYTES);
+      if (!buf.length) throw httpError(400, 'The file is empty');
+      const title = (f.title.trim() || 'Slides').slice(0, 80);
+      const out = await converter.convertPptxToSlides(buf, {
         ownerUserId: u ? u.id : null,
         ownerKey: rp ? `room:${rp.code}:${rp.participant.id}` : null,
         roomCode: rp ? rp.code : null,
         title,
       });
+      log.info('pptx', 'ok', { who: f.who, pages: out.pages.length, total: out.total, ms: Date.now() - t0 });
+      return { contentType: 'slides', pages: out.pages, title: out.title, total: out.total, truncated: out.truncated };
     } catch (e) {
-      log[(e.status || 500) >= 500 ? 'error' : 'warn']('pptx', 'failed', { who: key, status: e.status || 500, error: e.message, ms: Date.now() - t0 });
+      const status = e.status || 500;
+      log[status >= 500 ? 'error' : 'warn']('pptx', 'failed', { ...f, status, error: e.message, ms: Date.now() - t0 });
       throw e;
     }
-    log.info('pptx', 'ok', { who: key, pages: out.pages.length, total: out.total, ms: Date.now() - t0 });
-    return {
-      contentType: 'slides',
-      pages: out.pages,
-      title: out.title,
-      total: out.total,
-      truncated: out.truncated,
-    };
   });
 };

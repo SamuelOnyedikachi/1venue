@@ -72,6 +72,21 @@ export function errText(e) {
   if (typeof e === 'object') { const m = e.message ?? e.error ?? e.detail ?? e.msg ?? e.reason; if (m != null && m !== e) return errText(m); try { const j = JSON.stringify(e); return j && j !== '{}' ? j.slice(0, 160) : 'Something went wrong'; } catch { return 'Something went wrong'; } }
   return String(e);
 }
+/**
+ * Report a browser-side failure to the server log ("[client] <area> error {...}") and show it.
+ * Fire-and-forget: never throws, never blocks the UI. extra: { step, file, mime, size, pages }.
+ */
+export function reportClientError(area, e, extra = {}, { silent = false } = {}) {
+  const message = errText(e) || (e && e.message) || String(e || 'Unknown error');
+  try {
+    const body = JSON.stringify({ area, message: message.slice(0, 300), status: e && e.status, page: location.pathname, build: (document.querySelector('link[href*="app.css"]')?.getAttribute('href') || '').replace(/^.*\?/, ''), ...extra });
+    const blob = new Blob([body], { type: 'application/json' });
+    if (!(navigator.sendBeacon && navigator.sendBeacon('/api/client-log', blob))) fetch('/api/client-log', { method: 'POST', body, headers: { 'Content-Type': 'application/json' }, credentials: 'include', keepalive: true }).catch(() => {});
+  } catch { /* never let reporting break the page */ }
+  console.warn(`[${area}]`, extra.step || '', message, e);
+  if (!silent) toast(message, { icon: 'alert', group: 'admin', ms: 7000 });
+  return message;
+}
 export const toastErr = (e) => toast(errText(e) || 'Something went wrong', { icon: 'alert', group: 'admin' });
 
 let sheetStack = [];
@@ -227,6 +242,29 @@ export function md(src) {
 export const debounce = (fn, ms = 250) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 export const isMobile = () => matchMedia('(max-width: 820px)').matches;
 export function readFileAsDataUrl(file) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); }); }
+/**
+ * What kind of deck a picked file is: 'pdf' | 'pptx' | 'image' | 'ppt' | 'keynote' | null.
+ * Uses the name and type first, then the first bytes, because phones (Drive / Files / WhatsApp) often
+ * hand over files with an empty type or no extension.
+ */
+export async function deckKind(f) {
+  const n = String(f.name || '').toLowerCase(), t = String(f.type || '').toLowerCase();
+  if (t === 'application/pdf' || n.endsWith('.pdf')) return 'pdf';
+  if (t.includes('presentationml') || n.endsWith('.pptx') || n.endsWith('.ppsx')) return 'pptx';
+  if (t.startsWith('image/') && !t.includes('svg')) return 'image';
+  if (n.endsWith('.ppt') || t === 'application/vnd.ms-powerpoint') return 'ppt';
+  if (n.endsWith('.key') || t.includes('keynote')) return 'keynote';
+  try {
+    const b = new Uint8Array(await f.slice(0, 8).arrayBuffer());
+    const hex = [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+    if (hex.startsWith('25504446')) return 'pdf'; // %PDF
+    if (hex.startsWith('504b0304')) return 'pptx'; // zip container (PPTX); the server checks it really is one
+    if (hex.startsWith('d0cf11e0')) return 'ppt';
+    if (/^(ffd8ff|89504e47|47494638|52494646)/.test(hex)) return 'image';
+  } catch { /* unreadable */ }
+  return null;
+}
+export const DECK_HELP = { ppt: 'Old .ppt files aren’t supported. Save it as PPTX or PDF and try again.', keynote: 'Keynote files aren’t supported. Export it as PDF or PPTX and try again.' };
 /** Upload a File/Blob to /api/files (raw body). headers: room credentials when uploading as a guest. */
 export async function uploadFile(file, { purpose = 'attachment', headers = {} } = {}) {
   let res;

@@ -1591,3 +1591,4 @@ body[data-page="books"] .main { overflow-x: clip; }
 .im-txt small { color: var(--muted); font-size: .8rem; line-height: 1.35; }
 .im-opt .switch input:checked + span { background: var(--brand); }
 .im-modal .au-btn svg { flex: none; }
+.tiny.err, .muted.err { color: #dc2626; }

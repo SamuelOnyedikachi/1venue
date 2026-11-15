@@ -111,3 +111,107 @@ test('R2-style storage: upload a 15-page deck, save it as a material, logs show 
     } finally { await s2.stop(); }
   } finally { await s.stop(); s3.close(); }
 });
+
+/* ---------------------------------------------------------------- spaces / special characters (prod: "CV - Web Developer - …-p1.jpg") */
+test('file URLs with spaces / parentheses: raw or encoded are accepted and canonicalised; traversal still refused', () => {
+  const config = require('../src/config');
+  const { normalizeStoredFileUrl } = require('../src/lib/file-url');
+  const prev = config.STORAGE.s3.publicBaseUrl;
+  config.STORAGE.s3.publicBaseUrl = PUB;
+  try {
+    const want = `${PUB}/2026/11/fWiqqBXv3mWqVPhL5T9tNg-CV%20-%20Web%20Developer%20-%20Chinedu%20%28Okonkwo%29-p1.jpg`;
+    assert.equal(normalizeStoredFileUrl(`${PUB}/2026/11/fWiqqBXv3mWqVPhL5T9tNg-CV - Web Developer - Chinedu (Okonkwo)-p1.jpg`), want, 'raw spaces (exactly what prod returned)');
+    assert.equal(normalizeStoredFileUrl(want), want, 'already encoded');
+    assert.equal(normalizeStoredFileUrl(`${PUB}/2026/11/x-CV%20-%20Web (Okonkwo)-p1.jpg`), `${PUB}/2026/11/x-CV%20-%20Web%20%28Okonkwo%29-p1.jpg`, 'mixed');
+    assert.equal(normalizeStoredFileUrl('/files/fWiqqBXv3mWqVPhL5T9tNg/CV - Web Developer.jpg'), '/files/fWiqqBXv3mWqVPhL5T9tNg/CV%20-%20Web%20Developer.jpg');
+    for (const bad of [`${PUB}/2026/%2e%2e/secret`, `${PUB}/2026/a%2Fb.jpg`, `${PUB}/2026/a%3Cscript%3E.jpg`, `${PUB}/2026//a.jpg`, `${PUB}/a.jpg?x=1`, `${PUB}/a%ZZ.jpg`, '/files/abc/def/ghi.jpg', '/files/../x/y.jpg']) {
+      assert.equal(normalizeStoredFileUrl(bad), null, bad);
+    }
+  } finally { config.STORAGE.s3.publicBaseUrl = prev; }
+});
+
+test('storage keys are slugs; public URLs are percent-encoded even for old keys with spaces', () => {
+  const storage = require('../src/venue/storage');
+  const config = require('../src/config');
+  assert.equal(storage.slugName('CV - Web Developer - Chinedu (Okonkwo)-p1.jpg'), 'CV-Web-Developer-Chinedu-Okonkwo-p1.jpg');
+  assert.equal(storage.slugName('Ọ̀rọ̀ Ìyìn — Sunday.PDF'), 'Oro-Iyin-Sunday.pdf');
+  assert.equal(storage.slugName('   '), 'file');
+  assert.equal(storage.slugName('..'), 'file');
+  const prev = { ...config.STORAGE.s3 };
+  Object.assign(config.STORAGE.s3, { publicBaseUrl: PUB });
+  try {
+    assert.equal(storage.publicUrl({ driver: 's3', object_key: '2026/11/abc-CV - Web (v2).jpg' }), `${PUB}/2026/11/abc-CV%20-%20Web%20%28v2%29.jpg`);
+  } finally { Object.assign(config.STORAGE.s3, prev); }
+});
+
+test('R2-style storage: spaced filenames, real PDF pages + real PPTX conversion, client error reports, pptx always logged', { skip, timeout: 120000 }, async () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { spawnSync } = require('node:child_process');
+  const objects = new Map();
+  const s3 = http.createServer((req, res) => {
+    const chunks = []; req.on('data', (c) => chunks.push(c));
+    req.on('end', () => { if (req.method === 'PUT') { objects.set(decodeURIComponent(req.url), Buffer.concat(chunks)); res.writeHead(200); return res.end(); } res.writeHead(404); res.end(); });
+  });
+  await new Promise((r) => s3.listen(0, '127.0.0.1', r));
+  const s = await boot({ STORAGE_DRIVER: 's3', S3_ENDPOINT: `http://127.0.0.1:${s3.address().port}`, S3_BUCKET: 'venue', S3_REGION: 'auto',
+    S3_ACCESS_KEY_ID: 'k', S3_SECRET_ACCESS_KEY: 's', S3_FORCE_PATH_STYLE: 'true', S3_PUBLIC_BASE_URL: PUB });
+  try {
+    const c = client(s.base); await c.post('/api/signup', signupPayload());
+    const up = async (name) => {
+      const r = await fetch(`${s.base}/api/files?purpose=content`, { method: 'POST', headers: { cookie: c.jar.header(), 'content-type': 'image/jpeg', 'x-file-name': encodeURIComponent(name) }, body: png });
+      assert.equal(r.status, 200); return (await r.json()).url;
+    };
+    const u1 = await up('CV - Web Developer - Chinedu (Okonkwo)-p1.jpg');
+    const u2 = await up('CV - Web Developer - Chinedu (Okonkwo)-p2.jpg');
+    assert.match(u1, /^https:\/\/files\.example\.test\/\d{4}\/\d\d\/[\w-]+-CV-Web-Developer-Chinedu-Okonkwo-p1\.jpg$/, u1);
+    assert.ok([...objects.keys()].every((k) => !/\s/.test(k)), 'no spaces in object keys');
+    const m = await c.post('/api/materials', { title: 'CV - Web Developer', kind: 'pdf', payload: { pages: [u1, u2], sourceName: 'CV - Web Developer - Chinedu (Okonkwo).pdf', sourceMime: 'application/pdf' } });
+    assert.equal(m.status, 200, JSON.stringify(m.body)); assert.deepEqual(m.body.payload.pages, [u1, u2]);
+    // Pages uploaded by 65f10a3 (raw spaces in the key) still save.
+    const legacy = await c.post('/api/materials', { title: 'Legacy', kind: 'pdf', payload: { pages: [`${PUB}/2026/11/fWiqqBXv3mWqVPhL5T9tNg-CV - Web Developer - Chinedu Okonkwo-p1.jpg`] } });
+    assert.equal(legacy.status, 200, JSON.stringify(legacy.body));
+    assert.equal(legacy.body.payload.pages[0], `${PUB}/2026/11/fWiqqBXv3mWqVPhL5T9tNg-CV%20-%20Web%20Developer%20-%20Chinedu%20Okonkwo-p1.jpg`);
+
+    // PPTX: every attempt is logged first, even ones that fail auth / type checks.
+    const pptxPath = path.join(__dirname, 'fixtures', 'Sunday Service - Order (v2).pptx');
+    const pptx = fs.readFileSync(pptxPath);
+    const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    const anon = await fetch(`${s.base}/api/convert/pptx?title=x`, { method: 'POST', headers: { 'content-type': PPTX_MIME }, body: pptx });
+    assert.equal(anon.status, 401);
+    const wrong = await fetch(`${s.base}/api/convert/pptx`, { method: 'POST', headers: { cookie: c.jar.header(), 'content-type': 'text/plain' }, body: 'nope' });
+    assert.equal(wrong.status, 415);
+    const out = () => s.output();
+    assert.match(out(), /\[pptx\] received \{"bytes":\d+,"mime":"application\/vnd\.openxml/);
+    assert.match(out(), /\[pptx\] failed \{.*"who":"anon".*"status":401/);
+    assert.match(out(), /\[pptx\] failed \{.*"status":415/);
+    const hasLO = !spawnSync('soffice', ['--version'], { timeout: 20000 }).error && !spawnSync('pdftoppm', ['-v']).error;
+    if (hasLO) {
+      const r = await fetch(`${s.base}/api/convert/pptx?title=${encodeURIComponent('Sunday Service - Order (v2)')}`, { method: 'POST', headers: { cookie: c.jar.header(), 'content-type': PPTX_MIME }, body: pptx });
+      const j = await r.json();
+      assert.equal(r.status, 200, JSON.stringify(j));
+      assert.equal(j.pages.length, 3);
+      assert.ok(j.pages.every((p) => p.startsWith(PUB + '/') && !/\s/.test(p)), j.pages[0]);
+      const mp = await c.post('/api/materials', { title: j.title, kind: 'pptx', payload: { pages: j.pages, sourceName: 'Sunday Service - Order (v2).pptx' } });
+      assert.equal(mp.status, 200, JSON.stringify(mp.body));
+      assert.match(out(), /\[pptx\] ok \{.*"pages":3/);
+    }
+
+    // Browser-side failures land in the server log.
+    const rep = await fetch(`${s.base}/api/client-log`, { method: 'POST', headers: { cookie: c.jar.header(), 'content-type': 'application/json' },
+      body: JSON.stringify({ area: 'materials', step: 'render PDF', message: 'Invalid PDF structure', file: 'CV - Web Developer.pdf', mime: 'application/pdf', size: 12345 }) });
+    assert.equal(rep.status, 200);
+    assert.match(out(), /\[client\] materials error \{"who":"u:\d+","step":"render PDF","message":"Invalid PDF structure","file":"CV - Web Developer\.pdf"/);
+  } finally { await s.stop(); s3.close(); }
+});
+
+test('room: presenting PDF pages whose URLs contain spaces works (canonicalised for everyone)', () => {
+  const config = require('../src/config');
+  const prev = config.STORAGE.s3.publicBaseUrl;
+  config.STORAGE.s3.publicBaseUrl = PUB;
+  try {
+    const { sanitizeContent } = require('../src/features/content/ws');
+    const c = sanitizeContent({ contentType: 'slides', pages: [`${PUB}/2026/11/a-CV - Web Developer-p1.jpg`, `${PUB}/2026/11/a-CV%20-%20Web%20Developer-p2.jpg`] });
+    assert.deepEqual(c.pages, [`${PUB}/2026/11/a-CV%20-%20Web%20Developer-p1.jpg`, `${PUB}/2026/11/a-CV%20-%20Web%20Developer-p2.jpg`]);
+  } finally { config.STORAGE.s3.publicBaseUrl = prev; }
+});
