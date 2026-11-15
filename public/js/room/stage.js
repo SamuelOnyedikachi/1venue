@@ -262,7 +262,7 @@ export function createStage(R) {
     const s = R.scripture;
     const selBar = h('div', { class: 'scr-sel', hidden: true });
     const tr = R.scrTr(); const ck = s.reference + '|' + tr;
-    if (!pcache.has(ck)) { box.replaceChildren(h('div', { class: 'skel', style: { height: '90px' } })); pcache.set(ck, api(`/api/bible/passage?ref=${encodeURIComponent(s.reference)}&t=${encodeURIComponent(tr)}`)); if (pcache.size > 30) pcache.delete(pcache.keys().next().value); }
+    if (!pcache.has(ck)) { box.replaceChildren(h('div', { class: 'skel', style: { height: '90px' } })); pcache.set(ck, api(`/api/books/passage?ref=${encodeURIComponent(s.reference)}&t=${encodeURIComponent(tr)}`)); if (pcache.size > 30) pcache.delete(pcache.keys().next().value); }
     pcache.get(ck).then((p) => { p = { ...p };
       const paint = (vs) => {
         selBar.hidden = !vs.length; if (!vs.length) return;

@@ -74,7 +74,7 @@ function client(base, j = jar()) {
     let json = null; try { json = await res.json(); } catch {}
     return { status: res.status, body: json, res };
   };
-  return { jar: j, get: (p, h) => call('GET', p, null, h), post: (p, b, h) => call('POST', p, b || {}, h), del: (p) => call('DELETE', p) };
+  return { jar: j, get: (p, h) => call('GET', p, null, h), post: (p, b, h) => call('POST', p, b || {}, h), patch: (p, b, h) => call('PATCH', p, b || {}, h), del: (p) => call('DELETE', p) };
 }
 
 /** Unique, valid local-signup body (username + Nigerian E.164 phone). Extra overrides any field. */

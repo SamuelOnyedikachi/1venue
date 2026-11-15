@@ -4,11 +4,11 @@ import { state, setPrefs, navigate } from '../app.js';
 import { registerCommands, unregisterCommands } from '../commands.js';
 import { sharePassageToFeed } from '../passage.js';
 import { shareLink } from '../components.js';
-import { readOut, readOutEngine, stopReadOut, isReadingOut, onReadOutChange, detectLang } from '/features/tts/readout.js';
+import { readOut, readOutEngine, stopReadOut, isReadingOut, isPreparing, onReadOutChange, detectLang } from '/features/tts/readout.js';
 
 let TR = null, BOOKS = null;
 export async function bibleMeta() {
-  if (!TR) [TR, BOOKS] = await Promise.all([api('/api/bible/translations').then((r) => r.translations), api('/api/bible/books').then((r) => r.books)]);
+  if (!TR) [TR, BOOKS] = await Promise.all([api('/api/books/translations').then((r) => r.translations), api('/api/books/books').then((r) => r.books)]);
   return { translations: TR, books: BOOKS };
 }
 export function translationSelect(value, onChange, { compact = false, corpus = 'all' } = {}) {
@@ -78,7 +78,8 @@ export function makeListenBtn(getPayload, { headers } = {}) {
     if (!starting && !isReadingOut()) mine = false;
     const on = mine;
     btn.classList.toggle('on', on);
-    btn.setAttribute('data-tip', on ? 'Stop' : 'Listen');
+    btn.classList.toggle('busy', on && isPreparing());
+    btn.setAttribute('data-tip', on ? (isPreparing() ? 'Preparing audio… (tap to stop)' : 'Stop') : engine === 'signin' ? 'Log in to listen' : 'Listen');
     btn.setAttribute('aria-label', on ? 'Stop' : 'Listen');
     btn.innerHTML = icon(on ? 'volumeX' : 'volume', { size: 18 });
   };
@@ -89,7 +90,7 @@ export function makeListenBtn(getPayload, { headers } = {}) {
     const sample = p.text || (p.verses || []).map((v) => v.text).join(' ');
     lang = detectLang(sample, hint).lang;
     engine = lang ? await readOutEngine(lang, { headers }) : null;
-    if (engine) { btn.style.display = ''; btn.dataset.engine = engine; }
+    if (engine) { btn.style.display = ''; btn.dataset.engine = engine; sync(); }
     else btn.remove();
   })().catch(() => btn.remove());
   const off = onReadOutChange(() => { if (!btn.isConnected) { off(); return; } sync(); });
@@ -200,7 +201,7 @@ export async function mount(view, params) {
     body.innerHTML = '<div class="skel" style="height:300px"></div>'; selBar.classList.add('hidden');
     try {
       ensureCorpus(book);
-      cur = await api(`/api/bible/${tr}/${book}/${chapter}`);
+      cur = await api(`/api/books/${tr}/${book}/${chapter}`);
       const t = TR.find((x) => x.id === tr);
       const meta = books.find((x) => x.id === book) || {};
       const isQuran = corpus === 'quran' || meta.testament === 'Quran' || !!cur.surah;
@@ -433,7 +434,7 @@ export async function mount(view, params) {
         // Explicit Qur’anic query while on the Bible page → use a Qur’an edition
         if (corpus === 'bible' && looksQuranic && !isQuranTr(tryTr)) tryTr = defaultQuranTr();
 
-        const p = await api(`/api/bible/passage?ref=${encodeURIComponent(q)}&t=${tryTr}`);
+        const p = await api(`/api/books/passage?ref=${encodeURIComponent(q)}&t=${tryTr}`);
         tr = tryTr; trSel.value = tr; setPrefs({ bibleTranslation: tr, ...(isQuranTr(tr) ? { quranTranslation: tr } : {}) });
         book = p.book; chapter = p.chapter; highlight = p.selected || [];
         bookSel.value = book; fillCh(); load();

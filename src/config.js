@@ -35,6 +35,7 @@ const AUTH = {
   requireVerifiedEmail: bool('AUTH_REQUIRE_VERIFIED_EMAIL', false), // false = allow, show a banner
   verifyTtlHours: int('AUTH_VERIFY_TTL_HOURS', 48),
   resetTtlMin: int('AUTH_RESET_TTL_MIN', 60),
+  deleteCodeTtlMin: Math.min(60, Math.max(5, int('AUTH_DELETE_CODE_TTL_MIN', 10))), // account deletion email code
   ratePerMin: int('AUTH_RATE_PER_MIN', 20), // per IP for sign-in / sign-up / reset endpoints
   // Secure cookies unless PUBLIC_URL is plain http (local dev)
   cookieSecure: bool('AUTH_COOKIE_SECURE', !/^http:\/\//i.test(env('PUBLIC_URL', process.env.DB_DRIVER === 'sqlite' ? 'http://localhost' : ''))),
@@ -44,8 +45,23 @@ const AUTH = {
     discoveryUrl: env('GOOGLE_DISCOVERY_URL', 'https://accounts.google.com/.well-known/openid-configuration'),
     allowSignup: bool('GOOGLE_ALLOW_SIGNUP', true),
   },
+  // Sign in with Apple (web). See docs/APPLE_SIGNIN.md. Needs a paid Apple Developer account.
+  apple: {
+    clientId: env('APPLE_CLIENT_ID', ''), // the Services ID, e.g. live.1venue.signin
+    teamId: env('APPLE_TEAM_ID', ''),
+    keyId: env('APPLE_KEY_ID', ''),
+    // Contents of the .p8 key. "\n" escapes (one-line env values) are turned back into newlines.
+    privateKey: env('APPLE_PRIVATE_KEY', '').replace(/\\n/g, '\n').trim(),
+    issuer: env('APPLE_ISSUER', 'https://appleid.apple.com'), // tests point these at a mock
+    authUrl: env('APPLE_AUTH_URL', 'https://appleid.apple.com/auth/authorize'),
+    tokenUrl: env('APPLE_TOKEN_URL', 'https://appleid.apple.com/auth/token'),
+    jwksUrl: env('APPLE_JWKS_URL', 'https://appleid.apple.com/auth/keys'),
+    allowSignup: bool('APPLE_ALLOW_SIGNUP', true),
+  },
 };
 const ALLOW_LOCAL_SIGNUP = bool('ALLOW_LOCAL_SIGNUP', true);
+// Site admins (comma-separated emails). They get /admin (demo data load/remove). Email must be confirmed.
+const ADMIN_EMAILS = env('ADMIN_EMAILS', '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
 // When set (e.g. 1venue.example.com), requests for any other host (www., old domain) get a 301 there.
 const CANONICAL_HOST = env('CANONICAL_HOST', '').replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase();
 
@@ -87,9 +103,23 @@ const AI = {
   mock: bool('AI_MOCK', false),
 };
 
-// Speech-to-text: an OpenAI-compatible /audio/transcriptions endpoint with fallback
+// Speech-to-text. Primary: Whisper on Replicate (REPLICATE_API_TOKEN) for the / bar, every text box
+// and meeting captions. Optional OpenAI-compatible /audio/transcriptions servers (N-ATLaS, Whisper)
+// follow; the browser Web Speech API is the last fallback (no token, cap reached, outage).
 const STT = {
-  provider: env('STT_PROVIDER', 'auto'), // auto | natlas | whisper | webspeech | off
+  provider: env('STT_PROVIDER', 'auto'), // auto | replicate | natlas | whisper | webspeech | off
+  replicate: {
+    token: env('REPLICATE_API_TOKEN', ''),
+    apiBase: env('REPLICATE_API_BASE', 'https://api.replicate.com/v1').replace(/\/+$/, ''),
+    // "owner/name" (official models) or "owner/name:version" (community models need the version)
+    model: env('STT_REPLICATE_MODEL', 'vaibhavs10/incredibly-fast-whisper:c6433aab18b7318bbae316495f1a097fc067deef7d59dc2f33e45077ae5956c7'),
+    timeoutMs: int('STT_REPLICATE_TIMEOUT_MS', 20_000),
+  },
+  // Daily caps, counted in seconds of speech sent (silence is never sent). 0 = no cap.
+  dailySecondsPerUser: int('STT_DAILY_SECONDS_PER_USER', 1200), // voice typing: / bar + text boxes (20 min)
+  dailyCaptionSecondsPerUser: int('STT_DAILY_CAPTION_SECONDS_PER_USER', 3600), // live captions while speaking in rooms (60 min)
+  dailySecondsTotal: int('STT_DAILY_SECONDS_TOTAL', 36_000), // whole server, all users (10 h ≈ US$7 at ~US$0.012/min)
+  segmentMaxSeconds: int('STT_SEGMENT_MAX_SECONDS', 5), // client cuts a speech segment at a pause or after this long
   primary: {
     name: env('STT_PRIMARY_NAME', 'N-ATLaS'),
     baseUrl: env('STT_PRIMARY_BASE_URL').replace(/\/$/, ''),
@@ -105,6 +135,14 @@ const STT = {
   chunkSeconds: int('STT_CHUNK_SECONDS', 8),
   maxChunkBytes: int('STT_MAX_CHUNK_BYTES', 2_000_000),
   timeoutMs: int('STT_TIMEOUT_MS', 30_000),
+};
+
+// AI event covers: black-forest-labs/flux-schnell on Replicate (16:9, text-free).
+const COVERS = {
+  model: env('AI_COVER_MODEL', 'black-forest-labs/flux-schnell'),
+  dailyLimit: int('AI_COVER_DAILY_LIMIT', 10), // generations ("Generate" / "Regenerate" clicks) per user per day; 0 = off
+  options: Math.min(4, Math.max(1, int('AI_COVER_OPTIONS', 2))), // images per generation
+  timeoutMs: int('AI_COVER_TIMEOUT_MS', 60_000),
 };
 
 // Storage: VPS disk by default, S3-compatible when STORAGE_DRIVER=s3
@@ -201,7 +239,7 @@ module.exports = {
   env, int, bool, METRICS,
   PORT, PUBLIC, JWT_SECRET, DEFAULT_SECRET, PUBLIC_URL, APP_NAME,
   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
-  AUTH, ALLOW_LOCAL_SIGNUP, CANONICAL_HOST,
+  AUTH, ALLOW_LOCAL_SIGNUP, ADMIN_EMAILS, CANONICAL_HOST,
   MEETING_INACTIVITY_MS, MEETING_CLEANUP_INTERVAL_MS, MAX_PARTICIPANTS, MAX_AUDIENCE, DEFAULT_SPEAKER_SEATS,
-  MEDIA, AI, STT, STORAGE, UPLOADS, BIBLE, MEMORY, RESTART, RATE_LIMIT_PER_MIN, TRUST_PROXY, MIME,
+  MEDIA, AI, STT, COVERS, STORAGE, UPLOADS, BIBLE, MEMORY, RESTART, RATE_LIMIT_PER_MIN, TRUST_PROXY, MIME,
 };

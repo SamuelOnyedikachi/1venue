@@ -98,7 +98,7 @@ Every setting is an environment variable, documented in [.env.example](.env.exam
 | Area | Variables | Docs |
 |---|---|---|
 | Core | `PUBLIC_URL`, `CORS_ORIGINS`, `CANONICAL_HOST`, `JWT_SECRET`, `TRUST_PROXY` | [DEPLOY-1venue.live.md](docs/DEPLOY-1venue.live.md) |
-| Accounts | `ALLOW_LOCAL_SIGNUP`, `AUTH_*`, `BCRYPT_COST`, `GOOGLE_*` | [AUTH.md](docs/AUTH.md) |
+| Accounts | `ALLOW_LOCAL_SIGNUP`, `AUTH_*`, `BCRYPT_COST`, `GOOGLE_*`, `APPLE_*` | [AUTH.md](docs/AUTH.md) |
 | Email | `SMTP_*`, `MAIL_FROM`, `MAIL_REPLY_TO` | [AUTH.md](docs/AUTH.md) |
 | Database | `DATABASE_URL`, `DATABASE_POOL_MAX`, `AUTO_MIGRATE` | |
 | Media | `LIVEKIT_*`, `SIMULCAST`, `VIDEO_*`, `MAX_PARTICIPANTS`, `MAX_AUDIENCE` | [livekit-coolify.md](docs/livekit-coolify.md) |
@@ -112,6 +112,9 @@ Full details, Google Cloud Console steps and SMTP examples: [docs/AUTH.md](docs/
 
 - Email + password sign-up (`ALLOW_LOCAL_SIGNUP`), email confirmation, forgot/reset password, change password and change email (re-confirmed).
 - "Continue with Google" (OpenID Connect with PKCE) when `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are set; hidden otherwise.
+- "Continue with Apple" when the four `APPLE_*` values are set ([docs/APPLE_SIGNIN.md](docs/APPLE_SIGNIN.md)); hidden otherwise.
+- Delete account in Settings → Danger zone: password, then a 6-digit code by email, then a final confirm.
+- Branded, mobile-friendly emails (table HTML + plain text); art in `public/email/`, sources in `scripts/email-art/`.
 - Short-lived access token plus a rotating refresh token stored hashed in Postgres, in host-only `HttpOnly; Secure; SameSite=Lax` cookies. Settings → Account lists every signed-in device, with sign out per device and "Sign out everywhere".
 - Guests can join rooms with just a name.
 
@@ -119,6 +122,7 @@ Full details, Google Cloud Console steps and SMTP examples: [docs/AUTH.md](docs/
 
 `STT_PROVIDER=auto` tries the providers in this order:
 
+0. **Whisper on Replicate** (`vaibhavs10/incredibly-fast-whisper`, about US$0.012 per minute of speech) whenever `REPLICATE_API_TOKEN` is set. It is the main engine for voice typing (the `/` bar and every text box) and for meeting captions. The browser only uploads short speech clips, cut at pauses. Daily caps are set per user and per server. Details: [docs/VOICE_AND_COVERS.md](docs/VOICE_AND_COVERS.md).
 1. **Primary** (`STT_PRIMARY_*`, named N-ATLaS by default). Any OpenAI-compatible `/audio/transcriptions` endpoint: a RunPod GPU pod running an OpenAI-compatible Whisper server (e.g. speaches), or the optional `stt-sidecar/` on a separate box (the sidecar serves the NCAIR1/Awarri N-ATLaS Whisper-Small fine-tunes for Nigerian-accented English, Yorùbá, Igbo and Hausa; it is a CPU build).
 2. **Secondary** (`STT_SECONDARY_*`, Whisper). Any OpenAI-compatible endpoint: Groq (`whisper-large-v3-turbo`, cheapest), OpenAI (`whisper-1`), etc.
 3. **The browser's Web Speech API.**
@@ -126,6 +130,10 @@ Full details, Google Cloud Console steps and SMTP examples: [docs/AUTH.md](docs/
 Every line is stored as `Name: text`. Transcripts can be saved, summarised by AI with one click, and downloaded: the transcript as `.txt` and the summary as `.md`.
 
 The N-ATLaS weights are gated on Hugging Face and use their own *Open-Source Research and Innovation License*. Accept those terms before you use them.
+
+## AI covers and promotions
+
+On the create-event cover step, **Design with AI** makes text-free 16:9 covers with flux-schnell on Replicate (10 generations per user per day). Only the picked one is saved. Admins can promote events and posts in /admin. Up to 3 show in a sidebar on Discover, Feed, Venues and Books, or one inline card on mobile, labelled "Promoted". See [docs/VOICE_AND_COVERS.md](docs/VOICE_AND_COVERS.md).
 
 ## Bibles
 

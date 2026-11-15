@@ -4,8 +4,8 @@ const path = require('path');
 const { AsyncLocalStorage } = require('node:async_hooks');
 const transactionContext = new AsyncLocalStorage();
 
-const JSON_COLUMNS = new Set(['attachments', 'data', 'ev_theme', 'extra', 'host_answers', 'media', 'moderation', 'options', 'payload', 'settings', 'state', 'tags', 'theme']);
-const BOOL_COLUMNS = new Set(['anonymous', 'is_custom', 'is_following', 'is_live', 'is_public', 'multi', 'ok', 'peer_is_guest', 'reduce_motion', 'rsvped', 'phone_verified', 'needs_password_setup']);
+const JSON_COLUMNS = new Set(['attachments', 'data', 'ev_theme', 'extra', 'host_answers', 'media', 'moderation', 'options', 'payload', 'placements', 'settings', 'state', 'tags', 'theme']);
+const BOOL_COLUMNS = new Set(['anonymous', 'is_custom', 'is_following', 'is_live', 'is_public', 'multi', 'ok', 'peer_is_guest', 'reduce_motion', 'rsvped', 'phone_verified', 'needs_password_setup', 'active', 'is_seed']);
 const MIGRATIONS = path.join(__dirname, '..', '..', 'migrations', 'sqlite');
 const DB_PATH = path.resolve(process.env.SQLITE_PATH || path.join(__dirname, '..', '..', 'data', 'venue.sqlite'));
 let handle = null;
@@ -63,6 +63,9 @@ function ensureReady() {
 function sqlAndParams(sql, params) {
   const values = [];
   const converted = String(sql)
+    .replace(/=\s*ANY\((\$[1-9]\d*)::(?:int|bigint|text)\[\]\)/gi, '=ANY($1)')
+    .replace(/=\s*ANY\((\$[1-9]\d*)\)/gi, 'IN (SELECT value FROM json_each($1))')
+    .replace(/\s+FOR UPDATE\b/gi, '')
     .replace(/\$([1-9]\d*)/g, (_, n) => { values.push(params[Number(n) - 1]); return '?'; })
     .replace(/::(?:timestamptz|timestamp|bigint|smallint|integer|int|text|jsonb|json|date|numeric|boolean)\b/gi, '')
     .replace(/\bNOW\(\)/gi, "strftime('%Y-%m-%dT%H:%M:%fZ','now')")

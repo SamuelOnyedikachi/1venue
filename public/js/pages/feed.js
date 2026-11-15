@@ -3,6 +3,7 @@ import { h, api, toast, toastErr, avatar, uploadFile } from '../ui.js';
 import { state, requireLogin, loginUrl, navigate } from '../app.js';
 import { postCard, empty } from '../components.js';
 import { passageCard } from '../passage.js';
+import { promoInline } from '../promo.js';
 
 export function composer(onPost, { prefill = '', eventId, passage = null, autofocus = false } = {}) {
   const ta = h('textarea', {
@@ -68,7 +69,7 @@ export function composer(onPost, { prefill = '', eventId, passage = null, autofo
 }
 
 export async function mount(view, params) {
-  const list = h('div', { class: 'feed-stream' },
+  const list = h('div', { class: 'feed-stream', 'data-promo-slot': '3' },
     h('div', { class: 'skel', style: { height: '140px' } }),
     h('div', { class: 'skel', style: { height: '180px' } }));
   const prefill = sessionStorage.getItem('venue.compose') || '';
@@ -108,6 +109,7 @@ export async function mount(view, params) {
       if (!r.posts.length && !before) {
         list.append(empty('feed', 'Your feed is quiet', 'Follow hosts or post something to get it going.'));
       }
+      if (!before && r.posts.length) promoInline(list, 'feed');
       if (r.posts.length < 20) done = true;
       else before = r.posts[r.posts.length - 1].createdAt;
       list.append(more);
