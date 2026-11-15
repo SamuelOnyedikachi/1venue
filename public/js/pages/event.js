@@ -1,8 +1,9 @@
 import { icon } from '../icons.js';
 import { h, api, esc, frag, fmtDate, fmtNum, toast, toastErr, sheet, confirmDlg, avatar, md, download, copy, debounce, uploadFile, profilePath } from '../ui.js';
 import { state, navigate, requireLogin } from '../app.js';
-import { catOf, commentThread, shareLink, sectionHead, empty, followBtn } from '../components.js';
+import { catOf, commentThread, shareLink, sectionHead, empty, followBtn, eventCard } from '../components.js';
 import { registerCommands, unregisterCommands } from '../commands.js';
+import { promoCompact, loadPromos } from '../promo.js';
 
 export const roomPath = (code) => '/' + String(code || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -49,6 +50,7 @@ export function qrMaker(text = '') {
 }
 
 export async function mount(view, { slug }) {
+  document.body.dataset.page = 'event';
   const ev = await api(`/api/events/${encodeURIComponent(slug)}`);
   const [cl, ci, cc] = catOf(ev.category);
   const live = ev.status === 'live';
@@ -56,65 +58,174 @@ export async function mount(view, { slug }) {
   document.title = `${ev.title} · 1venue`;
   const goLive = () => { sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, eventId: ev.id, name: ev.title, stage: ev.category !== 'meeting', speakerSeats: ev.speakerSeats, code: ev.code })); navigate(roomPath(ev.code)); };
   const join = () => navigate(roomPath(ev.code));
-  const rsvpBtn = h('button', { class: `btn ${ev.rsvped ? '' : 'primary'}` });
-  const paintRsvp = () => { rsvpBtn.className = `btn lg ${ev.rsvped ? '' : 'primary'}`; rsvpBtn.innerHTML = ev.rsvped ? icon('check', { size: 18 }) + 'Going' : icon('ticket', { size: 18 }) + 'RSVP'; };
-  paintRsvp();
-  rsvpBtn.onclick = async () => { if (!requireLogin('Sign in to RSVP')) return; try { const r = await api(`/api/events/${ev.id}/rsvp`, { method: 'POST' }); ev.rsvped = r.going; ev.rsvps = (ev.rsvps || 0) + (r.going ? 1 : -1); paintRsvp(); toast(r.going ? 'You’re going! We’ll show it on your dashboard.' : 'RSVP removed', { icon: 'ticket', group: 'engage' }); } catch (e) { toastErr(e); } };
-  const primary = live ? h('button', { class: 'btn primary lg pulse-btn', onclick: ev.isHost ? goLive : join, html: icon('radio', { size: 20 }) + (ev.isHost ? 'Return to stage' : 'Join live') })
-    : ev.isHost ? h('button', { class: 'btn primary lg', onclick: goLive, html: icon('radio', { size: 20 }) + 'Go live now' }) : rsvpBtn;
+  const rsvpBtns = [];
+  const paintRsvp = () => {
+    for (const b of rsvpBtns) {
+      b.className = `btn lg ${ev.rsvped ? '' : 'primary'}`;
+      b.innerHTML = ev.rsvped ? icon('check', { size: 18 }) + 'Going' : icon('ticket', { size: 18 }) + 'RSVP';
+    }
+  };
+  const onRsvp = async () => {
+    if (!requireLogin('Sign in to RSVP')) return;
+    try {
+      const r = await api(`/api/events/${ev.id}/rsvp`, { method: 'POST' });
+      ev.rsvped = r.going; ev.rsvps = (ev.rsvps || 0) + (r.going ? 1 : -1);
+      paintRsvp();
+      toast(r.going ? 'You’re going! We’ll show it on your dashboard.' : 'RSVP removed', { icon: 'ticket', group: 'engage' });
+    } catch (e) { toastErr(e); }
+  };
+  function rsvpButton() {
+    const b = h('button', { class: `btn lg ${ev.rsvped ? '' : 'primary'}`, type: 'button' });
+    rsvpBtns.push(b); paintRsvp();
+    b.onclick = onRsvp;
+    return b;
+  }
+  function primaryButton() {
+    if (live) return h('button', { class: 'btn primary lg pulse-btn', type: 'button', onclick: ev.isHost ? goLive : join, html: icon('radio', { size: 20 }) + (ev.isHost ? 'Return to stage' : 'Join live') });
+    if (ev.isHost) return h('button', { class: 'btn primary lg', type: 'button', onclick: goLive, html: icon('radio', { size: 20 }) + 'Go live now' });
+    return rsvpButton();
+  }
   const ics = () => {
     const d = (x) => new Date(x).toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
     const st = ev.startsAt || new Date().toISOString(); const en = ev.endsAt || new Date(new Date(st).getTime() + 3600e3).toISOString();
     download(`${ev.slug}.ics`, `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//1venue//EN\r\nBEGIN:VEVENT\r\nUID:${ev.slug}@1venue\r\nDTSTAMP:${d(new Date())}\r\nDTSTART:${d(st)}\r\nDTEND:${d(en)}\r\nSUMMARY:${ev.title.replace(/[,;]/g, ' ')}\r\nURL:${location.origin}/e/${ev.slug}\r\nDESCRIPTION:${(ev.description || '').slice(0, 300).replace(/\n/g, '\\n').replace(/[,;]/g, ' ')}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n`, 'text/calendar');
   };
+  const share = () => shareLink(`${location.origin}/e/${ev.slug}`, ev.title);
   const hostMenu = ev.isHost ? h('div', { class: 'row wrap', style: { gap: '.4rem' } },
     h('a', { class: 'btn sm', href: `/create?edit=${ev.slug}`, 'data-link': '', html: icon('pen', { size: 15 }) + 'Edit' }),
     h('button', { class: 'btn sm', 'data-group': 'people', html: icon('users', { size: 15 }) + 'Speakers', onclick: () => editSpeakers(ev, () => navigate(location.pathname, { replace: true })) }),
     h('button', { class: 'btn sm danger', html: icon('trash', { size: 15 }) + 'Delete', onclick: async () => { if (await confirmDlg('Delete this event? This cannot be undone.', { ok: 'Delete', danger: true })) { await api(`/api/events/${ev.id}`, { method: 'DELETE' }).catch(toastErr); navigate('/dashboard'); } } })) : null;
+
+  const venueLabel = (ev.settings && (ev.settings.venue || ev.settings.location || ev.settings.place)) || null;
+  const onlineHref = ev.status === 'live' || ev.isHost ? roomPath(ev.code) : `/e/${ev.slug}`;
+  const whenLine = ev.startsAt
+    ? (fmtDate(ev.startsAt) + (ev.endsAt ? ' – ' + fmtDate(ev.endsAt, { weekday: undefined, month: undefined, day: undefined }) : ''))
+    : (live ? 'Live now' : 'Time to be announced');
+
+  function factsCard() {
+    return h('div', { class: 'ev-card ev-facts' },
+      h('div', { class: 'ev-meta-row' }, h('span', { html: icon('calendar', { size: 16 }) }), h('div', { class: 'grow min0' }, h('div', { class: 'tiny muted' }, 'Date & time'), h('strong', null, whenLine))),
+      h('a', { class: 'ev-meta-row', href: venueLabel ? undefined : onlineHref, 'data-link': venueLabel ? null : '' },
+        h('span', { html: icon(venueLabel ? 'pin' : 'radio', { size: 16 }) }),
+        h('div', { class: 'grow min0' }, h('div', { class: 'tiny muted' }, venueLabel ? 'Venue' : 'Online'), h('strong', null, venueLabel || '1venue'))),
+      h('a', { class: 'ev-meta-row', href: profilePath(ev.host), 'data-link': '' },
+        avatar(ev.host.name, ev.host.avatarUrl, 'sm'),
+        h('div', { class: 'grow min0' }, h('div', { class: 'tiny muted' }, 'Host'), h('strong', { class: 'ellipsis' }, ev.host.name))),
+      h('div', { class: 'ev-actions' },
+        primaryButton(),
+        h('div', { class: 'ev-actions-row' },
+          ev.startsAt && !live ? h('button', { class: 'btn', type: 'button', 'data-group': 'nav', html: icon('calendarPlus', { size: 16 }) + 'Calendar', onclick: ics }) : null,
+          h('button', { class: 'btn', type: 'button', 'data-group': 'content', html: icon('share', { size: 16 }) + 'Share', onclick: share }),
+          h('button', { class: 'btn', type: 'button', 'data-group': 'content', 'aria-label': 'QR invite', html: icon('qr', { size: 16 }), onclick: () => qrSheet(ev) }))));
+  }
+
+  const hero = h('section', { class: 'ev-hero ev-hero-slim', style: { '--c1': c1, '--c2': c2 } },
+    ev.coverUrl ? h('img', { class: 'bg', src: ev.coverUrl, alt: '' }) : null,
+    h('div', { class: 'in' },
+      h('div', { class: 'row wrap', style: { gap: '.5rem' } },
+        h('span', { class: 'cat on-dark', html: icon(ci, { size: 14 }) + esc(cl) }),
+        live ? h('span', { class: 'pill live static' }, `LIVE · ${fmtNum(ev.live?.viewers || ev.liveViewers || 0)} watching`) : ev.status === 'ended' ? h('span', { class: 'pill static' }, 'Ended') : null),
+      h('h1', null, ev.title),
+      h('div', { class: 'row wrap ev-meta' },
+        h('a', { class: 'row', href: profilePath(ev.host), 'data-link': '' }, avatar(ev.host.name, ev.host.avatarUrl, 'sm ring'), h('strong', null, ev.host.name)),
+        ev.startsAt ? h('span', { html: icon('calendar', { size: 16 }) + esc(fmtDate(ev.startsAt)) }) : null,
+        h('span', { html: icon('ticket', { size: 16 }) + fmtNum(ev.rsvps || 0) + ' going' }))));
+
   const speakers = ev.speakers || [];
-  view.append(
-    h('section', { class: 'ev-hero', style: { '--c1': c1, '--c2': c2 } },
-      ev.coverUrl ? h('img', { class: 'bg', src: ev.coverUrl, alt: '' }) : null,
-      h('div', { class: 'in' },
-        h('div', { class: 'row wrap', style: { gap: '.5rem' } },
-          h('span', { class: 'cat on-dark', html: icon(ci, { size: 14 }) + esc(cl) }),
-          live ? h('span', { class: 'pill live static' }, `LIVE · ${fmtNum(ev.live?.viewers || ev.liveViewers || 0)} watching`) : ev.status === 'ended' ? h('span', { class: 'pill static' }, 'Ended') : null),
-        h('h1', null, ev.title),
-        h('div', { class: 'row wrap ev-meta' },
-          h('a', { class: 'row', href: profilePath(ev.host), 'data-link': '' }, avatar(ev.host.name, ev.host.avatarUrl, 'sm ring'), h('strong', null, ev.host.name)),
-          ev.startsAt ? h('span', { html: icon('calendar', { size: 16 }) + esc(fmtDate(ev.startsAt)) }) : null,
-          h('span', { html: icon('ticket', { size: 16 }) + fmtNum(ev.rsvps || 0) + ' going' }),
-          ev.category !== 'meeting' ? h('span', { html: icon('stage', { size: 16 }) + `${ev.speakerSeats} speaker seats` }) : null),
-        h('div', { class: 'row wrap', style: { gap: '.6rem', marginTop: '1.1rem' } }, primary,
-          live || ev.isHost ? null : null,
-          h('button', { class: 'btn lg glass', 'data-group': 'content', 'data-tip': 'QR invite', 'aria-label': 'QR code', html: icon('qr', { size: 20 }), onclick: () => qrSheet(ev) }),
-          h('button', { class: 'btn lg glass', 'data-group': 'content', 'data-tip': 'Share', 'aria-label': 'Share', html: icon('share', { size: 20 }), onclick: () => shareLink(`${location.origin}/e/${ev.slug}`, ev.title) }),
-          ev.startsAt && !live ? h('button', { class: 'btn lg glass', 'data-group': 'nav', 'data-tip': 'Add to calendar', 'aria-label': 'Add to calendar', html: icon('calendarPlus', { size: 20 }), onclick: ics }) : null))),
-    h('div', { class: 'split', style: { marginTop: '1.2rem' } },
-      h('div', { class: 'col', style: { gap: '1.2rem' } },
-        hostMenu,
-        ev.description ? h('div', { class: 'card pad prose', html: md(ev.description) }) : null,
-        ev.tags?.length ? h('div', { class: 'chips' }, ev.tags.map((t) => h('a', { class: 'chip', href: `/discover?q=${encodeURIComponent(t)}`, 'data-link': '' }, '#' + t))) : null,
-        speakers.length ? h('div', null, sectionHead('Speakers', 'stage'), h('div', { class: 'speaker-cards hscroll' }, speakers.map((sp) => h(sp.userId ? 'a' : 'div', { class: 'card speaker-card', href: sp.userId ? profilePath({ username: sp.username, id: sp.userId }) : null, 'data-link': sp.userId ? '' : null, style: { '--c1': c1, '--c2': c2 } },
-          h('div', { class: 'band' }), avatar(sp.name, sp.avatarUrl, 'xl ring'), h('strong', null, sp.name), h('span', { class: 'muted small' }, sp.headline || 'Speaker'))))) : null,
-        h('div', null, sectionHead('Conversation', 'chats'), commentThread('events', ev.id, { isHost: ev.isHost }))),
-      h('aside', { class: 'col sticky', style: { gap: '1rem' } },
-        h('div', { class: 'card pad layer' },
-          h('div', { class: 'row' }, avatar(ev.host.name, ev.host.avatarUrl, 'lg'), h('div', { class: 'grow' }, h('div', { class: 'tiny muted' }, 'Hosted by'), h('strong', null, ev.host.name)),
-            state.user && state.user.id !== ev.host.id ? followBtn({ id: ev.host.id, isFollowing: false }) : null)),
-        h('div', { class: 'card pad layer col' },
-          h('div', { class: 'row between' }, h('span', { class: 'muted small' }, 'Room code'), h('span', { class: 'kbd', style: { fontSize: '1rem' } }, roomPath(ev.code).slice(1))),
-          h('div', { class: 'qr-mini', onclick: () => qrSheet(ev) }, h('img', { src: `/api/events/${ev.slug}/qr.svg?frame=0`, alt: 'QR', loading: 'lazy' })),
-          h('p', { class: 'tiny faint', style: { textAlign: 'center' } }, 'Tap the QR to download a poster-ready version.')))));
+  const agendaItems = Array.isArray(ev.settings?.agenda) ? ev.settings.agenda : [];
+  const agendaSection = agendaItems.length
+    ? h('div', { class: 'ev-card' }, sectionHead('Agenda', 'calendar'),
+      ...agendaItems.map((a) => h('div', { class: 'ev-meta-row' },
+        h('span', { class: 'tiny muted', style: { flex: 'none', minWidth: '4.5rem' } }, a.time || a.when || ''),
+        h('strong', { class: 'grow' }, a.title || a.name || String(a)))))
+    : (ev.startsAt ? h('div', { class: 'ev-card' }, sectionHead('Agenda', 'calendar'),
+      h('div', { class: 'ev-meta-row' }, h('span', { html: icon('clock', { size: 16 }) }),
+        h('div', { class: 'grow' }, h('strong', null, ev.title), h('div', { class: 'tiny muted' }, whenLine)))) : null);
+
+  const matsSlot = h('div');
+  const speakersBlock = speakers.length ? h('div', null, sectionHead('Speakers', 'stage'), h('div', { class: 'speaker-cards' }, speakers.map((sp) => h(sp.userId ? 'a' : 'div', { class: 'card speaker-card', href: sp.userId ? profilePath({ username: sp.username, id: sp.userId }) : null, 'data-link': sp.userId ? '' : null, style: { '--c1': c1, '--c2': c2 } },
+    h('div', { class: 'band' }), avatar(sp.name, sp.avatarUrl, 'xl ring'), h('strong', null, sp.name), h('span', { class: 'muted small' }, sp.headline || 'Speaker'))))) : null;
+
+  const center = h('div', { class: 'ev-center' },
+    hero,
+    h('div', { class: 'ev-summary' }, factsCard()),
+    hostMenu,
+    ev.description ? h('div', { class: 'card pad prose', html: md(ev.description) }) : null,
+    ev.tags?.length ? h('div', { class: 'chips' }, ev.tags.map((t) => h('a', { class: 'chip', href: `/discover?q=${encodeURIComponent(t)}`, 'data-link': '' }, '#' + t))) : null,
+    speakersBlock,
+    agendaSection,
+    matsSlot,
+    h('div', null, sectionHead('Conversation', 'chats'), commentThread('events', ev.id, { isHost: ev.isHost })));
+
+  const liveSlot = h('div');
+  const promoSlot = h('div');
+  const moreSlot = h('div');
+  const left = h('aside', { class: 'ev-rail ev-left', 'aria-label': 'Event details' }, factsCard());
+  const right = h('aside', { class: 'ev-rail ev-right', 'aria-label': 'More events' }, liveSlot, promoSlot, moreSlot);
+  const pin = h('div', { class: 'ev-pin', 'aria-label': 'Event actions' }, primaryButton());
+  const shell = h('div', { class: 'ev-shell' }, left, center, right);
+  const page = h('div', { class: 'ev-page' }, shell);
+  view.append(page);
+  // Mount the pin on body so position:fixed is not trapped by #view.page-enter's transform.
+  document.body.append(pin);
+
+  const slim = (el) => {
+    let t = 0;
+    const on = () => { el.classList.add('is-scrolling'); clearTimeout(t); t = setTimeout(() => el.classList.remove('is-scrolling'), 700); };
+    el.addEventListener('scroll', on, { passive: true });
+    return () => { el.removeEventListener('scroll', on); clearTimeout(t); };
+  };
+  const stopScroll = [slim(left), slim(right)];
+
+  api(`/api/events/${ev.id}/materials`).then((r) => {
+    const mats = r.materials || [];
+    if (!mats.length || !matsSlot.isConnected) return;
+    matsSlot.append(h('div', { class: 'ev-card' }, sectionHead('Materials', 'folder'),
+      ...mats.map((m) => h('div', { class: 'ev-meta-row' },
+        h('span', { html: icon(m.kind === 'video' ? 'video' : (m.kind === 'image' ? 'image' : 'file'), { size: 16 }) }),
+        h('div', { class: 'grow min0' }, h('strong', { class: 'ellipsis' }, m.title || 'Material'), h('div', { class: 'tiny muted' }, m.kind || ''))))));
+  }).catch(() => {});
+
+  Promise.all([
+    api('/api/discover?status=live&limit=6').catch(() => ({ events: [] })),
+    api('/api/discover?status=upcoming&limit=6').catch(() => ({ events: [] })),
+    ev.host?.username || ev.host?.id
+      ? api('/api/discover?host=' + encodeURIComponent(ev.host.username || ev.host.id) + '&limit=6').catch(() => ({ events: [] }))
+      : { events: [] },
+    loadPromos('discover'),
+  ]).then(([liveR, upR, moreR, promos]) => {
+    if (!view.isConnected) return;
+    const liveEv = (liveR.events || []).filter((e) => e.id !== ev.id);
+    const soon = (upR.events || []).filter((e) => e.id !== ev.id).slice(0, 3);
+    if (liveEv.length) {
+      liveSlot.append(h('section', { class: 'ev-card' }, h('div', { class: 'ev-rail-head tiny faint' }, 'Live now'),
+        ...liveEv.slice(0, 3).map((e) => eventCard(e, { compact: true }))));
+    } else if (soon.length) {
+      liveSlot.append(h('section', { class: 'ev-card' }, h('div', { class: 'ev-rail-head tiny faint' }, 'Happening soon'),
+        ...soon.map((e) => eventCard(e, { compact: true }))));
+    } else {
+      liveSlot.append(h('section', { class: 'ev-card' }, h('div', { class: 'ev-rail-head tiny faint' }, 'Live now'),
+        h('p', { class: 'small muted', style: { margin: 0 } }, 'Nothing else is live right now.')));
+    }
+    const cards = (promos || []).slice(0, 2).map((it) => promoCompact(it)).filter(Boolean);
+    if (cards.length) promoSlot.append(h('section', { class: 'ev-card' }, h('div', { class: 'ev-rail-head tiny faint' }, 'Promoted'), ...cards));
+    const more = (moreR.events || []).filter((e) => e.id !== ev.id).slice(0, 4);
+    if (more.length) {
+      moreSlot.append(h('section', { class: 'ev-card' }, h('div', { class: 'ev-rail-head tiny faint' }, 'More from this host'),
+        ...more.map((e) => eventCard(e, { compact: true }))));
+    }
+  });
+
+  const primary = pin.querySelector('.btn');
   registerCommands('page', [
-    { id: 'ev-primary', label: live ? 'Join live' : ev.isHost ? 'Go live now' : 'RSVP', icon: 'radio', group: 'engage', run: () => primary.click() },
+    { id: 'ev-primary', label: live ? 'Join live' : ev.isHost ? 'Go live now' : 'RSVP', icon: 'radio', group: 'engage', run: () => primary?.click() },
     { id: 'ev-qr', label: 'Event QR code', icon: 'qr', group: 'content', keywords: ['poster', 'invite'], run: () => qrSheet(ev) },
-    { id: 'ev-share', label: 'Share event', icon: 'share', group: 'content', run: () => shareLink(`${location.origin}/e/${ev.slug}`, ev.title) },
+    { id: 'ev-share', label: 'Share event', icon: 'share', group: 'content', run: share },
     { id: 'ev-cal', label: 'Add to calendar', icon: 'calendarPlus', group: 'nav', when: () => !!ev.startsAt, run: ics },
     { id: 'ev-comment', label: 'Write a comment', icon: 'chat', group: 'social', run: () => view.querySelector('.composer textarea')?.focus() },
     ...(ev.isHost ? [{ id: 'ev-edit', label: 'Edit event', icon: 'pen', group: 'engage', run: () => navigate(`/create?edit=${ev.slug}`) }, { id: 'ev-speakers', label: 'Edit speakers', icon: 'users', group: 'people', run: () => editSpeakers(ev) }] : []),
   ]);
-  return { unmount: () => unregisterCommands('page') };
+  return { unmount: () => { pin.remove(); stopScroll.forEach((fn) => fn()); unregisterCommands('page'); if (document.body.dataset.page === 'event') delete document.body.dataset.page; } };
 }
 export const barPinned = null;
 

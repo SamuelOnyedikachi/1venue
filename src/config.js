@@ -101,6 +101,7 @@ const AI = {
   timeoutMs: int('AI_TIMEOUT_MS', 45_000),
   maxTokens: int('AI_MAX_TOKENS', 900),
   mock: bool('AI_MOCK', false),
+  finetuneDailyLimit: int('AI_FINETUNE_DAILY_LIMIT', 20), // per signed-in user per UTC day; 0 = off
 };
 
 // Speech-to-text. Primary: Whisper on Replicate (REPLICATE_API_TOKEN) for the / bar, every text box
