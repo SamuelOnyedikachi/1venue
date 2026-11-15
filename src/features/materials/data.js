@@ -3,6 +3,7 @@
  * src/venue/data.js still re-exports everything for older call sites.
  */
 const { q, one, many } = require('../../core/db');
+const { normalizeStoredFileUrl } = require('../../lib/file-url');
 
 // ---------------------------------------------------------------- materials
 function materialOut(r) {
@@ -25,13 +26,18 @@ function sanitizeMaterialPayload(kind, payload) {
     return { videoId, url: `https://www.youtube.com/watch?v=${videoId}` };
   }
   if (kind === 'image') {
-    const url = String(p.url || '').trim();
-    if (!url.startsWith('/files/')) { const e = new Error('Image must be an uploaded file'); e.status = 400; throw e; }
+    const url = normalizeStoredFileUrl(String(p.url || ''));
+    if (!url) { const e = new Error('Image must be a file uploaded to 1venue'); e.status = 400; e.reason = `image url not accepted: ${String(p.url || '').slice(0, 120) || '(empty)'}`; throw e; }
     return { url };
   }
   // slides | pdf | pptx — store page image URLs (+ optional source meta)
-  const pages = Array.isArray(p.pages) ? p.pages.filter((u) => typeof u === 'string' && u.startsWith('/files/')).slice(0, 200) : [];
-  if (!pages.length) { const e = new Error('Add at least one page or image'); e.status = 400; throw e; }
+  const raw = Array.isArray(p.pages) ? p.pages : [];
+  const pages = raw.map(normalizeStoredFileUrl).filter(Boolean).slice(0, 200);
+  if (!pages.length) {
+    const e = new Error(raw.length ? 'Those pages were not uploaded to 1venue storage — try the upload again' : 'Add at least one page or image');
+    e.status = 400; e.reason = raw.length ? `0 of ${raw.length} page urls accepted (first: ${String(raw[0]).slice(0, 120)})` : 'no pages';
+    throw e;
+  }
   return {
     pages,
     sourceName: p.sourceName ? String(p.sourceName).slice(0, 120) : null,

@@ -656,7 +656,7 @@ Object.assign(Room.prototype, {
   setContentPages(pages, { page } = {}) {
     const c = this.content;
     if (!this.canControlContent() || c.type !== 'slides') return;
-    const list = (Array.isArray(pages) ? pages : []).filter((u) => typeof u === 'string' && u.startsWith('/files/')).slice(0, 200);
+    const list = (Array.isArray(pages) ? pages : []).filter((u) => typeof u === 'string' && /^(\/files\/|https:\/\/)/.test(u)).slice(0, 200); // server re-checks (local /files/ or the R2 public URL)
     if (!list.length) return toast('Keep at least one image in the deck', { icon: 'alert' });
     const nextPage = page != null ? page : Math.min(c.page || 1, list.length);
     this.send('content-update', { pages: list, page: nextPage });

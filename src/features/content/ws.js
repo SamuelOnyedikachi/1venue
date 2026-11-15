@@ -9,8 +9,10 @@
  */
 const { can } = require('../../lib/permissions');
 const YT_ID = /^[\w-]{11}$/;
-const FILE_URL = /^\/files\/[\w-]{1,64}\/[\w.%~()'!*-]{1,240}$/;
-const okFile = (u) => typeof u === 'string' && FILE_URL.test(u);
+const { normalizeStoredFileUrl } = require('../../lib/file-url');
+const log = require('../../lib/log');
+// Local `/files/<id>/<name>` or the S3/R2 public URL (S3_PUBLIC_BASE_URL); see src/lib/file-url.js.
+const okFile = (u) => normalizeStoredFileUrl(u) !== null;
 
 function sanitizeContent(msg) {
   const type = msg.contentType;
@@ -21,13 +23,14 @@ function sanitizeContent(msg) {
     return { type, videoId: id, url: `https://www.youtube.com/watch?v=${id}`, title: title || 'YouTube video', pages: null, fileMeta: null };
   }
   if (type === 'slides') {
-    const pages = Array.isArray(msg.pages) ? msg.pages.filter(okFile).slice(0, 200) : [];
+    const pages = Array.isArray(msg.pages) ? msg.pages.map(normalizeStoredFileUrl).filter(Boolean).slice(0, 200) : [];
     if (!pages.length) return null;
     return { type, url: pages[0], pages, title: title || 'Slides', fileMeta: sanitizeMeta(msg.fileMeta) };
   }
   if (type === 'image') {
-    if (!okFile(msg.url)) return null;
-    return { type, url: msg.url, pages: null, title: title || 'Image', fileMeta: sanitizeMeta(msg.fileMeta) };
+    const url = normalizeStoredFileUrl(msg.url);
+    if (!url) return null;
+    return { type, url, pages: null, title: title || 'Image', fileMeta: sanitizeMeta(msg.fileMeta) };
   }
   return null;
 }
@@ -44,9 +47,17 @@ module.exports = {
 
     ctx.onWs('content-start', ({ msg, participantId, meeting, meetingCode }) => {
       const p = meeting.participants.get(participantId);
-      if (!p || !can(meeting, p, 'screenShare')) return;
+      const tell = (error) => { try { ctx.sendToParticipant && ctx.sendToParticipant(participantId, { type: 'error', error, code: 'content-rejected' }); } catch (_) {} };
+      if (!p || !can(meeting, p, 'screenShare')) {
+        log.warn('content', 'start rejected', { reason: 'no screenShare permission', meeting: meetingCode, participant: participantId });
+        tell('The host controls who can present'); return;
+      }
       const c = sanitizeContent(msg);
-      if (!c) return;
+      if (!c) {
+        const sample = msg.contentType === 'image' ? msg.url : Array.isArray(msg.pages) ? msg.pages[0] : undefined;
+        log.warn('content', 'start rejected', { reason: 'file url not from 1venue storage', type: msg.contentType, pages: Array.isArray(msg.pages) ? msg.pages.length : undefined, sample: sample ? String(sample).slice(0, 160) : undefined, meeting: meetingCode });
+        tell('Could not present that file — it was not found in 1venue storage. Upload it again.'); return;
+      }
       clearInterval(meeting.content?.slideshowTimer);
       meeting.content = {
         ...c,
@@ -58,6 +69,7 @@ module.exports = {
         slideshow: false,
         media: c.type === 'youtube' ? { paused: true, t: 0, at: Date.now() } : null,
       };
+      log.info('content', 'presenting', { type: c.type, pages: c.pages ? c.pages.length : undefined, meeting: meetingCode });
       broadcast(meetingCode, { type: 'content-state', content: getContentState(meeting) });
     });
 
@@ -110,12 +122,16 @@ module.exports = {
       if (msg.title) meeting.content.title = String(msg.title).slice(0, 80);
       // Live deck edit: replace pages without stopping the share (owner/holder only).
       if (Array.isArray(msg.pages) && meeting.content.type === 'slides') {
-        const pages = msg.pages.filter(okFile).slice(0, 200);
+        const pages = msg.pages.map(normalizeStoredFileUrl).filter(Boolean).slice(0, 200);
         if (pages.length) {
           meeting.content.pages = pages;
           meeting.content.url = pages[0];
           const max = pages.length;
           if (meeting.content.page > max) meeting.content.page = max;
+          if (pages.length < Math.min(200, msg.pages.length)) log.warn('content', 'some pages dropped', { kept: pages.length, sent: msg.pages.length, meeting: meetingCode });
+        } else {
+          log.warn('content', 'pages update rejected', { reason: 'file url not from 1venue storage', sent: msg.pages.length, sample: String(msg.pages[0] || '').slice(0, 160), meeting: meetingCode });
+          try { ctx.sendToParticipant && ctx.sendToParticipant(participantId, { type: 'error', error: 'Those images were not found in 1venue storage. Upload them again.', code: 'content-rejected' }); } catch (_) {}
         }
       }
       broadcast(

@@ -8,12 +8,21 @@ const path = require('path');
 const crypto = require('crypto');
 const { Readable } = require('stream');
 const config = require('../config');
+const log = require('../lib/log');
+const { encSeg } = require('../lib/file-url');
 
 const S = config.STORAGE;
 const driver = () => (S.driver === 's3' && S.s3.bucket && S.s3.accessKeyId ? 's3' : 'local');
 
 function newId() { return crypto.randomBytes(16).toString('base64url'); }
 function safeName(n) { return String(n || 'file').replace(/[^\w.\- ]+/g, '_').slice(-120) || 'file'; }
+/** Storage-key slug: ASCII letters/digits . _ - only (no spaces), keeps the extension. "CV - Web (v2).pdf" -> "CV-Web-v2.pdf" */
+function slugName(n) {
+  const name = String(n || 'file').normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+  const m = name.match(/^(.*?)(\.[A-Za-z0-9]{1,8})?$/);
+  const stem = (m[1] || '').replace(/[^A-Za-z0-9._-]+/g, '-').replace(/-{2,}/g, '-').replace(/^[-.]+|[-.]+$/g, '').slice(0, 80) || 'file';
+  return stem + (m[2] ? m[2].toLowerCase() : '');
+}
 
 // ---------------- local
 function localPath(key) {
@@ -60,8 +69,15 @@ function sign(method, url, headers, payloadHash) {
 async function putS3(key, buf, mime) {
   const url = s3Url(key);
   const headers = sign('PUT', url, { 'content-type': mime }, sha(buf));
-  const r = await fetch(url, { method: 'PUT', headers, body: buf });
-  if (!r.ok) throw new Error(`S3 upload failed (${r.status})`);
+  let r;
+  try { r = await fetch(url, { method: 'PUT', headers, body: buf, signal: AbortSignal.timeout(60000) }); }
+  catch (e) { const err = new Error(`Storage is unreachable (${e.name === 'TimeoutError' ? 'timeout' : e.message})`); err.status = 502; err.step = 'storage-put'; throw err; }
+  if (!r.ok) {
+    const body = await r.text().catch(() => '');
+    const code = (body.match(/<Code>([^<]+)<\/Code>/) || [])[1];
+    log.error('storage', 'put failed', { key, status: r.status, code, body: body.slice(0, 300), host: url.host });
+    const err = new Error(`Storage rejected the file (${r.status}${code ? ' ' + code : ''})`); err.status = 502; err.step = 'storage-put'; throw err;
+  }
 }
 /** Stream an object from the bucket (no whole-file buffering in the app's memory). */
 async function getS3(key) {
@@ -79,15 +95,24 @@ async function save(buf, { filename, mime, ownerUserId, ownerKey, purpose, roomC
   const id = newId();
   const d = driver();
   const now = new Date();
-  const key = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${id}-${safeName(filename)}`;
-  if (d === 's3') await putS3(key, buf, mime || 'application/octet-stream');
-  else await putLocal(key, buf);
+  const key = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${id}-${slugName(filename)}`;
+  const t0 = Date.now();
+  try {
+    if (d === 's3') await putS3(key, buf, mime || 'application/octet-stream');
+    else await putLocal(key, buf);
+  } catch (e) {
+    if (!e.step) { e.step = 'storage-put'; log.error('storage', 'put failed', { driver: d, key, error: e.message }); }
+    throw e;
+  }
+  log.info('storage', 'put ok', { driver: d, key, bytes: buf.length, ms: Date.now() - t0 });
   const rec = { id, driver: d, objectKey: key, filename: safeName(filename), mime: mime || 'application/octet-stream', size: buf.length, ownerUserId, ownerKey, purpose, roomCode };
-  await require('./data').insertFile(rec);
+  try { await require('./data').insertFile(rec); }
+  catch (e) { log.error('storage', 'db insert failed', { id, key, error: e.message }); e.step = 'db-insert'; throw e; }
   return { ...rec, url: publicUrl(rec) };
 }
 function publicUrl(rec) {
-  if (rec.driver === 's3' && S.s3.publicBaseUrl) return `${S.s3.publicBaseUrl}/${rec.objectKey || rec.object_key}`;
+  // Each key segment is percent-encoded (older keys can contain spaces / parentheses).
+  if (rec.driver === 's3' && S.s3.publicBaseUrl) return `${S.s3.publicBaseUrl}/${String(rec.objectKey || rec.object_key).split('/').map(encSeg).join('/')}`;
   return `/files/${rec.id}/${encodeURIComponent(rec.filename)}`;
 }
 async function open(row) {
@@ -116,4 +141,4 @@ async function remove(row) {
   }
 }
 
-module.exports = { save, open, remove, publicUrl, driver, _sign: sign };
+module.exports = { save, open, remove, publicUrl, driver, slugName, _sign: sign };
