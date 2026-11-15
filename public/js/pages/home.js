@@ -3,32 +3,27 @@ import { h, api, esc, frag, fmtNum } from '../ui.js';
 import { state, navigate, CATS, joinPrompt, parseCode } from '../app.js';
 import { eventCard, skeletonCards, sectionHead, empty, catOf } from '../components.js';
 
-/** Layered 1venue UI fragments for the homepage hero (faces: see docs/CREDITS.md). */
-function heroCollage() {
-  return h('div', { class: 'hero-collage', 'aria-hidden': 'true' },
-    h('div', { class: 'hc-card hc-slide' },
-      h('div', { class: 'hc-slide-stage' },
-        h('div', { class: 'hc-slide-title' }, 'Q4 goals'),
-        h('div', { class: 'hc-slide-bars' }, h('i', { style: { height: '70%' } }), h('i', { style: { height: '45%' } }), h('i', { style: { height: '90%' } }), h('i', { style: { height: '55%' } }))),
-      h('div', { class: 'hc-slide-pg tiny' }, 'Slide 2 / 12')),
-    h('div', { class: 'hc-card hc-stage' },
-      h('img', { class: 'hc-stage-img', src: '/img/hero/speaker.webp', alt: '', width: 360, height: 360, decoding: 'async' }),
-      h('span', { class: 'pill live static hc-live' }, 'LIVE'),
-      h('span', { class: 'hc-chip hc-viewers', html: icon('eye', { size: 12 }) + '128' }),
-      h('span', { class: 'hc-chip hc-timer', html: icon('clock', { size: 12 }) + '16:45' })),
-    h('div', { class: 'hc-card hc-poll' },
-      h('div', { class: 'hc-poll-kicker tiny faint' }, 'Poll · 24 votes'),
-      h('div', { class: 'hc-poll-q' }, 'What should we take first?'),
-      h('div', { class: 'hc-bar' }, h('span', { style: { width: '62%' } }), h('em', null, 'Questions 62%')),
-      h('div', { class: 'hc-bar' }, h('span', { class: 'alt', style: { width: '38%' } }), h('em', null, 'Testimony 38%'))),
-    h('div', { class: 'hc-card hc-verse', html: icon('bookOpen', { size: 16 }) + '<div><strong>John 3:16</strong><span class="tiny muted">KJV</span></div>' }),
-    h('div', { class: 'hc-avatar' },
-      h('img', { src: '/img/hero/avatar.webp', alt: '', width: 80, height: 80, decoding: 'async' }),
-      h('span', { class: 'hc-hand', html: icon('hand', { size: 14 }), title: 'Request to speak' })),
-    h('div', { class: 'hc-bubbles' },
-      h('span', { class: 'hc-bub hc-clap' }, '👏'),
-      h('span', { class: 'hc-bub hc-heart' }, '❤'),
-      h('span', { class: 'hc-bub hc-pray' }, '🙏')));
+/** Homepage hero visual — transparent collage (see docs/CREDITS.md). */
+function heroVisual() {
+  const alt = '1venue product collage: a live stage, Q4 goals, a poll, John 3:16, and reaction bubbles';
+  return h('div', { class: 'hero-visual' },
+    h('picture', null,
+      h('source', {
+        type: 'image/webp',
+        srcset: '/img/hero/collage-sm.webp 640w, /img/hero/collage.webp 1168w',
+        sizes: '(max-width: 899px) calc(100vw - 2.5rem), (max-width: 1023px) 42vw, min(600px, 14rem + 25vw)',
+      }),
+      h('img', {
+        class: 'hero-visual-img',
+        src: '/img/hero/collage.webp',
+        srcset: '/img/hero/collage-sm.webp 640w, /img/hero/collage.webp 1168w',
+        sizes: '(max-width: 899px) calc(100vw - 2.5rem), (max-width: 1023px) 42vw, min(600px, 14rem + 25vw)',
+        width: 1168,
+        height: 742,
+        alt,
+        fetchpriority: 'high',
+        decoding: 'async',
+      })));
 }
 
 function band(cls, ...kids) {
@@ -52,7 +47,7 @@ export async function mount(view) {
           h('a', { class: 'btn lg hero-cta-icon', href: '/create?instant=1', 'data-link': '', 'data-group': 'media', 'data-tip': 'Instant meeting', 'aria-label': 'Instant meeting', html: icon('zap', { size: 20 }) + '<span class="lbl">Instant meeting</span>' }),
           h('a', { class: 'btn lg hero-cta-icon', href: '/venues', 'data-link': '', 'data-group': 'media', 'data-tip': 'Venue', 'aria-label': 'Venue', html: icon('door', { size: 20 }) + '<span class="lbl">Venue</span>' })),
         h('div', { class: 'join-box' }, frag(icon('hash', { size: 20 })), codeIn, h('button', { class: 'btn primary', onclick: joinGo, html: icon('arrowRight', { size: 18 }) + 'Join' }))),
-      heroCollage()));
+      heroVisual()));
 
   const liveWrap = h('div', null, skeletonCards(3));
   const upWrap = h('div', null, skeletonCards(3));

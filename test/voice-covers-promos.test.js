@@ -175,7 +175,7 @@ test('layout: / bar typing area is 50% at every width; Discover header; /u allow
     assert.ok(src.includes('/api/books/'), f);
   }
   const sw = read('public/sw.js');
-  assert.doesNotMatch(sw, /v2[1-4]-/, 'service worker bumped past v24');
+  assert.doesNotMatch(sw, /v2[1-6]-/, 'service worker bumped past v26');
 });
 
 test('Discover filter picker: labels animate as hints only; filtering happens on pick (DOM-free check)', () => {
