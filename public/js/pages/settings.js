@@ -4,8 +4,9 @@ import { state, setPrefs, ACCENTS, FONT_SIZES, loginUrl } from '../app.js';
 import { promptInstall, canInstall } from '../pwa.js';
 import { translationSelect } from './bible.js';
 import { accountCard, deleteAccountCard } from './account.js';
+import { voicePrefs } from '../voice.js';
 
-const CAPTION_LANGS = [['', 'Auto (device language)'], ['en', 'English (Nigerian)'], ['yo', 'Yorùbá'], ['ig', 'Igbo'], ['ha', 'Hausa'], ['pcm', 'Naija Pidgin']];
+const CAPTION_LANGS = [['', 'Auto-detect'], ['en', 'English (Nigerian)'], ['yo', 'Yorùbá'], ['ig', 'Igbo'], ['ha', 'Hausa'], ['pcm', 'Naija Pidgin']];
 
 export async function mount(view) {
   const P = () => state.prefs;
@@ -20,7 +21,7 @@ export async function mount(view) {
   const range = h('input', { type: 'range', min: 0.8, max: 1.5, step: 0.02, value: P().fontScale || 1, 'aria-label': 'Text size', style: { width: '100%' } });
   range.oninput = () => { setPrefs({ fontScale: Number(range.value) }); fontLbl.textContent = Math.round(range.value * 100) + '%'; };
   const capSel = h('select', { class: 'input sm' }, CAPTION_LANGS.map(([v, l]) => h('option', { value: v, selected: (P().captionLang || '') === v }, l)));
-  capSel.onchange = () => { setPrefs({ captionLang: capSel.value || null }); toast('Caption language saved', { icon: 'captions', group: 'ai' }); };
+  capSel.onchange = () => { setPrefs({ captionLang: capSel.value || null }); toast('Speech language saved', { icon: 'captions', group: 'ai' }); };
   const card = (title, ic, ...kids) => h('section', { class: 'card pad layer set-card' }, h('h2', { class: 'set-h', html: icon(ic, { size: 20 }) + esc(title) }), ...kids);
   view.append(h('div', { class: 'page-head' }, h('h1', { html: icon('settings', { size: 28 }) + 'Settings' }), h('p', { class: 'muted' }, state.user ? 'Saved to your account and synced across devices.' : 'Saved on this device. Sign in to sync.')),
     h('div', { class: 'set-grid' },
@@ -35,8 +36,9 @@ export async function mount(view) {
         h('div', { class: 'row', style: { marginTop: '.8rem' } }, h('span', { html: icon('type', { size: 14 }) }), range, h('span', { html: icon('type', { size: 22 }) }), fontLbl), sample),
       card('Bible', 'bookOpen',
         row('languages', 'faith', 'Default translation', 'Used in the reader and for scripture shown during events', translationSelect(P().bibleTranslation || 'eng_kjv', (v) => { setPrefs({ bibleTranslation: v }); toast('Translation saved', { icon: 'bookOpen', group: 'faith' }); }, { compact: true }), 'bible')),
-      card('Captions & transcripts', 'captions',
-        row('captions', 'ai', 'Caption language', 'Nigerian STT (N-ATLaS) understands Yorùbá, Igbo, Hausa, Pidgin and Nigerian English', capSel, 'captions'),
+      card('Voice & captions', 'captions',
+        row('mic', 'ai', 'Voice typing', 'Text boxes and the / bar listen while you’re in them and type what you say (Whisper on Replicate, or your browser’s speech service). Never in password, email, phone or code fields. This device only.', toggle(() => voicePrefs.enabled, (v) => { voicePrefs.set(v); toast(v ? 'Voice typing on' : 'Voice typing off', { icon: v ? 'mic' : 'micOff', group: 'ai' }); }), 'voice'),
+        row('captions', 'ai', 'Speech language', 'A hint for voice typing and captions. Auto-detect works for most people; pick one if words come out in the wrong language.', capSel, 'captions'),
         row('download', 'content', 'Recordings', 'Recordings stay on your device — they are never uploaded', h('span', { class: 'chip' }, 'Local only'))),
       card('App', 'install',
         row('install', 'nav', 'Install 1venue', canInstall() ? 'Full-screen, faster, works offline' : 'Already installed or not supported in this browser', h('button', { class: 'btn sm', onclick: promptInstall }, 'Install')),

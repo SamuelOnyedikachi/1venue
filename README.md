@@ -105,6 +105,7 @@ Full details, Google Cloud Console steps and SMTP examples: [docs/AUTH.md](docs/
 
 `STT_PROVIDER=auto` tries the providers in this order:
 
+0. **Whisper on Replicate** (`vaibhavs10/incredibly-fast-whisper`, about US$0.012 per minute of speech) whenever `REPLICATE_API_TOKEN` is set. It is the main engine for voice typing (the `/` bar and every text box) and for meeting captions. The browser only uploads short speech clips, cut at pauses. Daily caps are set per user and per server. Details: [docs/VOICE_AND_COVERS.md](docs/VOICE_AND_COVERS.md).
 1. **Primary** (`STT_PRIMARY_*`, named N-ATLaS by default). Any OpenAI-compatible `/audio/transcriptions` endpoint: a RunPod GPU pod running an OpenAI-compatible Whisper server (e.g. speaches), or the optional `stt-sidecar/` on a separate box (the sidecar serves the NCAIR1/Awarri N-ATLaS Whisper-Small fine-tunes for Nigerian-accented English, Yorùbá, Igbo and Hausa; it is a CPU build).
 2. **Secondary** (`STT_SECONDARY_*`, Whisper). Any OpenAI-compatible endpoint: Groq (`whisper-large-v3-turbo`, cheapest), OpenAI (`whisper-1`), etc.
 3. **The browser's Web Speech API.**
@@ -112,6 +113,10 @@ Full details, Google Cloud Console steps and SMTP examples: [docs/AUTH.md](docs/
 Every line is stored as `Name: text`. Transcripts can be saved, summarised by AI with one click, and downloaded: the transcript as `.txt` and the summary as `.md`.
 
 The N-ATLaS weights are gated on Hugging Face and use their own *Open-Source Research and Innovation License*. Accept those terms before you use them.
+
+## AI covers and promotions
+
+On the create-event cover step, **Design with AI** makes text-free 16:9 covers with flux-schnell on Replicate (10 generations per user per day). Only the picked one is saved. Admins can promote events and posts in /admin. Up to 3 show in a sidebar on Discover, Feed, Venues and Books, or one inline card on mobile, labelled "Promoted". See [docs/VOICE_AND_COVERS.md](docs/VOICE_AND_COVERS.md).
 
 ## Bibles
 

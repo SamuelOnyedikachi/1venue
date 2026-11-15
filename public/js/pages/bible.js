@@ -8,7 +8,7 @@ import { readOut, readOutEngine, stopReadOut, isReadingOut, isPreparing, onReadO
 
 let TR = null, BOOKS = null;
 export async function bibleMeta() {
-  if (!TR) [TR, BOOKS] = await Promise.all([api('/api/bible/translations').then((r) => r.translations), api('/api/bible/books').then((r) => r.books)]);
+  if (!TR) [TR, BOOKS] = await Promise.all([api('/api/books/translations').then((r) => r.translations), api('/api/books/books').then((r) => r.books)]);
   return { translations: TR, books: BOOKS };
 }
 export function translationSelect(value, onChange, { compact = false, corpus = 'all' } = {}) {
@@ -201,7 +201,7 @@ export async function mount(view, params) {
     body.innerHTML = '<div class="skel" style="height:300px"></div>'; selBar.classList.add('hidden');
     try {
       ensureCorpus(book);
-      cur = await api(`/api/bible/${tr}/${book}/${chapter}`);
+      cur = await api(`/api/books/${tr}/${book}/${chapter}`);
       const t = TR.find((x) => x.id === tr);
       const meta = books.find((x) => x.id === book) || {};
       const isQuran = corpus === 'quran' || meta.testament === 'Quran' || !!cur.surah;
@@ -434,7 +434,7 @@ export async function mount(view, params) {
         // Explicit Qur’anic query while on the Bible page → use a Qur’an edition
         if (corpus === 'bible' && looksQuranic && !isQuranTr(tryTr)) tryTr = defaultQuranTr();
 
-        const p = await api(`/api/bible/passage?ref=${encodeURIComponent(q)}&t=${tryTr}`);
+        const p = await api(`/api/books/passage?ref=${encodeURIComponent(q)}&t=${tryTr}`);
         tr = tryTr; trSel.value = tr; setPrefs({ bibleTranslation: tr, ...(isQuranTr(tr) ? { quranTranslation: tr } : {}) });
         book = p.book; chapter = p.chapter; highlight = p.selected || [];
         bookSel.value = book; fillCh(); load();

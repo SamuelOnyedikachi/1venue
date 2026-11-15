@@ -108,7 +108,7 @@ const ROUTES = [
   [/^\/dashboard\/?$/, () => import('./pages/dashboard.js')],
   [/^\/a\/([a-f0-9]{32,})\/?$/, () => import('./pages/attendance.js'), 'token'],
   [/^\/feed\/?$/, () => import('./pages/feed.js')],
-  [/^\/u\/([\w-]+)\/?$/, () => import('./pages/profile.js'), 'id'],
+  [/^\/u\/([\w.-]+)\/?$/, () => import('./pages/profile.js'), 'id'],
   [/^\/me\/?$/, () => import('./pages/profile.js'), { me: true }],
   [/^\/settings\/?$/, () => import('./pages/settings.js')],
   [/^\/books\/?$/, () => import('./pages/bible.js')],
@@ -131,6 +131,8 @@ const ROUTES = [
   // Meeting rooms: /y5yi87 (also /r/…, /j/…, and legacy /ABC-234 pastes)
   [/^\/(?:r\/|j\/)?([A-Za-z0-9]{3}-?[A-Za-z0-9]{3})\/?$/, () => import('./room/room.js'), 'code'],
 ];
+// Pages with a "Promoted" sidebar (wide) / inline card (phones). Discover and Feed place their own inline card.
+const RAILS = [[/^\/discover\/?$/, 'discover', false], [/^\/feed\/?$/, 'feed', false], [/^\/venues\/?$/, 'venues'], [/^\/(?:books|bible)\/?$/, 'books']];
 let currentPage = null;
 let routeSeq = 0;
 export function navigate(to, { replace = false } = {}) {
@@ -161,6 +163,8 @@ async function route() {
       if (seq !== routeSeq) { try { (res || mod).unmount?.(); } catch { /* ignore */ } return; }
       currentPage = res || mod;
       if (!isRoom) setBarContext(globalBarContext(mod.barPinned));
+      const rail = RAILS.find(([re]) => re.test(path));
+      if (rail && !params.search) import('./promo.js').then((m) => { if (seq === routeSeq) m.attachPromoRail(view, rail[1], { inline: rail[2] !== false }); }).catch(() => {});
     } catch (e) {
       if (seq !== routeSeq) return;
       view.replaceChildren();
@@ -427,6 +431,7 @@ async function boot() {
   await refreshSession();
   await route();
   initPwa();
+  import('./voice.js').then((m) => m.initVoice()).catch(() => {}); // voice typing in every eligible text box
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 if (!window.__1venueBooted) { window.__1venueBooted = true; boot(); }

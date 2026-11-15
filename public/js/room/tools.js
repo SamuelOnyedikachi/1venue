@@ -207,7 +207,7 @@ export function buildTools(R) {
         const trId = R.bibleTr();
         const corpus = corpusOfTr(trId);
         try {
-          const p = await api(`/api/bible/passage?ref=${encodeURIComponent(q)}&t=${trId}`);
+          const p = await api(`/api/books/passage?ref=${encodeURIComponent(q)}&t=${trId}`);
           const head = h('div', { class: 'row between', style: { alignItems: 'center', gap: '.4rem' } },
             h('b', { class: 'small' }, `${p.reference} · ${p.translation?.short || ''}`),
             makeListenBtn(() => ({ verses: p.verses, lang: p.translation?.lang, translation: trId }), { headers: R.headers() }));

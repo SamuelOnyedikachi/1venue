@@ -103,9 +103,23 @@ const AI = {
   mock: bool('AI_MOCK', false),
 };
 
-// Speech-to-text: an OpenAI-compatible /audio/transcriptions endpoint with fallback
+// Speech-to-text. Primary: Whisper on Replicate (REPLICATE_API_TOKEN) for the / bar, every text box
+// and meeting captions. Optional OpenAI-compatible /audio/transcriptions servers (N-ATLaS, Whisper)
+// follow; the browser Web Speech API is the last fallback (no token, cap reached, outage).
 const STT = {
-  provider: env('STT_PROVIDER', 'auto'), // auto | natlas | whisper | webspeech | off
+  provider: env('STT_PROVIDER', 'auto'), // auto | replicate | natlas | whisper | webspeech | off
+  replicate: {
+    token: env('REPLICATE_API_TOKEN', ''),
+    apiBase: env('REPLICATE_API_BASE', 'https://api.replicate.com/v1').replace(/\/+$/, ''),
+    // "owner/name" (official models) or "owner/name:version" (community models need the version)
+    model: env('STT_REPLICATE_MODEL', 'vaibhavs10/incredibly-fast-whisper:c6433aab18b7318bbae316495f1a097fc067deef7d59dc2f33e45077ae5956c7'),
+    timeoutMs: int('STT_REPLICATE_TIMEOUT_MS', 20_000),
+  },
+  // Daily caps, counted in seconds of speech sent (silence is never sent). 0 = no cap.
+  dailySecondsPerUser: int('STT_DAILY_SECONDS_PER_USER', 1200), // voice typing: / bar + text boxes (20 min)
+  dailyCaptionSecondsPerUser: int('STT_DAILY_CAPTION_SECONDS_PER_USER', 3600), // live captions while speaking in rooms (60 min)
+  dailySecondsTotal: int('STT_DAILY_SECONDS_TOTAL', 36_000), // whole server, all users (10 h ≈ US$7 at ~US$0.012/min)
+  segmentMaxSeconds: int('STT_SEGMENT_MAX_SECONDS', 5), // client cuts a speech segment at a pause or after this long
   primary: {
     name: env('STT_PRIMARY_NAME', 'N-ATLaS'),
     baseUrl: env('STT_PRIMARY_BASE_URL').replace(/\/$/, ''),
@@ -121,6 +135,14 @@ const STT = {
   chunkSeconds: int('STT_CHUNK_SECONDS', 8),
   maxChunkBytes: int('STT_MAX_CHUNK_BYTES', 2_000_000),
   timeoutMs: int('STT_TIMEOUT_MS', 30_000),
+};
+
+// AI event covers: black-forest-labs/flux-schnell on Replicate (16:9, text-free).
+const COVERS = {
+  model: env('AI_COVER_MODEL', 'black-forest-labs/flux-schnell'),
+  dailyLimit: int('AI_COVER_DAILY_LIMIT', 10), // generations ("Generate" / "Regenerate" clicks) per user per day; 0 = off
+  options: Math.min(4, Math.max(1, int('AI_COVER_OPTIONS', 2))), // images per generation
+  timeoutMs: int('AI_COVER_TIMEOUT_MS', 60_000),
 };
 
 // Storage: VPS disk by default, S3-compatible when STORAGE_DRIVER=s3
@@ -219,5 +241,5 @@ module.exports = {
   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
   AUTH, ALLOW_LOCAL_SIGNUP, ADMIN_EMAILS, CANONICAL_HOST,
   MEETING_INACTIVITY_MS, MEETING_CLEANUP_INTERVAL_MS, MAX_PARTICIPANTS, MAX_AUDIENCE, DEFAULT_SPEAKER_SEATS,
-  MEDIA, AI, STT, STORAGE, UPLOADS, BIBLE, MEMORY, RESTART, RATE_LIMIT_PER_MIN, TRUST_PROXY, MIME,
+  MEDIA, AI, STT, COVERS, STORAGE, UPLOADS, BIBLE, MEMORY, RESTART, RATE_LIMIT_PER_MIN, TRUST_PROXY, MIME,
 };

@@ -13,6 +13,8 @@ import { Captioner } from './captions.js';
 import { LocalRecorder } from './recorder.js';
 import { handle, chime } from './wsHandlers.js';
 import { maybeShowBanner } from '../pwa.js';
+import { setRoomBridge, roomMicChanged } from '../voice.js';
+import { surahCommands, loadSurahs, looksLikeQuran } from '../quran-cmd.js';
 
 export const isRoom = true;
 const fmtCode = (c) => String(c || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -225,6 +227,16 @@ Object.assign(Room.prototype, {
       onLocal: () => { this.stageR.paintAll(); refreshBar(); this.paintHead(); },
     });
     this.captioner = new Captioner(this);
+    // Voice typing in the / bar: muted -> local-only capture (never published); mic open -> clone of the
+    // published track, or your own caption lines when captions are already transcribing you.
+    setRoomBridge({
+      code: this.code,
+      headers: () => this.headers(),
+      micOn: () => !!(this.media && this.media.mic),
+      micTrack: () => this.media && this.media.micTrack(),
+      captionsActive: () => !!(this.captioner && this.captioner.on && this.captioner.mode === 'stt' && this.media && this.media.mic),
+      lang: () => this.captionLang(),
+    });
     this.recorder = new LocalRecorder(this.media); this.recorder.onChange = () => { this.paintHead(); refreshBar(); this.panel.refresh(); };
     this.tools = buildTools(this);
     this.panel = createPanel(this);
@@ -366,7 +378,7 @@ Object.assign(Room.prototype, {
     if (on && !this.isSpeaker(this.me.id)) { toast('You’re in the audience — request to speak first', { icon: 'stage', group: 'engage' }); return; }
     if (on && !this.perm('microphone') && !this.isMod()) { toast('The host has disabled microphones', { icon: 'micOff' }); return; }
     if (on && this.meP()?.mutedByHost && !this.isMod()) this.send('unmute-self', {});
-    try { await this.media.setMic(on); this.captioner.onMic(on); this.captioner.autoSync(); } catch (e) { toastErr(e); }
+    try { await this.media.setMic(on); this.captioner.onMic(on); this.captioner.autoSync(); roomMicChanged(); } catch (e) { toastErr(e); }
     this.changed();
   },
   async toggleCam(force) {
@@ -611,6 +623,7 @@ Object.assign(Room.prototype, {
     clearInterval(this.tick); window.removeEventListener('keydown', this.onKey); window.removeEventListener('pagehide', this.onUnload); window.removeEventListener('resize', this.onResize);
     try { this.ws && this.ws.close(); } catch { /* */ }
     this.captioner && this.captioner.stop(); this.media && this.media.disconnect().catch(() => {});
+    setRoomBridge(null);
     this.pipWin && this.pipWin.close();
     unregisterCommands('room');
     if (this.onFsChange) { document.removeEventListener('fullscreenchange', this.onFsChange); document.documentElement.classList.remove('room-fs'); if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); }
@@ -765,6 +778,8 @@ Object.assign(Room.prototype, {
         const em = q.match(/^(\p{Extended_Pictographic}\uFE0F?)$/u); if (em) out.push({ id: 'dyn-react', label: 'React ' + em[1], glyph: em[1], short: 'React', group: 'engage', run: () => R.react(em[1]) });
         searchSounds(q).forEach((sd) => out.push({ id: 'dyn-snd-' + sd.id, label: `Play ${sd.label} for everyone`, short: sd.label, glyph: sd.emoji, group: 'engage', run: () => R.playRoomSound(sd.id) }));
         if (q.trim().length >= 3 && !/\s/.test(q.trim())) searchEmoji(q.trim(), 4).forEach((e) => out.push({ id: 'dyn-em-' + e, label: `React ${e} (${emojiName(e)})`, short: emojiName(e).split(' ')[0], glyph: e, group: 'engage', run: () => R.react(e) }));
+        // Qur'an (typed or spoken "surah al kahf 10"): suggest only; the host taps to open it in Scripture.
+        if (looksLikeQuran(q)) surahCommands(q, loadSurahs(refreshBar), () => {}).slice(0, 3).forEach((c) => out.push({ ...c, id: 'dyn-scr-' + c.id, label: 'Qur’an: ' + c.short, run: () => { R.scriptureDraft = c.short.split(' · ')[0]; R.panel.open('tools', 'scripture'); } }));
         if (/^[1-3]?\s?[a-z]+\.?\s+\d+(:\d+(-\d+)?)?$/i.test(q.trim())) out.push({ id: 'dyn-scr', label: `Scripture: ${q.trim()}`, short: q.trim(), icon: 'bookOpen', group: 'faith', run: () => { R.scriptureDraft = q.trim(); R.panel.open('tools', 'scripture'); } });
         const pp = R.people().filter((p) => p.id !== R.me.id && p.name.toLowerCase().includes(q.toLowerCase())).slice(0, 3);
         pp.forEach((p) => out.push({ id: 'dyn-p' + p.id, label: `Message ${p.name}`, short: p.name, icon: 'user', group: 'people', tail: true, run: () => { R.panel.sub.chat = 'dm'; R.dmWith = p.id; R.focusNext = true; R.panel.open('chat'); } }));
