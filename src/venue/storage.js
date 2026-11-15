@@ -97,4 +97,23 @@ async function open(row) {
   return { stream: fs.createReadStream(p), size: (await fs.promises.stat(p)).size };
 }
 
-module.exports = { save, open, publicUrl, driver, _sign: sign };
+/** Delete a stored object (account deletion). Missing objects count as removed. Never throws. */
+async function remove(row) {
+  const key = row && (row.object_key || row.objectKey);
+  if (!key) return false;
+  try {
+    if (row.driver === 's3') {
+      if (driver() !== 's3') return false;
+      const url = s3Url(key);
+      const r = await fetch(url, { method: 'DELETE', headers: sign('DELETE', url, {}, sha('')), signal: AbortSignal.timeout(15000) });
+      return r.ok || r.status === 404;
+    }
+    await fs.promises.unlink(localPath(key)).catch((e) => { if (e.code !== 'ENOENT') throw e; });
+    return true;
+  } catch (e) {
+    console.warn('[storage] delete failed:', e.message);
+    return false;
+  }
+}
+
+module.exports = { save, open, remove, publicUrl, driver, _sign: sign };

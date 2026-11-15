@@ -1,6 +1,8 @@
-// Live captions. Primary: server STT (N-ATLaS / Whisper) via short self-contained audio chunks.
+// Live captions. Primary: server STT (Whisper on Replicate, then N-ATLaS / Whisper servers) via short
+// speech clips cut at natural pauses (2-5 s, silence never sent; shared Segmenter from voice.js).
 // Fallback: the browser's Web Speech API. Every final line is stored server-side as "Name: text".
 import { toast } from '../ui.js';
+import { Segmenter } from '../voice.js';
 
 const WS_LANG = { en: 'en-NG', yo: 'yo-NG', ig: 'ig-NG', ha: 'ha-NG', pcm: 'en-NG', fr: 'fr-FR' };
 export const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -40,43 +42,35 @@ export class Captioner {
     try { this.rec && this.rec.state !== 'inactive' && this.rec.stop(); } catch { /* */ }
     try { this.sr && this.sr.stop(); } catch { /* */ }
     this.rec = null; this.sr = null; this.mode = null; this.auto = false;
-    if (this.srcNode) { try { this.srcNode.disconnect(); } catch { /* */ } this.srcNode = null; this.srcTrack = null; }
-    if (this.ac) { this.ac.close().catch(() => {}); this.ac = null; this.an = null; }
+    if (this.seg) { this.seg.stop(); this.seg = null; } this.srcTrack = null;
     this.R.onCaptionMode && this.R.onCaptionMode(null);
   }
   async loopStt() {
     if (!this.on || this.mode !== 'stt') return;
     const track = this.R.media.micTrack();
-    if (!track || track.muted || !this.R.media.mic) { this.timer = setTimeout(() => this.loopStt(), 1500); return; }
-    const stream = new MediaStream([track]);
-    // simple VAD: skip silent chunks so we don't burn STT on silence
-    // one AudioContext + analyser for the whole session; rebuild the source only when the mic track changes
-    if (!this.ac) { this.ac = new AudioContext(); this.an = this.ac.createAnalyser(); this.an.fftSize = 512; }
-    if (this.srcTrack !== track) { if (this.srcNode) { try { this.srcNode.disconnect(); } catch { /* */ } } this.srcNode = this.ac.createMediaStreamSource(stream); this.srcNode.connect(this.an); this.srcTrack = track; }
-    if (this.ac.state === 'suspended') this.ac.resume().catch(() => {});
-    const an = this.an;
-    const buf = new Uint8Array(an.fftSize); let peak = 0;
-    const meter = setInterval(() => { an.getByteTimeDomainData(buf); for (const v of buf) peak = Math.max(peak, Math.abs(v - 128)); }, 120);
-    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : '';
-    const rec = this.rec = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 24000 } : undefined);
-    const chunks = [];
-    rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
-    rec.onstop = async () => {
-      clearInterval(meter);
-      if (this.on && this.mode === 'stt') this.loopStt();
-      if (peak < 6 || !chunks.length) return;
-      const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
-      try {
-        const r = await fetch(`/api/stt?code=${this.R.code}&lang=${this.lang}`, { method: 'POST', body: blob, headers: { 'Content-Type': blob.type, ...this.R.headers() }, credentials: 'include' });
-        if (!r.ok) throw new Error('stt ' + r.status);
-        this.failures = 0;
-      } catch {
-        if (++this.failures >= 3 && SpeechRec) { toast('Speech service unavailable — switched to on-device captions', { icon: 'captions', group: 'ai' }); this.mode = null; this.startWebSpeech(); this.R.onCaptionMode && this.R.onCaptionMode(this.mode); }
+    if (!track || track.readyState !== 'live') { this.timer = setTimeout(() => this.loopStt(), 1500); return; }
+    if (this.seg && this.srcTrack === track) { this.timer = setTimeout(() => this.loopStt(), 2000); return; } // re-check for device switches
+    if (this.seg) { this.seg.stop(); this.seg = null; }
+    this.srcTrack = track;
+    const maxMs = Math.min(15, Math.max(2, this.R.config.stt?.segmentMaxSeconds || 5)) * 1000;
+    // Muted = LiveKit disables the track (silence), so the VAD simply sends nothing.
+    this.seg = new Segmenter(new MediaStream([track]), { maxMs, onHearing: () => {}, onClip: (blob, ms) => this.sendClip(blob, ms) });
+    this.seg.start();
+    this.timer = setTimeout(() => this.loopStt(), 2000);
+  }
+  async sendClip(blob, ms) {
+    if (!this.on || this.mode !== 'stt' || !this.R.media.mic) return;
+    try {
+      const r = await fetch(`/api/stt?mode=caption&code=${this.R.code}&lang=${this.lang}`, { method: 'POST', body: blob, headers: { 'Content-Type': blob.type, 'X-Audio-Ms': String(Math.round(ms || 0)), ...this.R.headers() }, credentials: 'include' });
+      if (!r.ok) { const j = await r.json().catch(() => ({})); const e = new Error('stt ' + r.status); e.fallback = j.fallback; throw e; }
+      this.failures = 0;
+    } catch (e) {
+      if ((e.fallback === 'webspeech' || ++this.failures >= 3) && SpeechRec && this.mode === 'stt') {
+        toast(e.fallback ? 'Caption limit for today reached — switched to on-device captions' : 'Speech service unavailable — switched to on-device captions', { icon: 'captions', group: 'ai' });
+        if (this.seg) { this.seg.stop(); this.seg = null; } clearTimeout(this.timer);
+        this.mode = null; this.startWebSpeech(); this.R.onCaptionMode && this.R.onCaptionMode(this.mode);
       }
-    };
-    rec.start();
-    const secs = Math.min(15, Math.max(3, this.R.config.stt?.chunkSeconds || 6));
-    this.timer = setTimeout(() => { try { rec.state !== 'inactive' && rec.stop(); } catch { /* */ } }, secs * 1000);
+    }
   }
   startWebSpeech() {
     if (!SpeechRec) return;

@@ -20,6 +20,7 @@ module.exports = async function handle(req, res, parsed) {
       allowLocalSignup: config.ALLOW_LOCAL_SIGNUP,
       auth: {
         google: google.enabled(),
+        apple: require('../features/auth/apple').enabled(),
         googleSignup: google.enabled() && config.AUTH.google.allowSignup,
         allowSignup: config.ALLOW_LOCAL_SIGNUP,
         requireVerifiedEmail: config.AUTH.requireVerifiedEmail,
@@ -33,6 +34,7 @@ module.exports = async function handle(req, res, parsed) {
       defaultSpeakerSeats: config.DEFAULT_SPEAKER_SEATS,
       ai: ai.status(),
       stt: stt.status(),
+      covers: { enabled: !!config.STT.replicate.token && config.COVERS.dailyLimit > 0, dailyLimit: config.COVERS.dailyLimit, options: config.COVERS.options },
       bible: { defaultTranslation: config.BIBLE.defaultTranslation },
       storage: { driver: config.STORAGE.driver, maxUploadBytes: config.STORAGE.maxUploadBytes, limits: require('../venue/uploads').publicLimits() },
       features,

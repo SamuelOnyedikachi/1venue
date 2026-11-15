@@ -44,13 +44,26 @@ module.exports = function routes(route, kit) {
   route('POST', '/api/ai/title', async (ctx) => {
     await aiGuard(ctx);
     const b = await ctx.body();
-    const r = await ai().titleDescription(String(b.notes || ''), b.category);
+    const notes = String(b.notes || '');
+    const r = await ai().titleDescription(notes, b.category);
     let out = {};
     try { out = JSON.parse(String(r.text).replace(/^```(json)?|```$/g, '').trim()); } catch (_) { out = { title: String(r.text).split('\n')[0].slice(0, 80), description: String(r.text).slice(0, 400) }; }
     const tags = Array.isArray(out.tags)
       ? out.tags.map((t) => String(t).trim().toLowerCase().replace(/^#/, '').slice(0, 32)).filter(Boolean).slice(0, 12)
       : [];
-    return { title: out.title || '', description: out.description || '', tags, provider: r.provider, mock: !!r.mock };
+    const title = out.title || '';
+    const theme = require('../../lib/palette').pickPalette({ suggestion: out.palette, title: title || notes, description: out.description || '', category: out.category || b.category });
+    const hints = require('./draft').enrichDraft(notes, out, {
+      tzOffset: Number(b.tzOffset) || 0,
+      now: b.now ? new Date(b.now) : new Date(),
+      category: b.category,
+    });
+    return {
+      title, description: out.description || '', tags, theme,
+      category: hints.category || null, venue: hints.venue,
+      start: hints.start, end: hints.end, hasTime: hints.hasTime, endHasTime: hints.endHasTime,
+      provider: r.provider, mock: !!r.mock,
+    };
   });
   route('POST', '/api/ai/scripture', async (ctx) => {
     await aiGuard(ctx);
