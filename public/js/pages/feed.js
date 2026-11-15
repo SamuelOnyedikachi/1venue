@@ -4,6 +4,8 @@ import { state, requireLogin, loginUrl } from '../app.js';
 import { postCard, empty, personRow } from '../components.js';
 import { passageCard } from '../passage.js';
 import { promoInline, promoCompact, loadPromos } from '../promo.js';
+import { listenOn } from '../voice.js';
+import { createHistory } from '../history.js';
 
 const FILTERS = [
   ['all', 'All'],
@@ -39,11 +41,95 @@ export function composer(onPost, { prefill = '', eventId, passage = null, autofo
     } catch (e) { toastErr(e); }
   };
 
+  const hist = createHistory(12);
+  let lastTuned = '';
+  let fineLeft = null;
+  let showingOriginal = false;
+
   const btn = h('button', { class: 'btn primary feed-post-btn', type: 'button', html: icon('send', { size: 16 }) + ' Post' });
+  const undoBtn = h('button', { class: 'icon-btn sm', type: 'button', 'data-group': 'ai', 'data-tip': 'Undo', 'aria-label': 'Undo', html: icon('undo', { size: 18 }) });
+  const redoBtn = h('button', { class: 'icon-btn sm', type: 'button', 'data-group': 'ai', 'data-tip': 'Redo', 'aria-label': 'Redo', html: icon('redo', { size: 18 }) });
+  const micBtn = h('button', { class: 'icon-btn sm', type: 'button', 'data-group': 'media', 'data-tip': 'Voice typing', 'aria-label': 'Voice typing', html: icon('mic', { size: 18 }) });
+  const tuneBtn = h('button', { class: 'icon-btn sm feed-finetune', type: 'button', 'data-group': 'ai', 'data-tip': 'Fine-tune', 'aria-label': 'Fine-tune wording', html: icon('sparkle', { size: 18 }) });
+  const toggle = h('button', { class: 'chip sm feed-finetune-toggle hidden', type: 'button', 'aria-pressed': 'false' }, 'Original');
+
+  const syncBtns = () => {
+    const empty = !ta.value.trim();
+    tuneBtn.disabled = empty || fineLeft === 0;
+    if (fineLeft === 0) tuneBtn.dataset.tip = 'Daily fine-tune limit reached';
+    else if (empty) tuneBtn.dataset.tip = 'Write something first';
+    else tuneBtn.dataset.tip = 'Fine-tune';
+    undoBtn.disabled = !hist.canUndo();
+    redoBtn.disabled = !hist.canRedo();
+    const hasTune = !!lastTuned && hist.size() > 1;
+    toggle.classList.toggle('hidden', !hasTune);
+    toggle.textContent = showingOriginal ? 'Fine-tuned' : 'Original';
+    toggle.setAttribute('aria-pressed', showingOriginal ? 'true' : 'false');
+  };
+
+  const applyText = (text) => {
+    ta.value = text;
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(160, Math.max(44, ta.scrollHeight)) + 'px';
+    syncBtns();
+  };
+
   ta.addEventListener('input', () => {
     ta.style.height = 'auto';
     ta.style.height = Math.min(160, Math.max(44, ta.scrollHeight)) + 'px';
+    showingOriginal = false;
+    syncBtns();
   });
+  ta.addEventListener('keydown', (e) => {
+    const meta = e.metaKey || e.ctrlKey;
+    if (!meta) return;
+    const k = e.key.toLowerCase();
+    if (k === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      const v = hist.undo();
+      if (v != null) { showingOriginal = v === hist.original(); applyText(v); }
+    } else if (k === 'z' && e.shiftKey || k === 'y') {
+      e.preventDefault();
+      const v = hist.redo();
+      if (v != null) { showingOriginal = false; applyText(v); }
+    }
+  });
+
+  undoBtn.onclick = () => {
+    const v = hist.undo();
+    if (v != null) { showingOriginal = v === hist.original(); applyText(v); }
+  };
+  redoBtn.onclick = () => {
+    const v = hist.redo();
+    if (v != null) { showingOriginal = false; applyText(v); }
+  };
+  micBtn.onclick = () => { ta.focus(); listenOn(ta); };
+  toggle.onclick = () => {
+    if (!lastTuned) return;
+    if (showingOriginal) { showingOriginal = false; applyText(lastTuned); }
+    else { showingOriginal = true; applyText(hist.original() || ta.value); }
+  };
+  tuneBtn.onclick = async () => {
+    const text = ta.value.trim();
+    if (!text) return;
+    if (!requireLogin('Sign in to fine-tune')) return;
+    tuneBtn.disabled = true;
+    try {
+      const r = await api('/api/ai/finetune', { method: 'POST', body: { text: ta.value } });
+      hist.push(ta.value);
+      hist.push(r.text);
+      lastTuned = r.text;
+      showingOriginal = false;
+      if (typeof r.left === 'number') fineLeft = r.left;
+      applyText(r.text);
+      toast('Fine-tuned', { icon: 'sparkle', group: 'ai' });
+    } catch (e) { toastErr(e); } finally { syncBtns(); }
+  };
+
+  if (state.user) {
+    api('/api/ai/finetune').then((r) => { fineLeft = r.left; syncBtns(); }).catch(() => {});
+  }
+  syncBtns();
 
   btn.onclick = async () => {
     if (!requireLogin('Sign in to post')) return;
@@ -55,6 +141,7 @@ export function composer(onPost, { prefill = '', eventId, passage = null, autofo
         body: { body: ta.value.trim(), media: passage ? [{ type: 'passage', ...passage }, ...media] : media, eventId },
       });
       ta.value = ''; media = []; passage = null; paintPassage(); thumbs.innerHTML = '';
+      hist.reset(); lastTuned = ''; showingOriginal = false; applyText('');
       onPost && onPost(p);
       toast('Posted', { icon: 'check', group: 'social' });
     } catch (e) { toastErr(e); } finally { btn.disabled = false; }
@@ -73,6 +160,12 @@ export function composer(onPost, { prefill = '', eventId, passage = null, autofo
         h('button', { class: 'icon-btn sm', type: 'button', 'data-group': 'media', 'data-tip': 'Add video', 'aria-label': 'Add video', html: icon('video', { size: 18 }), onclick: () => toast('Video posts coming soon', { icon: 'info' }) }),
         h('span', { class: 'feed-compose-sep' }),
         h('a', { class: 'icon-btn sm', href: '/create', 'data-link': '', 'data-group': 'engage', 'data-tip': 'Schedule an event', 'aria-label': 'Schedule an event', html: icon('calendar', { size: 18 }) }),
+        h('span', { class: 'feed-compose-sep' }),
+        micBtn,
+        tuneBtn,
+        undoBtn,
+        redoBtn,
+        toggle,
       ),
       btn));
 }

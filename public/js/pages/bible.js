@@ -117,6 +117,7 @@ export const refLabel = (bookName, ch, vs, { quran = false } = {}) => {
 };
 
 export async function mount(view, params) {
+  document.body.dataset.page = 'books';
   // Canonical path is /books (legacy /bible still works and is rewritten)
   if (location.pathname.startsWith('/bible')) {
     const qs = location.search || '';
