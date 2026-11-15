@@ -42,7 +42,7 @@ export async function mount(view) {
     busy(true);
     try { const r = await api('/api/admin/seed', { method: 'DELETE' }); paint(r); toast('Demo data removed', { icon: 'check' }); } catch (e) { toastErr(e); } finally { busy(false); }
   };
-  view.append(ttsCard());
+  view.append(promoCard(), ttsCard());
   body.append(h('p', { class: 'tiny muted' }, 'Loading…'));
   await refresh().catch((e) => body.replaceChildren(h('p', { class: 'small' }, e.message || 'Could not load')));
 }
@@ -79,4 +79,65 @@ function ttsCard() {
     }
   })();
   return card;
+}
+
+// Promotions: pick public events / posts to show as "Promoted" in the Discover, Feed, Venues and Books sidebars.
+const PLACES = [['discover', 'Discover'], ['feed', 'Feed'], ['venues', 'Venues'], ['books', 'Books']];
+const dtLocal = (d) => { if (!d) return ''; const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset()); return x.toISOString().slice(0, 16); };
+function promoCard() {
+  const listEl = h('div', { class: 'col', style: { gap: '.5rem' } }, h('p', { class: 'tiny muted' }, 'Loading…'));
+  let type = 'event', picked = null;
+  const typeSel = h('select', { class: 'input', 'aria-label': 'Promote' }, h('option', { value: 'event' }, 'Event'), h('option', { value: 'post' }, 'Post'));
+  const q = h('input', { class: 'input', type: 'search', placeholder: 'Search public events by title or host…', 'aria-label': 'Search what to promote' });
+  const results = h('div', { class: 'col promo-pick', style: { gap: '4px' } });
+  const pickedEl = h('div', { class: 'small muted' }, 'Nothing picked yet');
+  const starts = h('input', { class: 'input', type: 'datetime-local', value: dtLocal(new Date()), 'aria-label': 'Starts' });
+  const ends = h('input', { class: 'input', type: 'datetime-local', value: dtLocal(Date.now() + 7 * 864e5), 'aria-label': 'Ends' });
+  const boxes = PLACES.map(([v, l]) => { const c = h('input', { type: 'checkbox', value: v, checked: true }); return [c, h('label', { class: 'row small', style: { gap: '.35rem' } }, c, l)]; });
+  const add = h('button', { class: 'btn primary', type: 'button', html: icon('plus', { size: 16 }) + 'Promote' });
+  const search = async () => {
+    try {
+      const r = await api(`/api/admin/promotions/candidates?type=${type}&q=${encodeURIComponent(q.value.trim())}`);
+      results.replaceChildren(...(r.items.length ? r.items.map((it) => h('button', { type: 'button', class: `list-item${picked && picked.id === it.id ? ' on' : ''}`, onclick: () => { picked = it; pickedEl.textContent = `Picked: ${it.title}`; search(); } },
+        h('div', { class: 'grow' }, h('strong', { class: 'small' }, it.title), h('div', { class: 'tiny muted' }, it.sub)))) : [h('p', { class: 'tiny muted' }, 'No matches')]));
+    } catch (e) { results.replaceChildren(h('p', { class: 'tiny muted' }, e.message)); }
+  };
+  let t; q.oninput = () => { clearTimeout(t); t = setTimeout(search, 250); };
+  typeSel.onchange = () => { type = typeSel.value; picked = null; pickedEl.textContent = 'Nothing picked yet'; q.placeholder = type === 'post' ? 'Search posts by text or @username…' : 'Search public events by title or host…'; search(); };
+  add.onclick = async () => {
+    if (!picked) return toast('Pick an event or post first', { icon: 'alert' });
+    add.disabled = true;
+    try {
+      await api('/api/admin/promotions', { method: 'POST', body: { type, targetId: picked.id, startsAt: starts.value ? new Date(starts.value).toISOString() : null, endsAt: ends.value ? new Date(ends.value).toISOString() : null, placements: boxes.filter(([c]) => c.checked).map(([c]) => c.value) } });
+      toast('Promotion added', { icon: 'check' }); picked = null; pickedEl.textContent = 'Nothing picked yet'; refresh(); search();
+    } catch (e) { toastErr(e); } finally { add.disabled = false; }
+  };
+  const refresh = async () => {
+    try {
+      const { promotions } = await api('/api/admin/promotions');
+      listEl.replaceChildren(...(promotions.length ? promotions.map((p) => {
+        const ctr = p.views ? `${((p.clicks / p.views) * 100).toFixed(1)}%` : '–';
+        const toggle = h('button', { class: 'btn sm', type: 'button' }, p.active ? 'Pause' : 'Resume');
+        toggle.onclick = async () => { try { await api(`/api/admin/promotions/${p.id}`, { method: 'PATCH', body: { active: !p.active } }); refresh(); } catch (e) { toastErr(e); } };
+        const del = h('button', { class: 'btn sm ghost', type: 'button', 'aria-label': 'Delete promotion', html: icon('trash', { size: 15 }) });
+        del.onclick = async () => { if (!(await confirmDlg('Delete this promotion? Its view and click counts go too.', { ok: 'Delete', danger: true }))) return; try { await api(`/api/admin/promotions/${p.id}`, { method: 'DELETE' }); refresh(); } catch (e) { toastErr(e); } };
+        return h('div', { class: 'card pad row wrap', style: { gap: '.6rem' } },
+          h('span', { class: `chip tiny${p.live ? ' on' : ''}` }, p.live ? 'Live' : p.active ? 'Scheduled / ended' : 'Paused'),
+          h('div', { class: 'grow' }, h('strong', { class: 'small' }, p.target.title || '(deleted)'),
+            h('div', { class: 'tiny muted' }, `${p.type} · ${p.placements.join(', ')} · ${new Date(p.startsAt).toLocaleDateString()}${p.endsAt ? ' → ' + new Date(p.endsAt).toLocaleDateString() : ''}`)),
+          h('span', { class: 'tiny' }, h('strong', null, String(p.views)), ' views · ', h('strong', null, String(p.clicks)), ` clicks · ${ctr}`),
+          toggle, del);
+      }) : [h('p', { class: 'tiny muted' }, 'No promotions yet. Up to 3 show per sidebar, newest weight first.')]));
+    } catch (e) { listEl.replaceChildren(h('p', { class: 'small' }, e.message || 'Could not load')); }
+  };
+  refresh(); search();
+  return h('section', { class: 'card pad col', style: { gap: '.8rem', marginTop: '1rem' } },
+    h('div', { class: 'row', style: { gap: '.6rem' } }, h('span', { class: 'ico-tile', 'data-group': 'engage', html: icon('sparkle', { size: 18 }) }),
+      h('div', { class: 'grow' }, h('h3', null, 'Promotions'), h('p', { class: 'muted small' }, 'Shown as “Promoted” in the Discover, Feed, Venues and Books sidebars (3 per sidebar), and as one inline card on phones.'))),
+    h('div', { class: 'row wrap', style: { gap: '.5rem' } }, typeSel, h('div', { class: 'grow', style: { minWidth: '220px' } }, q)),
+    results, pickedEl,
+    h('div', { class: 'row wrap', style: { gap: '.6rem' } }, h('label', { class: 'col tiny', style: { gap: '.2rem' } }, 'Starts', starts), h('label', { class: 'col tiny', style: { gap: '.2rem' } }, 'Ends', ends)),
+    h('div', { class: 'row wrap', style: { gap: '.9rem' } }, ...boxes.map(([, l]) => l)),
+    h('div', null, add),
+    h('h4', { class: 'small', style: { marginTop: '.4rem' } }, 'Current promotions'), listEl);
 }

@@ -67,7 +67,7 @@ let cache = null, loading = null;
 /** Surah list (sync, may be empty on first call); onReady fires once it arrives. */
 export function loadSurahs(onReady) {
   if (cache) return cache;
-  loading ||= fetch('/api/bible/books', { credentials: 'same-origin' }).then((r) => r.json())
+  loading ||= fetch('/api/books/books', { credentials: 'same-origin' }).then((r) => r.json())
     .then((b) => { cache = (b.books || []).filter((x) => x.surah); onReady && onReady(); })
     .catch(() => { loading = null; });
   return [];

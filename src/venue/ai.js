@@ -357,7 +357,7 @@ module.exports = {
     { role: 'user', content: `Translate to ${lang}:\n${String(text).slice(0, 2000)}` },
   ], { maxTokens: 400, temperature: 0.1 }),
   titleDescription: (notes, category) => chat('title', [
-    { role: 'system', content: 'Write a catchy event title (max 80 chars), description (max 400 chars), and 3–8 short discovery tags (lowercase, no #, max 32 chars each). Reply as JSON {"title":"","description":"","tags":["tag1","tag2"]}.' },
+    { role: 'system', content: 'Write a catchy event title (max 80 chars), description (max 400 chars), and 3–8 short discovery tags (lowercase, no #, max 32 chars each). Also pick the event colour pair that best fits its mood from exactly one of: Ocean, Violet, Rose, Sunset, Gold, Emerald, Teal, Graphite. Reply as JSON {"title":"","description":"","tags":["tag1","tag2"],"palette":"Emerald"}.' },
     { role: 'user', content: `Category: ${category || 'event'}\nNotes: ${String(notes).slice(0, 2000)}` },
   ], { json: true, maxTokens: 350 }),
   moderate: async (text) => {

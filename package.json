@@ -19,6 +19,7 @@
   "license": "MIT",
   "dependencies": {
     "bcryptjs": "^2.4.3",
+    "chrono-node": "^2.10.3",
     "jsonwebtoken": "^9.0.2",
     "libphonenumber-js": "^1.13.16",
     "livekit-client": "^2.9.1",

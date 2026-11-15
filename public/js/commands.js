@@ -1,4 +1,4 @@
-// Command registry + the footer command bar (30% input / 70% inline actions).
+// Command registry + the footer command bar (50% input / 50% inline actions, same total width).
 // Fuzzy, typo-tolerant and synonym-aware; every page, setting and room feature registers here.
 import { icon } from './icons.js';
 import { h, esc, isMobile } from './ui.js';

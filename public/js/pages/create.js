@@ -37,6 +37,7 @@ export async function mount(view, params) {
   const toLocal = (d) => { if (!d) return ''; const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset()); return x.toISOString().slice(0, 16); };
   const starts = h('input', { class: 'input', type: 'datetime-local', value: toLocal(ev.startsAt) });
   const ends = h('input', { class: 'input', type: 'datetime-local', value: toLocal(ev.endsAt) });
+  starts._voiceEnd = ends; // "tomorrow 6 to 8pm" spoken into Starts fills Ends too
 
   const catSel = h('select', { class: 'cat-select', 'aria-label': 'Category' });
   CATS.concat([['other', 'Other', 'sparkle']]).forEach(([k, l]) => {
@@ -133,6 +134,7 @@ export async function mount(view, params) {
   matInput.addEventListener('blur', () => setTimeout(() => { matSug.hidden = true; }, 180));
 
   const swatches = h('div', { class: 'swatches' }, ACCENTS.map(([n, a, a2]) => h('button', { type: 'button', class: `swatch${acc === a ? ' on' : ''}`, 'data-tip': n, style: { background: `linear-gradient(135deg, ${a}, ${a2})` }, 'aria-label': n, onclick: (e) => { acc = a; acc2 = a2; swatches.querySelectorAll('.swatch').forEach((s) => s.classList.remove('on')); e.currentTarget.classList.add('on'); preview(); } })));
+  const setTheme = (a, a2) => { acc = a; acc2 = a2; swatches.querySelectorAll('.swatch').forEach((sw, i) => sw.classList.toggle('on', ACCENTS[i][1] === a)); preview(); };
   const coverIn = h('input', { type: 'file', accept: 'image/*', class: 'hidden' });
   const prev = h('div', { class: 'ev-card card', style: { pointerEvents: 'none' } });
   function preview() {
@@ -144,8 +146,47 @@ export async function mount(view, params) {
   title.addEventListener('input', preview); preview();
   coverIn.onchange = async () => {
     const f = coverIn.files[0]; if (!f) return;
-    try { const r = await uploadFile(f, { purpose: 'cover' }); coverUrl = r.url; preview(); toast('Cover uploaded', { icon: 'image' }); } catch (e) { toastErr(e); }
+    try { const r = await uploadFile(f, { purpose: 'cover' }); coverUrl = r.url; preview(); paintCoverBtn(); toast('Cover uploaded', { icon: 'image' }); } catch (e) { toastErr(e); }
   };
+
+  // ---- AI covers (flux-schnell, 16:9, text-free). Only the cover you pick is saved (event + Materials).
+  const coversOn = !!state.config?.covers?.enabled;
+  const coverBtn = h('button', { type: 'button', class: 'btn sm', 'data-group': 'content', html: '' });
+  const paintCoverBtn = () => { coverBtn.innerHTML = icon('image', { size: 15 }) + (coverUrl ? 'Change cover' : 'Upload cover'); };
+  paintCoverBtn(); coverBtn.onclick = () => coverIn.click();
+  const genBtn = coversOn ? h('button', { type: 'button', class: 'btn sm', 'data-group': 'ai', html: icon('sparkles', { size: 15 }) + 'Design with AI' }) : null;
+  const coverOpts = h('div', { class: 'cover-opts', hidden: true });
+  const coverNote = h('div', { class: 'tiny faint' });
+  let genBusy = false, autoDone = false;
+  async function generateCovers() {
+    if (!coversOn || genBusy) return;
+    genBusy = true; genBtn.disabled = true;
+    const n = state.config.covers.options || 2;
+    coverOpts.hidden = false;
+    coverOpts.replaceChildren(...Array.from({ length: n }, () => h('div', { class: 'cover-opt skel' })));
+    coverNote.textContent = 'Designing covers…';
+    try {
+      const r = await api('/api/covers/generate', { method: 'POST', body: { title: title.value || catOf(category)[0], description: desc.value, category, accent: acc, accent2: acc2 } });
+      coverOpts.replaceChildren(...r.options.map((o) => {
+        const b = h('button', { type: 'button', class: 'cover-opt', 'aria-label': 'Use this cover' }, h('img', { src: o.url, alt: '' }), h('span', { class: 'cover-use', html: icon('check', { size: 14 }) + 'Use' }));
+        b.onclick = async () => {
+          coverOpts.querySelectorAll('.cover-opt').forEach((x) => x.classList.toggle('on', x === b)); b.disabled = true;
+          try {
+            const p = await api('/api/covers/pick', { method: 'POST', body: { token: o.token, title: title.value || 'Event' } });
+            coverUrl = p.url; preview(); paintCoverBtn();
+            toast(p.materialId ? 'Cover set and saved to your Materials' : 'Cover set', { icon: 'image', group: 'content' });
+          } catch (e) { toastErr(e); b.classList.remove('on'); } finally { b.disabled = false; }
+        };
+        return b;
+      }));
+      genBtn.innerHTML = icon('refresh', { size: 15 }) + 'Regenerate';
+      coverNote.textContent = `Pick one to use it. ${r.left} AI design${r.left === 1 ? '' : 's'} left today.`;
+    } catch (e) {
+      coverOpts.hidden = true; coverNote.textContent = '';
+      toastErr(e);
+    } finally { genBusy = false; genBtn.disabled = false; }
+  }
+  if (genBtn) genBtn.onclick = () => { autoDone = true; generateCovers(); };
 
   const aiBtn = h('button', { type: 'button', class: 'btn sm', 'data-group': 'ai', html: icon('sparkles', { size: 15 }) + 'Write it for me' });
   aiBtn.onclick = async () => {
@@ -156,7 +197,9 @@ export async function mount(view, params) {
       if (r.title) title.value = r.title;
       if (r.description) desc.value = r.description;
       if (Array.isArray(r.tags) && r.tags.length) tags.value = r.tags.join(', ');
+      if (r.theme && r.theme.accent) setTheme(r.theme.accent, r.theme.accent2);
       preview();
+      if (coversOn && !coverUrl) { autoDone = true; generateCovers(); }
       toast(r.mock ? 'AI demo mode — add RunPod keys for real suggestions' : 'Drafted with AI', { icon: 'sparkles', group: 'ai' });
     } catch (e) { toastErr(e); } finally { aiBtn.disabled = false; }
   };
@@ -208,7 +251,9 @@ export async function mount(view, params) {
       ))),
     h('div', { class: 'card pad layer col has-suggest', style: { gap: '1rem' } },
       field('Event colours', 'palette', swatches),
-      h('div', { class: 'row' }, h('button', { type: 'button', class: 'btn sm', 'data-group': 'content', html: icon('image', { size: 15 }) + (coverUrl ? 'Change cover' : 'Upload cover'), onclick: () => coverIn.click() }), coverIn),
+      field('Cover', 'image', h('div', { class: 'col cover-step', style: { gap: '.6rem' } },
+        h('div', { class: 'row wrap', style: { gap: '.5rem' } }, genBtn, coverBtn, coverIn),
+        coverOpts, coverNote)),
       field('Materials', 'folder', h('div', { class: 'col', style: { gap: '.5rem' } },
         h('div', { class: 'suggest-box' }, matInput, matSug),
         matChips,
@@ -216,6 +261,11 @@ export async function mount(view, params) {
       ))),
     h('div', { class: 'row wrap', style: { gap: '.6rem' } }, submit, liveNow));
 
+  // Reaching the cover step with a title but no cover designs one set automatically (once per visit).
+  if (coversOn && !coverUrl && 'IntersectionObserver' in window) {
+    const io = new IntersectionObserver((es) => { if (es[0].isIntersecting && !autoDone && !coverUrl && title.value.trim().length >= 4) { autoDone = true; io.disconnect(); generateCovers(); } }, { threshold: 0.6 });
+    setTimeout(() => { const el = form.querySelector('.cover-step'); if (el) io.observe(el); }, 0);
+  }
   view.append(
     h('div', { class: 'page-head' }, h('h1', { html: icon(editing ? 'pen' : 'calendarPlus', { size: 28 }) + (editing ? 'Edit event' : 'Create an event') })),
     h('div', { class: 'split' }, form, h('aside', { class: 'sticky col' },

@@ -50,7 +50,9 @@ module.exports = function routes(route, kit) {
     const tags = Array.isArray(out.tags)
       ? out.tags.map((t) => String(t).trim().toLowerCase().replace(/^#/, '').slice(0, 32)).filter(Boolean).slice(0, 12)
       : [];
-    return { title: out.title || '', description: out.description || '', tags, provider: r.provider, mock: !!r.mock };
+    const title = out.title || '';
+    const theme = require('../../lib/palette').pickPalette({ suggestion: out.palette, title: title || String(b.notes || ''), description: out.description || '', category: b.category });
+    return { title, description: out.description || '', tags, theme, provider: r.provider, mock: !!r.mock };
   });
   route('POST', '/api/ai/scripture', async (ctx) => {
     await aiGuard(ctx);
