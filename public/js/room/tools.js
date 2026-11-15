@@ -45,7 +45,14 @@ async function fillMaterialsInline(R, root) {
   }
 }
 
-const startContent = (R, payload) => { R.send('content-start', payload); toast('Presenting to everyone', { icon: 'presentation', group: 'content' }); setTimeout(() => R.panel && R.panel.refresh('tools'), 300); };
+// Confirm only once the server accepted the share (it answers content-state, or an error toast saying why).
+const startContent = (R, payload) => {
+  R._presentPending = true;
+  R._presentToast = () => toast('Presenting to everyone', { icon: 'presentation', group: 'content' });
+  R.send('content-start', payload);
+  setTimeout(() => R.panel && R.panel.refresh('tools'), 300);
+  setTimeout(() => { if (R._presentPending) { R._presentPending = false; toast('Presenting did not start. Check your connection and try again.', { icon: 'alert' }); } }, 8000);
+};
 let contentInput = null;
 function pickContentFile(R) {
   if (!contentInput) { contentInput = h('input', { type: 'file', accept: 'application/pdf,image/*,.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation', multiple: true, hidden: true }); document.body.append(contentInput); }

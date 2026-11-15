@@ -13,7 +13,7 @@ const field = (label, ic, el, actions) => h('div', { class: 'field-row' },
   el);
 
 export async function mount(view, params) {
-  if (params.instant) return instant(view);
+  if (params.instant) return instantDeepLink(view);
   if (!requireLogin('Sign in to create events')) return;
   const editing = params.edit ? await api(`/api/events/${encodeURIComponent(params.edit)}`).catch(() => null) : null;
   const ev = editing || { category: params.category || 'talk_show', visibility: 'public', speakerSeats: 4, theme: { accent: state.prefs.accent, accent2: state.prefs.accent2 || ACCENTS.find((a) => a[1] === state.prefs.accent)?.[2] || '#7c3aed' }, tags: [] };
@@ -364,7 +364,7 @@ export async function mount(view, params) {
         ? await api(`/api/events/${editing.id}`, { method: 'PATCH', body: body() })
         : await api('/api/events', { method: 'POST', body: body() });
       if (materialIds.length) {
-        await api(`/api/events/${r.id}/materials`, { method: 'PUT', body: { materialIds } }).catch(() => {});
+        await api(`/api/events/${r.id}/materials`, { method: 'PUT', body: { materialIds } }).catch((e) => toastErr(new Error(`Event saved, but its materials could not be attached: ${e.message || 'unknown error'}`)));
       }
       if (speakers.length && !editing) {
         await api(`/api/events/${r.id}/speakers`, { method: 'PUT', body: { speakers: body().speakers } }).catch(() => {});
@@ -414,16 +414,13 @@ export async function mount(view, params) {
       h('div', { class: 'card pad layer small muted' }, h('strong', null, 'Just need a quick call? '), h('a', { href: '/create?instant=1', 'data-link': '', style: { color: '#2563eb', fontWeight: '700' } }, 'Start an instant meeting')))));
 }
 
-function instant(view) {
-  const name = h('input', { class: 'input lg', placeholder: 'Meeting name', value: state.user ? `${state.user.displayName.split(' ')[0]}’s meeting` : 'Quick meeting', maxlength: 120 });
-  let stage = false, waiting = false;
-  const sw = (label, ic, g, get, set, hint) => { const t = h('input', { type: 'checkbox', checked: get() }); t.onchange = () => set(t.checked); return h('label', { class: 'set-row' }, h('span', { class: 'ico', style: { '--g': `var(--g-${g})` }, html: icon(ic) }), h('div', { class: 'grow' }, h('div', null, label), h('div', { class: 'tiny faint' }, hint)), h('span', { class: 'switch' }, t, h('span'))); };
-  const go = () => { sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, name: name.value.trim() || 'Meeting', stage, waitingRoom: waiting })); navigate('/new'); };
-  name.addEventListener('keydown', (e) => e.key === 'Enter' && go());
-  view.append(h('div', { class: 'auth-wrap' }, h('div', { class: 'card pad-lg auth-card col', style: { gap: '1rem' } },
-    h('h1', null, 'Instant meeting'),
-    field('Name', 'type', name),
-    sw('Stage mode', 'stage', 'people', () => stage, (v) => { stage = v; }, 'Audience watches; limited speaker seats'),
-    sw('Waiting room', 'door', 'admin', () => waiting, (v) => { waiting = v; }, 'Admit people one by one'),
-    h('button', { class: 'btn primary lg', type: 'button', onclick: go, html: icon('zap', { size: 18 }) + 'Start now' }))));
+// /create?instant=1 opened directly (bookmark, shared link, old PWA shortcut): show the home page
+// blurred underneath the Instant meeting overlay. In-app links never get here (app.js opens the overlay).
+async function instantDeepLink(view) {
+  document.title = 'Instant meeting — 1venue';
+  const home = await import('./home.js');
+  const bg = await home.mount(view, {});
+  const { openInstant } = await import('../instant.js');
+  const ov = openInstant({ onClose: ({ starting }) => { if (!starting && /^\/create\/?$/.test(location.pathname)) navigate('/', { replace: true }); } });
+  return { unmount() { ov?.close?.({ starting: true }); (bg || home).unmount?.(); } };
 }

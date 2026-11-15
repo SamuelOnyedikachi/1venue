@@ -8,6 +8,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { Readable } = require('stream');
 const config = require('../config');
+const log = require('../lib/log');
 
 const S = config.STORAGE;
 const driver = () => (S.driver === 's3' && S.s3.bucket && S.s3.accessKeyId ? 's3' : 'local');
@@ -60,8 +61,15 @@ function sign(method, url, headers, payloadHash) {
 async function putS3(key, buf, mime) {
   const url = s3Url(key);
   const headers = sign('PUT', url, { 'content-type': mime }, sha(buf));
-  const r = await fetch(url, { method: 'PUT', headers, body: buf });
-  if (!r.ok) throw new Error(`S3 upload failed (${r.status})`);
+  let r;
+  try { r = await fetch(url, { method: 'PUT', headers, body: buf, signal: AbortSignal.timeout(60000) }); }
+  catch (e) { const err = new Error(`Storage is unreachable (${e.name === 'TimeoutError' ? 'timeout' : e.message})`); err.status = 502; err.step = 'storage-put'; throw err; }
+  if (!r.ok) {
+    const body = await r.text().catch(() => '');
+    const code = (body.match(/<Code>([^<]+)<\/Code>/) || [])[1];
+    log.error('storage', 'put failed', { key, status: r.status, code, body: body.slice(0, 300), host: url.host });
+    const err = new Error(`Storage rejected the file (${r.status}${code ? ' ' + code : ''})`); err.status = 502; err.step = 'storage-put'; throw err;
+  }
 }
 /** Stream an object from the bucket (no whole-file buffering in the app's memory). */
 async function getS3(key) {
@@ -80,10 +88,18 @@ async function save(buf, { filename, mime, ownerUserId, ownerKey, purpose, roomC
   const d = driver();
   const now = new Date();
   const key = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${id}-${safeName(filename)}`;
-  if (d === 's3') await putS3(key, buf, mime || 'application/octet-stream');
-  else await putLocal(key, buf);
+  const t0 = Date.now();
+  try {
+    if (d === 's3') await putS3(key, buf, mime || 'application/octet-stream');
+    else await putLocal(key, buf);
+  } catch (e) {
+    if (!e.step) { e.step = 'storage-put'; log.error('storage', 'put failed', { driver: d, key, error: e.message }); }
+    throw e;
+  }
+  log.info('storage', 'put ok', { driver: d, key, bytes: buf.length, ms: Date.now() - t0 });
   const rec = { id, driver: d, objectKey: key, filename: safeName(filename), mime: mime || 'application/octet-stream', size: buf.length, ownerUserId, ownerKey, purpose, roomCode };
-  await require('./data').insertFile(rec);
+  try { await require('./data').insertFile(rec); }
+  catch (e) { log.error('storage', 'db insert failed', { id, key, error: e.message }); e.step = 'db-insert'; throw e; }
   return { ...rec, url: publicUrl(rec) };
 }
 function publicUrl(rec) {

@@ -2,6 +2,8 @@
  * Materials: pre-loaded decks, attachable to events.
  * JSON API routes (see src/core/router.js for the route() contract).
  */
+const log = require('../../lib/log');
+
 module.exports = function routes(route, kit) {
   const { getAuthUser, data, httpError, requireUser } = kit;
 
@@ -13,7 +15,17 @@ module.exports = function routes(route, kit) {
   route('POST', '/api/materials', async (ctx) => {
     const u = await requireUser(ctx.req, ctx.res);
     const b = await ctx.body();
-    return data.createMaterial(u.id, b);
+    const pl = (b && b.payload) || {};
+    const f = { user: u.id, kind: b && b.kind, pages: Array.isArray(pl.pages) ? pl.pages.length : undefined, url: pl.url ? String(pl.url).slice(0, 160) : undefined, firstPage: Array.isArray(pl.pages) && pl.pages[0] ? String(pl.pages[0]).slice(0, 160) : undefined };
+    log.info('materials', 'create received', f);
+    try {
+      const m = await data.createMaterial(u.id, b);
+      log.info('materials', 'created', { user: u.id, id: m.id, kind: m.kind, pages: m.payload.pages ? m.payload.pages.length : undefined });
+      return m;
+    } catch (e) {
+      log[(e.status || 500) >= 500 ? 'error' : 'warn']('materials', 'create failed', { ...f, status: e.status || 500, error: e.message, reason: e.reason });
+      throw e;
+    }
   });
   route('GET', '/api/materials/(\\d+)', async (ctx, [id]) => {
     const u = await requireUser(ctx.req, ctx.res);
@@ -44,6 +56,13 @@ module.exports = function routes(route, kit) {
   route('PUT', '/api/events/(\\d+)/materials', async (ctx, [id]) => {
     const u = await requireUser(ctx.req, ctx.res);
     const b = await ctx.body();
-    return { materials: await data.setEventMaterials(Number(id), u.id, b.materialIds || b.ids || []) };
+    try {
+      const materials = await data.setEventMaterials(Number(id), u.id, b.materialIds || b.ids || []);
+      log.info('materials', 'event attached', { user: u.id, event: Number(id), count: materials.length });
+      return { materials };
+    } catch (e) {
+      log.warn('materials', 'event attach failed', { user: u.id, event: Number(id), status: e.status || 500, error: e.message });
+      throw e;
+    }
   });
 };

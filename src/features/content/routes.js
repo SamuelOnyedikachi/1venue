@@ -2,6 +2,8 @@
  * Content: convert PPTX decks to slide images (room presenters or signed-in users).
  * JSON API routes (see src/core/router.js for the route() contract).
  */
+const log = require('../../lib/log');
+
 module.exports = function routes(route, kit) {
   const { readRaw, rateLimit, getAuthUser, can, httpError, roomParticipant } = kit;
 
@@ -17,16 +19,25 @@ module.exports = function routes(route, kit) {
     const mime = String(ctx.req.headers['content-type'] || '').split(';')[0].toLowerCase();
     if (!converter.MIMES.has(mime)) throw httpError(415, 'Choose a PPTX presentation');
     if (Number(ctx.req.headers['content-length']) > converter.MAX_BYTES) throw httpError(413, 'PPTX must be 50 MB or smaller');
+    const t0 = Date.now();
+    log.info('pptx', 'received', { who: key, bytes: Number(ctx.req.headers['content-length']) || 0 });
     const buf = await readRaw(ctx.req, converter.MAX_BYTES);
     // Optional filename from query or header for nicer slide titles
     const qTitle = String(ctx.url.searchParams.get('title') || '').trim();
     const title = (qTitle || 'Slides').slice(0, 80);
-    const out = await converter.convertPptxToSlides(buf, {
-      ownerUserId: u ? u.id : null,
-      ownerKey: rp ? `room:${rp.code}:${rp.participant.id}` : null,
-      roomCode: rp ? rp.code : null,
-      title,
-    });
+    let out;
+    try {
+      out = await converter.convertPptxToSlides(buf, {
+        ownerUserId: u ? u.id : null,
+        ownerKey: rp ? `room:${rp.code}:${rp.participant.id}` : null,
+        roomCode: rp ? rp.code : null,
+        title,
+      });
+    } catch (e) {
+      log[(e.status || 500) >= 500 ? 'error' : 'warn']('pptx', 'failed', { who: key, status: e.status || 500, error: e.message, ms: Date.now() - t0 });
+      throw e;
+    }
+    log.info('pptx', 'ok', { who: key, pages: out.pages.length, total: out.total, ms: Date.now() - t0 });
     return {
       contentType: 'slides',
       pages: out.pages,

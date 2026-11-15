@@ -8,6 +8,11 @@
 // Never in password / email / phone / one-time-code / payment fields. On by default after a
 // one-time consent prompt; Settings → Voice typing turns it off (per device).
 //
+// Tap-to-talk fields (data-voice="off" + an explicit mic button, e.g. the feed composer) never listen on
+// focus. listenOn(el, { manual: true, onEnd }) starts a session that stops for good when the user taps the
+// mic again, types / pastes / deletes, leaves the field or page, posts, or after a silence timeout. It never
+// restarts itself, and nothing about it is persisted.
+//
 // In meetings (room bridge): mic muted -> a separate local capture that is never published;
 // mic open -> the published track is cloned (one capture, so Android doesn't fight over the mic),
 // or, when your live captions are already running, your own caption lines are reused (no double cost).
@@ -117,12 +122,23 @@ export class Segmenter {
 
 /* ---------- one listening session per focused field ---------- */
 let session = null;
+const SILENCE_MS = 12000;
 class Session {
-  constructor(el, kind) {
+  constructor(el, kind, { manual = false, onEnd = null, silenceMs = SILENCE_MS } = {}) {
     this.el = el; this.kind = kind; this.seq = 0; this.nextApply = 0; this.results = new Map(); this.inflight = 0; this.alive = true;
     this.anchor = null; this.interimLen = 0;
+    this.manual = manual; this.onEnd = onEnd; this.silenceMs = silenceMs; this.lastHeard = Date.now();
     this.onUserInput = (e) => { if (!e.isTrusted) return; this.anchor = null; this.interimLen = 0; };
     el.addEventListener('input', this.onUserInput);
+    if (manual) {
+      // The user typing, deleting, pasting or dropping text ends tap-to-talk (voice inserts never fire beforeinput).
+      this.onUserEdit = (e) => { if (e.isTrusted) this.stop('typing'); };
+      el.addEventListener('beforeinput', this.onUserEdit);
+      this.watch = setInterval(() => {
+        if (!el.isConnected) return this.stop('gone');
+        if (!this.inflight && Date.now() - this.lastHeard > this.silenceMs) this.stop('silence');
+      }, 500);
+    }
   }
   async start() {
     const eng = engine();
@@ -160,7 +176,8 @@ class Session {
       this.state(interim ? 'hearing' : 'listening');
     };
     sr.onerror = (e) => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') this.denied(e); };
-    sr.onend = () => { if (this.alive && session === this) setTimeout(() => { try { this.alive && sr.start(); } catch { /* */ } }, 250); };
+    // Auto-focus sessions keep the recogniser alive; tap-to-talk never restarts itself.
+    sr.onend = () => { if (this.manual) { this.stop('ended'); return; } if (this.alive && session === this) setTimeout(() => { try { this.alive && sr.start(); } catch { /* */ } }, 250); };
     try { sr.start(); } catch { return false; }
     this.source = 'webspeech'; this.state('listening');
     return true;
@@ -176,6 +193,7 @@ class Session {
   denied() { this.stop(); toast('Microphone permission is needed for voice typing', { icon: 'micOff' }); }
   state(s) {
     if (!this.alive) return;
+    if (s === 'hearing') this.lastHeard = Date.now();
     const st = this.inflight && s === 'listening' ? 'pending' : s;
     if (this.kind === 'bar') { const bar = this.el.closest('.cmdbar'); if (bar) { bar.classList.add('listening'); bar.classList.toggle('hearing', st === 'hearing'); bar.classList.toggle('pending', st === 'pending'); } }
     else this.el.dataset.voiceState = st;
@@ -204,6 +222,7 @@ class Session {
   // Text insertion: interim text is shown in place and replaced by the final words.
   place(text, isFinal) {
     const el = this.el; if (!this.alive || !el.isConnected) return;
+    this.lastHeard = Date.now();
     if (this.kind === 'date') { if (isFinal) this.date(text); return; }
     if (this.kind === 'bar') {
       el.value = isFinal ? spokenToQuery(text) : text.trim();
@@ -240,9 +259,11 @@ class Session {
       if (r.end && el._voiceEnd) { el._voiceEnd.value = val(r.end, r.endHasTime, null); el._voiceEnd.dispatchEvent(new Event('change', { bubbles: true })); }
     } catch { toast('Didn’t catch a date — try “February 16 2027 at 6pm”', { icon: 'calendar' }); }
   }
-  stop() {
+  stop(reason = 'stopped') {
     if (!this.alive) return; this.alive = false;
     this.el.removeEventListener('input', this.onUserInput);
+    if (this.onUserEdit) this.el.removeEventListener('beforeinput', this.onUserEdit);
+    clearInterval(this.watch);
     this.seg && this.seg.stop(); this.seg = null;
     if (this.clone) { this.clone.stop(); this.clone = null; }
     if (this.sr) { try { this.sr.onend = null; this.sr.stop(); } catch { /* */ } this.sr = null; }
@@ -250,27 +271,42 @@ class Session {
     if (this.kind === 'bar') this.el.closest('.cmdbar')?.classList.remove('listening', 'hearing', 'pending');
     else delete this.el.dataset.voiceState;
     if (session === this) session = null;
-    releaseLocal();
+    releaseLocal(this.manual ? 0 : 4000); // tap-to-talk: release the mic right away
+    try { this.onEnd && this.onEnd(reason); } catch { /* */ }
   }
 }
 
-export async function listenOn(el) { return begin(el); }
-async function begin(el) {
-  const kind = voiceKind(el);
-  if (!kind || !voicePrefs.enabled) return;
-  if (session && session.el === el) return;
+/**
+ * Start listening in `el`. opts.manual = tap-to-talk (works even on data-voice="off" fields and with the
+ * auto setting off); opts.onEnd(reason) fires once when it stops. Resolves true when listening started.
+ */
+export async function listenOn(el, opts = {}) { return begin(el, opts); }
+export const isListening = (el) => !!(session && session.alive && (!el || session.el === el));
+export function stopListening(el, reason = 'user') { if (session && (!el || session.el === el)) session.stop(reason); }
+async function begin(el, opts = {}) {
+  const manual = !!opts.manual;
+  const kind = manual ? (el && /^(TEXTAREA|INPUT)$/.test(el.tagName) && !el.disabled && !el.readOnly ? 'text' : null) : voiceKind(el);
+  if (!kind || (!manual && !voicePrefs.enabled)) return false;
+  if (session && session.el === el && session.manual === manual) return true;
   stop();
-  if (!voicePrefs.consented) { askConsent(el); return; }
-  const s = session = new Session(el, kind);
+  if (!voicePrefs.consented) { askConsent(el, opts); return false; }
+  const s = session = new Session(el, kind, opts);
   const ok = await s.start().catch(() => false);
-  if (!ok && session === s) s.stop();
+  if (!ok) {
+    if (session === s) s.stop('failed');
+    if (manual && !engine()) toast('Voice typing isn’t available in this browser', { icon: 'micOff' });
+    return false;
+  }
+  try { opts.onStart && opts.onStart(); } catch { /* */ }
+  return true;
 }
 export function stop() { if (session) session.stop(); }
 function restart() { const el = session && session.el; stop(); if (el && document.activeElement === el) begin(el); }
 
 /* ---------- one-time consent (doesn't steal focus until you answer) ---------- */
-let consentEl = null;
-function askConsent(el) {
+let consentEl = null, consentOpts = {};
+function askConsent(el, opts = {}) {
+  consentOpts = opts;
   if (document.querySelector('.voice-consent')) return;
   const box = document.createElement('div');
   box.className = 'voice-consent'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', 'Voice typing');
@@ -281,8 +317,9 @@ function askConsent(el) {
   box.addEventListener('click', (e) => {
     const a = e.target.closest('button')?.dataset.a; if (!a) return;
     box.remove();
-    if (a === 'ok') { write({ consent: true, on: true }); const t = consentEl; consentEl = null; if (t && t.isConnected) { t.focus(); begin(t); } }
-    else { write({ consent: true, on: false }); toast('Voice typing off — turn it on in Settings', { icon: 'micOff' }); }
+    const o = consentOpts; consentOpts = {};
+    if (a === 'ok') { write({ consent: true, on: true }); const t = consentEl; consentEl = null; if (t && t.isConnected) { t.focus(); begin(t, o); } }
+    else { write({ consent: true, on: false }); toast('Voice typing off — turn it on in Settings', { icon: 'micOff' }); o.onEnd && o.onEnd('declined'); }
   });
   document.body.append(box);
 }
