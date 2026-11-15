@@ -34,10 +34,10 @@ Interfaces: `open({userId,code,name,hostName,now?}) -> {historyId,session}` atom
 
 Files: create `src/features/wallet/billing.js`, `src/livekit/cleanup.js`; modify room routes/lifecycle/snapshot/startup/tokens and wallet routes; tests `test/host-billing.test.js`, new `test/host-billing-http.test.js`; adapt existing room test fixtures to explicitly fund signed-in isolated hosts.
 Interfaces: `billing.start({user,code,name,hostName})`, `billing.check(meeting)`, `billing.end(meeting,reason,now?)`, `billing.tick()`, `billing.recover()`, `billing.stop()`; wallet summary includes only caller's billing status. Native server timer every second, settlement every five seconds plus exact deadline checks.
-- [ ] Write failing HTTP/recovery tests: anonymous/insufficient/concurrent create, free guest join, trusted venue exemption, explicit end, restart under minimum, exhaustion during restart, orphan/expired cleanup and LiveKit retries.
-- [ ] Run red; implement room hooks, durable cleanup queue and token lifetime cap. Media room names use session-specific suffix for billable sessions so cached tokens cannot recreate a later session. Persist breakout names or derive from session namespace.
-- [ ] Recovery: active heartbeat per process permits overlap without treating a healthy old worker as crashed. A dead owner with no usable snapshot closes at its last durable checkpoint (no charges for unavailable state); graceful snapshots bill through restoration, with max restore window cutoff. Startup reconciles old records before accepting new opens; no retroactive billing of old unmetered rooms.
-- [ ] Run focused SQLite/PG tests and adjusted existing lifecycle tests green; commit integration task.
+- [x] Write failing HTTP/recovery tests: anonymous/insufficient/concurrent create, free guest join, trusted venue exemption, explicit end, restart under minimum, exhaustion during restart, orphan/expired cleanup and LiveKit retries.
+- [x] Run red; implement room hooks, durable cleanup queue and token lifetime cap. Media room names use session-specific suffix for billable sessions so cached tokens cannot recreate a later session. Persist breakout names or derive from session namespace.
+- [x] Recovery: active heartbeat per process permits overlap without treating a healthy old worker as crashed. A dead owner with no usable snapshot closes at its last durable checkpoint (no charges for unavailable state); graceful snapshots bill through restoration, with max restore window cutoff. Startup reconciles old records before accepting new opens; no retroactive billing of old unmetered rooms.
+- [x] Run focused SQLite/PG tests and adjusted existing lifecycle tests green; commit integration task.
 
 ### Task 3: Navbar, meeting warning and opening UI
 

@@ -1,0 +1,20 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict');
+const {boot,client,signupPayload}=require('./helpers/server');
+const db=require('../db');
+const skip=process.env.DB_DRIVER!=='sqlite'&&!process.env.DATABASE_URL;
+let s,host,id;
+test.before(async()=>{if(skip)return;s=await boot();host=client(s.base);await host.post('/api/signup',signupPayload());id=(await host.get('/api/session')).body.user.id;});
+test.after(async()=>{if(s)await s.stop();await db.close();});
+test('billable openings require sign-in, 30 credits, reject exemptions and concurrent hosts; guest admission stays free',{skip},async()=>{
+ const anon=client(s.base);const denied=await anon.post('/api/create',{name:'Unfunded',participantName:'Ada'});assert.equal(denied.status,401,JSON.stringify(denied.body)+' '+s.output());
+ assert.equal((await host.post('/api/create',{name:'Unfunded',participantName:'Ada',billingExempt:true})).status,402);
+ await db.q('INSERT INTO credit_wallets(user_id,balance_units) VALUES($1,1800000)',[id]);
+ const outcomes=await Promise.all([host.post('/api/create',{name:'Funded A'}),host.post('/api/create',{name:'Funded B'})]);
+ assert.deepEqual(outcomes.map(x=>x.status).sort(),[200,409]);
+ const room=outcomes.find(x=>x.status===200).body;
+ assert.equal((await anon.post('/api/join',{code:room.code,participantName:'Free guest'})).status,200);
+ const wallet=(await host.get('/api/wallet')).body;assert.ok(wallet.balanceCredits<=30);assert.equal(wallet.billing.code,room.code);
+ const row=(await db.q('SELECT * FROM credit_billing_sessions WHERE user_id=$1',[id])).rows[0];
+ assert.ok(row.media_room.startsWith('b-'));assert.notEqual(row.media_room,room.code);
+});

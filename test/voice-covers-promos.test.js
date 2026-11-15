@@ -7,7 +7,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { boot, client, signupPayload } = require('./helpers/server');
+const { boot, client, signupPayload, fundTestWallet } = require('./helpers/server');
 
 const root = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
@@ -263,7 +263,8 @@ test('voice typing + captions via Whisper on Replicate: auth, language, caps, ro
 
     // room guest: dictation (never broadcast) and captions, with the room credential
     const pid = 'guest-stt-' + Date.now();
-    const cr = await (await fetch(s.base + '/api/create', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'STT room', participantName: 'Ada Guest', participantId: pid }) })).json();
+    await fundTestWallet(s.base, cookie);
+    const cr = await (await fetch(s.base + '/api/create', { method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify({ name: 'STT room', participantName: 'Ada Guest', participantId: pid }) })).json();
     const room = { 'X-Room-Code': cr.code, 'X-Participant-Id': pid, 'X-Room-Credential': cr.wsCredential };
     assert.equal((await post(`mode=dictate&code=${cr.code}`, room)).status, 200);
     assert.equal((await post(`mode=caption&code=${cr.code}`, room)).status, 200);

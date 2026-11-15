@@ -14,15 +14,16 @@ async function open({userId,code,name,hostName,ownerId,now=Date.now()}) {
     if(Number(wallet?.balance_units||0)<30*U)throw fail(402,'You need at least 30 credits to open a meeting. Top up your credit wallet.');
     const historyId=(await c.query('INSERT INTO meeting_history(code,name,host_user_id,host_display_name,max_participants) VALUES($1,$2,$3,$4,1) RETURNING id',[code,name,userId,hostName])).rows[0].id;
     const media='b-'+crypto.randomBytes(16).toString('hex');
-    const session=(await c.query('INSERT INTO credit_billing_sessions(id,history_id,user_id,code,media_room,owner_id,started_ms,accounted_ms) VALUES($1,$1,$2,$3,$4,$5,$6,$6) RETURNING *',[historyId,userId,code,media,ownerId,now])).rows[0];
+    const session=(await c.query('INSERT INTO credit_billing_sessions(id,history_id,user_id,code,media_room,owner_id,started_ms,accounted_ms) VALUES($1::bigint,$1::int,$2,$3,$4,$5,$6,$6) RETURNING *',[historyId,userId,code,media,ownerId,now])).rows[0];
     return {historyId,session:shape(session)};
   }); } catch(e) {if(e.code==='23505')throw fail(409,'This host or room already has an open meeting');throw e;}
 }
-async function settle(id,{now=Date.now(),endReason=null}={}) {
+async function settle(id,{now=Date.now(),endReason=null,ownerId=null}={}) {
   const original=await get(id); if(!original)return null;
   return db.tx(async c=>{
     if(original.user_id!=null)await lockUser(c,original.user_id);
     const row=(await c.query('SELECT * FROM credit_billing_sessions WHERE id=$1 FOR UPDATE',[id])).rows[0];
+    if (row.state==='active' && ownerId && row.owner_id!==ownerId) throw fail(409,'This meeting is reconnecting to another server');
     return settleLocked(c,row,now,endReason);
   });
 }
@@ -69,4 +70,30 @@ async function mediaToken(id,room,now=Date.now()) {
 async function pendingCleanup(now=Date.now()) {return (await db.q("SELECT * FROM credit_billing_sessions WHERE state='closing' OR (state='closed' AND cleanup_until_ms>$1 AND (last_cleanup_ms IS NULL OR last_cleanup_ms<=$2))",[now,now-5000])).rows.map(shape);}
 async function markCleaned(id,now=Date.now()) {await db.q("UPDATE credit_billing_sessions SET state='closed',last_cleanup_ms=$2 WHERE id=$1 AND state<>'active'",[id,now]);}
 async function heartbeat(ownerId,stopped=false,now=Date.now()) {await db.q('INSERT INTO credit_billing_workers(id,heartbeat_ms,stopped) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET heartbeat_ms=$2,stopped=$3',[ownerId,now,stopped]);}
-module.exports={open,settle,get,current,mediaToken,pendingCleanup,markCleaned,heartbeat,reconcileLocked};
+async function claim(id,ownerId,now=Date.now()) {
+  const original=await get(id);if(!original)return null;
+  return db.tx(async c=>{
+    if(original.user_id!=null)await lockUser(c,original.user_id);
+    const row=(await c.query('SELECT * FROM credit_billing_sessions WHERE id=$1 FOR UPDATE',[id])).rows[0];
+    if(row.state!=='active')return null;
+    if(row.owner_id!==ownerId){
+      const worker=(await c.query('SELECT * FROM credit_billing_workers WHERE id=$1',[row.owner_id])).rows[0];
+      if(worker&&!worker.stopped&&now-Number(worker.heartbeat_ms)<15000)return null;
+    }
+    return shape((await c.query('UPDATE credit_billing_sessions SET owner_id=$2 WHERE id=$1 RETURNING *',[id,ownerId])).rows[0]);
+  });
+}
+async function closeLost(id,expectedOwner,now=Date.now()) {
+  const original=await get(id);if(!original)return null;
+  return db.tx(async c=>{
+    if(original.user_id!=null)await lockUser(c,original.user_id);
+    const row=(await c.query('SELECT * FROM credit_billing_sessions WHERE id=$1 FOR UPDATE',[id])).rows[0];
+    if(row.state!=='active'||row.owner_id!==expectedOwner)return shape(row);
+    const worker=(await c.query('SELECT * FROM credit_billing_workers WHERE id=$1',[row.owner_id])).rows[0];
+    if(worker&&!worker.stopped&&now-Number(worker.heartbeat_ms)<15000)return shape(row);
+    if((await c.query('SELECT code FROM meeting_snapshots WHERE history_id=$1',[row.history_id])).rows[0])return shape(row);
+    return settleLocked(c,row,Number(row.accounted_ms),'restart-lost');
+  });
+}
+async function queueCleanup(id,now=Date.now()) {await db.q('UPDATE credit_billing_sessions SET cleanup_until_ms=$2,last_cleanup_ms=NULL WHERE id=$1 AND state<>\'active\'', [id,now+11*60*1000]);}
+module.exports={queueCleanup,claim,closeLost,open,settle,get,current,mediaToken,pendingCleanup,markCleaned,heartbeat,reconcileLocked};
