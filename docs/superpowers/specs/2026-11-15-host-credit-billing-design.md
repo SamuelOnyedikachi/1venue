@@ -74,4 +74,4 @@ This changes who can open non-venue rooms and makes those openings consume credi
 
 ## Status
 
-Independent builder check completed: no important unanswered questions. Design proposed for user approval. Implementation has not started.
+Independent builder check completed: no important unanswered questions. User approved the design. Implementation in progress.
