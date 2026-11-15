@@ -2,7 +2,7 @@
 // Core room messages (roster, waiting room, removal, meeting end) are handled here.
 // Everything else is handled by feature modules: src/features/<id>/client/ws.js, served as
 // /features/<id>/ws.js and loaded through the generated /features/client.js.
-import { h, toast } from '../ui.js';
+import { h, toast, reportClientError } from '../ui.js';
 import { getHandler, chime } from './registry.js';
 import '/features/client.js';
 
@@ -24,7 +24,7 @@ export function handle(R, m) {
     case 'removed': R.kicked(m); return;
     case 'meeting-ended': R.ended(m); return;
     case 'toast': toast(m.message, { icon: 'info' }); return;
-    case 'error': if (m.code === 'content-rejected') R._presentPending = false; toast(m.error || 'Something went wrong', { icon: 'alert' }); return;
+    case 'error': if (m.code === 'content-rejected') { R._presentPending = false; reportClientError('present', new Error(m.error || 'Share rejected'), { step: 'start presenting' }, { silent: true }); } toast(m.error || 'Something went wrong', { icon: 'alert' }); return;
     case 'admitted': case 'declined': return; // handled during waiting
     default: return;
   }

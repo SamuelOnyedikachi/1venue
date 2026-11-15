@@ -517,3 +517,22 @@ dropped the share silently while the client still toasted "Presenting to everyon
 - **Feed composer mic** is tap-to-talk: never listens on focus; tap again, typing, leaving the box,
   posting, ~12 s of silence or leaving the page stops it; it never restarts itself.
 - Service worker v28, `app.css?v=19`.
+
+## PDF / PPTX materials with spaces in the file name (Nov 15, follow-up)
+
+**Root cause:** storage keys kept the original file name, so R2 URLs looked like
+`https://files.1venue.live/2026/11/<id>-CV - Web Developer - Chinedu Okonkwo-p1.jpg` (raw spaces). The
+stored-file validator added in the previous fix refused whitespace, so saving the material (and presenting the
+pages in a meeting) was rejected with 400 even though every page reached R2. Single images worked only when
+their name had no spaces. PPTX went through the same save step after conversion and failed the same way.
+
+- Storage keys are slugs now (`…-CV-Web-Developer-Chinedu-Okonkwo-p1.jpg`); public URLs are percent-encoded.
+- `src/lib/file-url.js` accepts raw or encoded URLs (old keys with spaces still save) and returns one canonical
+  encoded form; traversal, encoded slashes, markup and control characters are still refused.
+- File type detection reads the first bytes when the phone gives no type / extension (PDF, PPTX, images);
+  .ppt / Keynote get a clear "save as PPTX or PDF" message.
+- `[pptx] received` is logged first on every attempt (before auth / limits), every failure logs why, and the
+  server logs at boot whether LibreOffice + poppler are present (`[pptx] converter ready` / `converter MISSING`).
+- Browser-side failures in Materials, presenting and event-material attach are posted to `/api/client-log` and
+  logged as `[client] materials error {step, message, file, mime, size, …}`, with a 7 s toast in the browser.
+- Service worker v29, `app.css?v=20`.

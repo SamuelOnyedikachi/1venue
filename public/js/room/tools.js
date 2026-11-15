@@ -1,5 +1,5 @@
 // Tool views for the room panel (rendered inside panels.js → Tools).
-import { h, esc, api, toast, toastErr, copy, download, md, uploadFile, timeAgo, debounce, fmtDur } from '../ui.js';
+import { h, esc, api, toast, toastErr, copy, download, md, uploadFile, timeAgo, debounce, fmtDur, reportClientError, deckKind, DECK_HELP } from '../ui.js';
 import { state } from '../app.js';
 import { icon } from '../icons.js';
 import { translationSelect, versesEl, refLabel, makeListenBtn } from '../pages/bible.js';
@@ -70,21 +70,25 @@ function pickContentFile(R) {
 export async function shareContentFile(R, f) {
   const setBusy = (t) => { presentBusy = t || ''; R.panel.refresh('tools'); };
   const name = f.name.replace(/\.[^.]+$/, '').slice(0, 80);
+  let step = 'start';
   try {
-    if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
-      setBusy('Preparing slides…');
+    step = 'detect type';
+    const kind = await deckKind(f);
+    if (DECK_HELP[kind]) throw new Error(DECK_HELP[kind]);
+    if (kind === 'pdf') {
+      step = 'render PDF'; setBusy('Preparing slides…');
       const { pdfToImages } = await import('./pdfslides.js');
       const { files, total, truncated } = await pdfToImages(f, { onProgress: (i, n) => setBusy(`Rendering page ${i} of ${n}…`) });
       const pages = [];
-      for (let i = 0; i < files.length; i++) { setBusy(`Uploading page ${i + 1} of ${files.length}…`); pages.push((await uploadFile(files[i], { purpose: 'content', headers: R.headers() })).url); }
+      for (let i = 0; i < files.length; i++) { step = `upload page ${i + 1}/${files.length}`; setBusy(`Uploading page ${i + 1} of ${files.length}…`); pages.push((await uploadFile(files[i], { purpose: 'content', headers: R.headers() })).url); }
       startContent(R, { contentType: 'slides', pages, title: name || 'Slides', fileMeta: { name: f.name, size: f.size, mime: f.type } });
       if (truncated) toast(`Only the first ${files.length} of ${total} pages were shared`, { icon: 'alert' });
-    } else if (f.type.startsWith('image/')) {
+    } else if (kind === 'image') {
       setBusy('Uploading…');
       const r = await uploadFile(f, { purpose: 'content', headers: R.headers() });
       startContent(R, { contentType: 'image', url: r.url, title: name || 'Image', fileMeta: { name: f.name, size: f.size, mime: f.type } });
-    } else if (/\.pptx$/i.test(f.name) || f.type.includes('presentationml')) {
-      setBusy('Converting PPTX on server…');
+    } else if (kind === 'pptx') {
+      step = 'convert PPTX'; setBusy('Converting PPTX on server…');
       const q = name ? `?title=${encodeURIComponent(name)}` : '';
       const res = await fetch('/api/convert/pptx' + q, {
         method: 'POST',
@@ -102,8 +106,8 @@ export async function shareContentFile(R, f) {
         fileMeta: { name: f.name, size: f.size, mime: f.type },
       });
       if (data.truncated) toast(`Only the first ${data.pages.length} of ${data.total} pages were shared`, { icon: 'alert' });
-    } else toast('Pick a PDF, PPTX, or images', { icon: 'alert' });
-  } catch (e) { toastErr(e); } finally { setBusy(''); }
+    } else throw new Error(`“${f.name}” isn’t a PDF, PPTX or image${f.type ? ` (${f.type})` : ''}`);
+  } catch (e) { reportClientError('present', e, { step, file: f.name, mime: f.type || '(none)', size: f.size }); } finally { setBusy(''); }
 }
 async function shareContentImages(R, files, { append = false } = {}) {
   const setBusy = (t) => { presentBusy = t || ''; R.panel.refresh('tools'); };
@@ -122,7 +126,7 @@ async function shareContentImages(R, files, { append = false } = {}) {
     } else {
       startContent(R, { contentType: 'slides', pages, title: pages.length + ' images', fileMeta: { name: 'images', size: 0, mime: 'image/*' } });
     }
-  } catch (e) { toastErr(e); } finally { setBusy(''); }
+  } catch (e) { reportClientError('present', e, { step: 'upload images', file: files[0]?.name, pages: files.length }); } finally { setBusy(''); }
 }
 function pickMoreImages(R) {
   const input = h('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true });

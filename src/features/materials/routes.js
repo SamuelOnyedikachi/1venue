@@ -5,7 +5,26 @@
 const log = require('../../lib/log');
 
 module.exports = function routes(route, kit) {
-  const { getAuthUser, data, httpError, requireUser } = kit;
+  const { getAuthUser, data, httpError, requireUser, rateLimit, clientIp } = kit;
+
+  // Browser-side failures in the materials / presenting flow (PDF render, PPTX convert, upload, save),
+  // so prod logs show what happened in the browser: "[client] materials error {...}". Fire-and-forget.
+  const AREAS = new Set(['materials', 'present', 'event-materials', 'upload']);
+  const clip = (v, n) => (v == null ? undefined : String(v).replace(/[\u0000-\u001f]/g, ' ').slice(0, n));
+  route('POST', '/api/client-log', async (ctx) => {
+    const ip = clientIp(ctx.req);
+    if (!rateLimit('client-log:' + ip, 30)) return { ok: true };
+    let b = {};
+    try { b = (await ctx.body(8 * 1024)) || {}; } catch (_) { return { ok: true }; }
+    const u = await getAuthUser(ctx.req, ctx.res).catch(() => null);
+    const area = AREAS.has(b.area) ? b.area : 'materials';
+    log.warn('client', `${area} error`, {
+      who: u ? `u:${u.id}` : `ip:${ip}`, step: clip(b.step, 40), message: clip(b.message, 300), status: Number(b.status) || undefined,
+      file: clip(b.file, 120), mime: clip(b.mime, 80), size: Number(b.size) || undefined, pages: Number(b.pages) || undefined,
+      page: clip(b.page, 60), ua: clip(ctx.req.headers['user-agent'], 120), build: clip(b.build, 40),
+    });
+    return { ok: true };
+  });
 
   // ------------------------------------------------------------ materials (preload decks)
   route('GET', '/api/materials', async (ctx) => {

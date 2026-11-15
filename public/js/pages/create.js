@@ -1,5 +1,5 @@
 import { icon, LOGO_ART } from '../icons.js';
-import { h, api, esc, toast, toastErr, uploadFile, avatar, debounce, sheet } from '../ui.js';
+import { h, api, esc, toast, toastErr, uploadFile, avatar, debounce, sheet, reportClientError } from '../ui.js';
 import { state, navigate, requireLogin, CATS, ACCENTS } from '../app.js';
 import { catOf } from '../components.js';
 import { isRichInput } from '../event-draft.js';
@@ -364,7 +364,7 @@ export async function mount(view, params) {
         ? await api(`/api/events/${editing.id}`, { method: 'PATCH', body: body() })
         : await api('/api/events', { method: 'POST', body: body() });
       if (materialIds.length) {
-        await api(`/api/events/${r.id}/materials`, { method: 'PUT', body: { materialIds } }).catch((e) => toastErr(new Error(`Event saved, but its materials could not be attached: ${e.message || 'unknown error'}`)));
+        await api(`/api/events/${r.id}/materials`, { method: 'PUT', body: { materialIds } }).catch((e) => reportClientError('event-materials', new Error(`Event saved, but its materials could not be attached: ${e.message || 'unknown error'}`), { step: 'attach', pages: materialIds.length }));
       }
       if (speakers.length && !editing) {
         await api(`/api/events/${r.id}/speakers`, { method: 'PUT', body: { speakers: body().speakers } }).catch(() => {});

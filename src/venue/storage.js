@@ -9,12 +9,20 @@ const crypto = require('crypto');
 const { Readable } = require('stream');
 const config = require('../config');
 const log = require('../lib/log');
+const { encSeg } = require('../lib/file-url');
 
 const S = config.STORAGE;
 const driver = () => (S.driver === 's3' && S.s3.bucket && S.s3.accessKeyId ? 's3' : 'local');
 
 function newId() { return crypto.randomBytes(16).toString('base64url'); }
 function safeName(n) { return String(n || 'file').replace(/[^\w.\- ]+/g, '_').slice(-120) || 'file'; }
+/** Storage-key slug: ASCII letters/digits . _ - only (no spaces), keeps the extension. "CV - Web (v2).pdf" -> "CV-Web-v2.pdf" */
+function slugName(n) {
+  const name = String(n || 'file').normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+  const m = name.match(/^(.*?)(\.[A-Za-z0-9]{1,8})?$/);
+  const stem = (m[1] || '').replace(/[^A-Za-z0-9._-]+/g, '-').replace(/-{2,}/g, '-').replace(/^[-.]+|[-.]+$/g, '').slice(0, 80) || 'file';
+  return stem + (m[2] ? m[2].toLowerCase() : '');
+}
 
 // ---------------- local
 function localPath(key) {
@@ -87,7 +95,7 @@ async function save(buf, { filename, mime, ownerUserId, ownerKey, purpose, roomC
   const id = newId();
   const d = driver();
   const now = new Date();
-  const key = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${id}-${safeName(filename)}`;
+  const key = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${id}-${slugName(filename)}`;
   const t0 = Date.now();
   try {
     if (d === 's3') await putS3(key, buf, mime || 'application/octet-stream');
@@ -103,7 +111,8 @@ async function save(buf, { filename, mime, ownerUserId, ownerKey, purpose, roomC
   return { ...rec, url: publicUrl(rec) };
 }
 function publicUrl(rec) {
-  if (rec.driver === 's3' && S.s3.publicBaseUrl) return `${S.s3.publicBaseUrl}/${rec.objectKey || rec.object_key}`;
+  // Each key segment is percent-encoded (older keys can contain spaces / parentheses).
+  if (rec.driver === 's3' && S.s3.publicBaseUrl) return `${S.s3.publicBaseUrl}/${String(rec.objectKey || rec.object_key).split('/').map(encSeg).join('/')}`;
   return `/files/${rec.id}/${encodeURIComponent(rec.filename)}`;
 }
 async function open(row) {
@@ -132,4 +141,4 @@ async function remove(row) {
   }
 }
 
-module.exports = { save, open, remove, publicUrl, driver, _sign: sign };
+module.exports = { save, open, remove, publicUrl, driver, slugName, _sign: sign };
