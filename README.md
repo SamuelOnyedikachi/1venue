@@ -40,6 +40,23 @@ npm test        # node --test; DB-backed tests need DATABASE_URL
 npm run icons   # regenerate PWA icons (needs python3 + Pillow)
 ```
 
+### SQLite for local testing
+
+Run `npm install`, then `npm run dev:sqlite` and open <http://localhost:3000>.
+The app creates `data/venue.sqlite` automatically. Sign up with a username, email,
+password, and phone number. Verification and reset links print in the terminal
+when SMTP is not configured. AI uses local mock responses in this mode.
+
+Run `npm run test:sqlite` for the SQLite test suite. Integration tests use temporary
+database files. Stop the server before resetting local data, then delete
+`data/venue.sqlite` and its `-wal` and `-shm` companions. PostgreSQL remains the
+deployment database. LiveKit, Google OAuth, real AI/STT/TTS, and LibreOffice need
+their own configuration to exercise those integrations.
+
+Local event search uses SQLite FTS5 and title matching; typo matching can differ
+from PostgreSQL trigram search. Schema changes need migrations in both
+`migrations/` / feature migrations (PostgreSQL) and `migrations/sqlite/`.
+
 ## Architecture
 
 One Node process serves the API, the front end and a WebSocket hub for live room state; PostgreSQL stores everything that lasts; LiveKit carries audio and video on its own server (the separate `livekit-server` repo, so several apps can share it). Each feature lives in its own folder, `src/features/<feature>/`. Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); the full feature list is in [docs/FEATURE_INVENTORY.md](docs/FEATURE_INVENTORY.md) and the product plan in [docs/BLUEPRINT.md](docs/BLUEPRINT.md).
@@ -88,6 +105,10 @@ Every setting is an environment variable, documented in [.env.example](.env.exam
 | Storage | `STORAGE_DRIVER`, `S3_*`, `UPLOAD_*` | `.env.example` |
 | AI and speech | `AI_*`, `STT_*`, `REPLICATE_API_TOKEN`, `TTS_*` | [TTS.md](docs/TTS.md) |
 | Monitoring | `METRICS_TOKEN`, `METRICS_LOG` | |
+
+## Credit wallets
+
+Open `/wallet` from the account menu, Settings or the command bar. The first payment increment supports non-expiring credits at ₦500 each, the 10/30/60/120 bundles and custom whole-credit purchases through Paystack. Customer-paid processing fees are added by Paystack at checkout. Configure test/live keys, the merchant fee preference and signed webhooks as described in [docs/PAYMENTS.md](docs/PAYMENTS.md). Purchases remain disabled until configured. Meeting billing and paid admission follow in a separate increment.
 
 ## Accounts and sign-in
 

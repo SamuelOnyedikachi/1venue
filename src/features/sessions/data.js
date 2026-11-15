@@ -1,3 +1,4 @@
+const { USE_PG } = require('../../../db');
 /**
  * sessions queries (PostgreSQL, parameterised). Split out of src/venue/data.js;
  * src/venue/data.js still re-exports everything for older call sites.
@@ -34,7 +35,11 @@ async function saveSummary({ historyId, kind = 'summary', content, provider, mod
   return { id: Number(r.id), kind: r.kind, content: r.content, provider: r.provider, model: r.model, createdAt: r.created_at };
 }
 async function latestSummaries(historyId) {
-  return (await many(`SELECT DISTINCT ON (kind) * FROM ai_summaries WHERE meeting_history_id=$1 ORDER BY kind, created_at DESC`, [historyId]))
+  const sql = USE_PG
+    ? `SELECT DISTINCT ON (kind) * FROM ai_summaries WHERE meeting_history_id=$1 ORDER BY kind, created_at DESC, id DESC`
+    : `SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY kind ORDER BY created_at DESC, id DESC) AS rn
+       FROM ai_summaries WHERE meeting_history_id=$1) WHERE rn=1`;
+  return (await many(sql, [historyId]))
     .map((r) => ({ id: Number(r.id), kind: r.kind, content: r.content, provider: r.provider, model: r.model, createdAt: r.created_at }));
 }
 async function getHistory(id) { return one('SELECT * FROM meeting_history WHERE id=$1', [id]); }

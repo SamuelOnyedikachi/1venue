@@ -8,7 +8,7 @@ const crypto = require('node:crypto');
 const jwt = require('jsonwebtoken');
 const { boot, client, signupPayload } = require('./helpers/server');
 
-const skip = !process.env.DATABASE_URL ? 'set DATABASE_URL' : false;
+const skip = !process.env.DATABASE_URL && process.env.DB_DRIVER !== 'sqlite' ? 'set DATABASE_URL' : false;
 const uid = () => 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const CLIENT_ID = 'test-client.apps.googleusercontent.com';
 const SECRET = 'test-google-secret';

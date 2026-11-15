@@ -33,7 +33,8 @@ async function uniqueCode(c) {
 }
 
 async function removeIn(c) {
-  const ids = (await c.query('SELECT id FROM users WHERE is_seed')).rows.map((r) => r.id);
+  const ids = (await c.query('SELECT id FROM users WHERE is_seed ORDER BY id FOR UPDATE')).rows.map((r) => r.id);
+  for (const id of ids) await require('../wallet/data').assertCanDelete(c, id);
   const tracked = async (tbl) => (await c.query('SELECT row_id FROM seed_rows WHERE tbl=$1', [tbl])).rows.map((r) => r.row_id);
   const histIds = [...new Set([...(await tracked('meeting_history')).map(Number),
     ...(await c.query('SELECT id FROM meeting_history WHERE host_user_id = ANY($1::int[])', [ids])).rows.map((r) => r.id)])];
@@ -61,7 +62,7 @@ async function removeIn(c) {
   await del('files', 'DELETE FROM files WHERE owner_user_id = ANY($1::int[])', [ids]);
   // Everything else (events, RSVPs, speakers, posts, likes, follows, venues, materials,
   // whiteboards, prefs, scheduled meetings, sessions) cascades from the user rows.
-  await c.query('DELETE FROM users WHERE is_seed');
+  await c.query('DELETE FROM users WHERE id = ANY($1::int[])', [ids]);
   await c.query('DELETE FROM seed_rows');
   return counts;
 }
@@ -213,6 +214,8 @@ async function load({ now = Date.now() } = {}) {
     // ---- past sessions: history, attendance, chat, polls, Q&A, transcript, AI summary
     let sessions = 0;
     const session = async ({ code, name, hostKey, start, end, eventId, script }) => {
+      start = new Date(start);
+      end = new Date(end);
       const attendees = pick(keys.filter((x) => x !== hostKey), name.length, 6);
       const h = await ins(`INSERT INTO meeting_history (code, name, host_user_id, host_display_name, created_at, ended_at, max_participants, event_id)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`, [code, name, uid(hostKey), U[hostKey].name, start, end, attendees.length + 1, eventId || null]);

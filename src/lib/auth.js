@@ -166,7 +166,7 @@ async function startSession(req, res, user, { method = 'password' } = {}) {
   const refresh = newSecret();
   await db.q(
     `INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, max_expires_at, method, user_agent, ip)
-     VALUES ($1, $2, $3, NOW() + make_interval(days => $4), NOW() + make_interval(days => $5), $6, $7, $8)`,
+     VALUES ($1, $2, $3, ${db.USE_PG ? 'NOW() + make_interval(days => $4)' : "strftime('%Y-%m-%dT%H:%M:%fZ','now',$4 || ' days')"}, ${db.USE_PG ? 'NOW() + make_interval(days => $5)' : "strftime('%Y-%m-%dT%H:%M:%fZ','now',$5 || ' days')"}, $6, $7, $8)`,
     [sid, user.id, sha256(refresh), A.refreshTtlDays, A.sessionMaxDays, method,
       String(req.headers['user-agent'] || '').slice(0, 300), clientIp(req).slice(0, 64)]);
   addCookies(res, sessionCookies(user.id, sid, refresh));
@@ -198,7 +198,7 @@ async function useRefresh(req, res, token, { rotate = true } = {}) {
   const next = newSecret();
   const up = await db.q(
     `UPDATE auth_sessions SET prev_token_hash = token_hash, token_hash = $2, rotated_at = NOW(), last_seen_at = NOW(),
-       expires_at = LEAST(max_expires_at, NOW() + make_interval(days => $3)), ip = $4
+       expires_at = LEAST(max_expires_at, ${db.USE_PG ? 'NOW() + make_interval(days => $3)' : "strftime('%Y-%m-%dT%H:%M:%fZ','now',$3 || ' days')"}), ip = $4
      WHERE id = $1 AND token_hash = $5 AND revoked_at IS NULL RETURNING id`,
     [s.id, sha256(next), A.refreshTtlDays, clientIp(req).slice(0, 64), h]);
   if (!up.rowCount) return { userId: s.user_id, sid: s.id }; // lost a race with a parallel request: fine

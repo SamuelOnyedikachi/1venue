@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { boot, client, signupPayload } = require('./helpers/server');
 const { verseOfTheDay, dayOfYear, DAILY } = require('../src/features/social/verse');
 
-const skip = !process.env.DATABASE_URL ? 'set DATABASE_URL' : false;
+const skip = !process.env.DATABASE_URL && process.env.DB_DRIVER !== 'sqlite' ? 'set DATABASE_URL' : false;
 
 test('today’s verse rotates by UTC date and stays stable for a given day', () => {
   const a = verseOfTheDay(new Date('2026-11-15T00:30:00Z'));

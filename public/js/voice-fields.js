@@ -21,4 +21,3 @@ export function voiceKind(el) {
   if (el.closest && el.closest('.cmdbar')) return 'bar';
   return 'text';
 }
-

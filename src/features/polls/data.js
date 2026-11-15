@@ -1,3 +1,4 @@
+const { USE_PG } = require('../../../db');
 /**
  * polls queries (PostgreSQL, parameterised). Split out of src/venue/data.js;
  * src/venue/data.js still re-exports everything for older call sites.
@@ -14,11 +15,11 @@ async function resultsFor(polls, voterKey) {
   if (!polls.length) return [];
   const ids = polls.map((p) => p.id);
   const rows = await many(
-    `SELECT v.poll_id, v.option_idx, COUNT(*)::int AS n, BOOL_OR(v.voter_key = $2) AS mine, d.voters
+    `SELECT v.poll_id, v.option_idx, COUNT(*)::int AS n, ${USE_PG ? 'BOOL_OR(v.voter_key = $2)' : 'MAX(v.voter_key = $2)'} AS mine, d.voters
        FROM poll_votes v
-       JOIN (SELECT poll_id, COUNT(DISTINCT voter_key)::int AS voters FROM poll_votes WHERE poll_id = ANY($1::bigint[]) GROUP BY poll_id) d
+       JOIN (SELECT poll_id, COUNT(DISTINCT voter_key)::int AS voters FROM poll_votes WHERE ${USE_PG ? 'poll_id = ANY($1::bigint[])' : 'poll_id IN (SELECT value FROM json_each($1))'} GROUP BY poll_id) d
          ON d.poll_id = v.poll_id
-      WHERE v.poll_id = ANY($1::bigint[])
+      WHERE ${USE_PG ? 'v.poll_id = ANY($1::bigint[])' : 'v.poll_id IN (SELECT value FROM json_each($1))'}
       GROUP BY v.poll_id, v.option_idx, d.voters
       ORDER BY v.poll_id, v.option_idx`,
     [ids, voterKey || null]);

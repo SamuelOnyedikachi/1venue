@@ -1,3 +1,4 @@
+const { USE_PG } = require('../../../db');
 /**
  * whiteboard queries (PostgreSQL, parameterised). Split out of src/venue/data.js;
  * src/venue/data.js still re-exports everything for older call sites.
@@ -17,7 +18,10 @@ async function saveWhiteboard(userId, title = 'My board', data = {}) {
   return { id: Number(r.id), title: r.title, updatedAt: r.updated_at };
 }
 async function listWhiteboards(userId) {
-  return (await many(`SELECT id, title, updated_at, COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(data->'pages')='array' THEN data->'pages' END),1) AS pages
+  const pageCount = USE_PG
+    ? "COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(data->'pages')='array' THEN data->'pages' END),1)"
+    : "COALESCE(json_array_length(data, '$.pages'),1)";
+  return (await many(`SELECT id, title, updated_at, ${pageCount} AS pages
     FROM whiteboards WHERE user_id=$1 ORDER BY updated_at DESC LIMIT 200`, [userId]))
     .map((r) => ({ id: Number(r.id), title: r.title, updatedAt: r.updated_at, pages: Number(r.pages) || 1 }));
 }

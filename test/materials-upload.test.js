@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const { boot, client, signupPayload } = require('./helpers/server');
 
-const skip = !process.env.DATABASE_URL ? 'set DATABASE_URL' : false;
+const skip = !process.env.DATABASE_URL && process.env.DB_DRIVER !== 'sqlite' ? 'set DATABASE_URL or DB_DRIVER=sqlite' : false;
 const PUB = 'https://files.example.test';
 const png = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
 

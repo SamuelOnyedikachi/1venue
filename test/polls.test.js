@@ -1,10 +1,11 @@
 'use strict';
+require('./helpers/server');
 // Polls: listPolls/pollResults now batch their queries (2 instead of 1 + 4 per poll).
 // This compares the new output with the old one-poll-at-a-time implementation on real data.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const skip = !process.env.DATABASE_URL ? 'set DATABASE_URL' : false;
+const skip = !process.env.DATABASE_URL && process.env.DB_DRIVER !== 'sqlite' ? 'set DATABASE_URL' : false;
 
 // The previous implementation, verbatim, as the reference.
 function oldImpl({ one, many }) {
@@ -59,7 +60,7 @@ test('listPolls / pollResults: batched output equals the old per-poll output', {
   assert.deepEqual(multi.mine, [0, 2, 3]);
 });
 
-test('listPolls issues 2 queries however many polls there are', { skip }, async () => {
+test('listPolls issues 2 queries however many polls there are', { skip: skip || (process.env.DB_DRIVER === 'sqlite' ? 'PostgreSQL pool instrumentation' : false) }, async () => {
   const db = require('../db');
   const polls = require('../src/features/polls/data');
   const code = 'pq' + Date.now().toString(36);

@@ -38,7 +38,7 @@ const AUTH = {
   deleteCodeTtlMin: Math.min(60, Math.max(5, int('AUTH_DELETE_CODE_TTL_MIN', 10))), // account deletion email code
   ratePerMin: int('AUTH_RATE_PER_MIN', 20), // per IP for sign-in / sign-up / reset endpoints
   // Secure cookies unless PUBLIC_URL is plain http (local dev)
-  cookieSecure: bool('AUTH_COOKIE_SECURE', !/^http:\/\//i.test(env('PUBLIC_URL', ''))),
+  cookieSecure: bool('AUTH_COOKIE_SECURE', !/^http:\/\//i.test(env('PUBLIC_URL', process.env.DB_DRIVER === 'sqlite' ? 'http://localhost' : ''))),
   google: {
     clientId: env('GOOGLE_CLIENT_ID', ''),
     clientSecret: env('GOOGLE_CLIENT_SECRET', ''),

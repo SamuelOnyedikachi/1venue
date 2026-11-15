@@ -2,6 +2,7 @@
  * social queries (PostgreSQL, parameterised). Split out of src/venue/data.js;
  * src/venue/data.js still re-exports everything for older call sites.
  */
+const { USE_PG } = require('../../../db');
 const { q, tx, one, many } = require('../../core/db');
 
 // ---------------------------------------------------------------- prefs
@@ -130,7 +131,8 @@ async function feed(userId, { before, limit = 20, filter = 'all' } = {}) {
   } else if (f === 'events') {
     scope = `(p.event_id IS NOT NULL OR p.kind LIKE 'event_%')`;
   } else if (f === 'verses') {
-    scope = `p.media @> '[{"type":"passage"}]'::jsonb`;
+    scope = USE_PG ? `p.media @> '[{"type":"passage"}]'::jsonb`
+      : `EXISTS (SELECT 1 FROM json_each(p.media) WHERE json_extract(value,'$.type')='passage')`;
   } else if (f === 'live') {
     scope = `(p.kind='event_live' OR e.status='live')`;
   } else {

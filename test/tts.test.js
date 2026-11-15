@@ -27,7 +27,7 @@ const freePort = () => new Promise((resolve, reject) => {
   srv.listen(0, '127.0.0.1', () => { const { port } = srv.address(); srv.close(() => resolve(port)); });
 });
 const stop = (child) => new Promise((resolve) => { if (child.exitCode !== null || child.signalCode) return resolve(); child.once('exit', resolve); child.kill(); });
-const skip = !process.env.DATABASE_URL ? 'set DATABASE_URL' : false;
+const skip = !process.env.DATABASE_URL && process.env.DB_DRIVER !== 'sqlite' ? 'set DATABASE_URL' : false;
 
 function mockReplicate() {
   const calls = [];

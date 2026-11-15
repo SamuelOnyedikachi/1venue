@@ -9,7 +9,7 @@ const path = require('node:path');
 const http = require('node:http');
 const { boot, client, signupPayload } = require('./helpers/server');
 
-const skip = !process.env.DATABASE_URL ? 'set DATABASE_URL' : false;
+const skip = !process.env.DATABASE_URL && process.env.DB_DRIVER !== 'sqlite' ? 'set DATABASE_URL' : false;
 const uid = () => 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const tokenOf = (link) => new URL(link).searchParams.get('token');
 let db;
@@ -97,7 +97,7 @@ test('refresh token rotation, grace period, reuse detection; sessions; sign out 
     const old = client(s.base); old.jar.set('1v_rt', rt0);
     assert.equal((await old.get('/api/me')).status, 200);
     // ...but after it, reuse means theft: the whole session is revoked
-    await db.q("UPDATE auth_sessions SET rotated_at = NOW() - interval '5 minutes' WHERE user_id = (SELECT id FROM users WHERE email = $1)", [email]);
+    await db.q(`UPDATE auth_sessions SET rotated_at = ${db.USE_PG ? "NOW() - interval '5 minutes'" : "strftime('%Y-%m-%dT%H:%M:%fZ','now','-5 minutes')"} WHERE user_id = (SELECT id FROM users WHERE email = $1)`, [email]);
     const thief = client(s.base); thief.jar.set('1v_rt', rt0);
     assert.equal((await thief.get('/api/me')).status, 401);
     a.jar.delete('1v_at');
@@ -148,10 +148,10 @@ test('forgot / reset password: generic answer, single-use link, every session re
     assert.equal((await client(s.base).post('/api/login', { login: email, password: 'second password 2' })).status, 200);
 
     // expired link (the previous link is aged past the 60 s resend throttle first)
-    await db.q("UPDATE auth_tokens SET created_at = NOW() - interval '2 minutes' WHERE user_id = (SELECT id FROM users WHERE email = $1)", [email]);
+    await db.q(`UPDATE auth_tokens SET created_at = ${db.USE_PG ? "NOW() - interval '2 minutes'" : "strftime('%Y-%m-%dT%H:%M:%fZ','now','-2 minutes')"} WHERE user_id = (SELECT id FROM users WHERE email = $1)`, [email]);
     await client(s.base).post('/api/auth/forgot', { email });
     const l2 = await s.mailLink(email, /Reset your/, { after: s.output().indexOf(link) + link.length });
-    await db.q("UPDATE auth_tokens SET expires_at = NOW() - interval '1 second' WHERE user_id = (SELECT id FROM users WHERE email = $1) AND used_at IS NULL", [email]);
+    await db.q(`UPDATE auth_tokens SET expires_at = ${db.USE_PG ? "NOW() - interval '1 second'" : "strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 second')"} WHERE user_id = (SELECT id FROM users WHERE email = $1) AND used_at IS NULL`, [email]);
     assert.equal((await client(s.base).post('/api/auth/reset', { token: tokenOf(l2), password: 'fourth password 4' })).status, 400);
   } finally { await s.stop(); }
 });
@@ -185,6 +185,7 @@ test('change password keeps this device, signs out others; change email needs th
     // changing to an address that already has an account answers the same, sends nothing
     const taken = `${uid()}@ex.test`;
     await client(s.base).post('/api/signup', signupPayload({ email: taken, password: 'someone else 1' }));
+    await s.mailLink(taken, /Confirm your email/);
     const m = s.mark();
     const ce2 = await a.post('/api/auth/change-email', { email: taken, password: 'brand new pass 2' });
     assert.equal(ce2.status, 200);
@@ -192,7 +193,7 @@ test('change password keeps this device, signs out others; change email needs th
   } finally { await s.stop(); }
 });
 
-test('Imported users: migration clears placeholder passwords and cleans usernames; sign-in sends set-password', { skip }, async () => {
+test('Imported users: migration clears placeholder passwords and cleans usernames; sign-in sends set-password', { skip: skip || (process.env.DB_DRIVER === 'sqlite' ? 'PostgreSQL legacy import migrations' : false) }, async () => {
   const s = await boot();
   try {
     const bcrypt = require('bcryptjs');

@@ -1,5 +1,5 @@
 /** Queries for accounts: users, one-time email tokens, OAuth identities. */
-const { q } = require('../../../db');
+const { q, USE_PG } = require('../../../db');
 const { sha256, newSecret } = require('../../lib/auth');
 const { parseUsername, slugHint } = require('./username');
 
@@ -82,19 +82,19 @@ async function issueToken(userId, kind, email, ttl) {
   await q('UPDATE auth_tokens SET used_at = NOW() WHERE user_id = $1 AND kind = $2 AND used_at IS NULL', [userId, kind]);
   const token = newSecret();
   await q(`INSERT INTO auth_tokens (user_id, kind, token_hash, email, expires_at)
-           VALUES ($1, $2, $3, $4, NOW() + make_interval(${TTL[kind]} => $5))`, [userId, kind, sha256(token), normEmail(email), ttl]);
+           VALUES ($1, $2, $3, $4, ${USE_PG ? `NOW() + make_interval(${TTL[kind]} => $5)` : `strftime('%Y-%m-%dT%H:%M:%fZ','now',$5 || ' ${TTL[kind] === 'hours' ? 'hours' : 'minutes'}')`})`, [userId, kind, sha256(token), normEmail(email), ttl]);
   return token;
 }
 /** Use a token once. Returns the row (with user_id, email, kind) or null if unknown/used/expired. */
 async function consumeToken(token, kinds) {
   if (!token || typeof token !== 'string' || token.length > 200) return null;
   return one(`UPDATE auth_tokens SET used_at = NOW()
-              WHERE token_hash = $1 AND kind = ANY($2::text[]) AND used_at IS NULL AND expires_at > NOW()
+              WHERE token_hash = $1 AND ${USE_PG ? 'kind = ANY($2::text[])' : 'kind IN (SELECT value FROM json_each($2))'} AND used_at IS NULL AND expires_at > NOW()
               RETURNING *`, [sha256(token), kinds]);
 }
 /** Was a token of this kind sent recently? (throttles repeat emails per account) */
 const recentToken = async (userId, kinds, seconds) => !!(await one(
-  `SELECT 1 FROM auth_tokens WHERE user_id = $1 AND kind = ANY($2::text[]) AND created_at > NOW() - make_interval(secs => $3) LIMIT 1`, [userId, kinds, seconds]));
+  `SELECT 1 FROM auth_tokens WHERE user_id = $1 AND ${USE_PG ? 'kind = ANY($2::text[])' : 'kind IN (SELECT value FROM json_each($2))'} AND created_at > ${USE_PG ? 'NOW() - make_interval(secs => $3)' : "strftime('%Y-%m-%dT%H:%M:%fZ','now','-' || $3 || ' seconds')"} LIMIT 1`, [userId, kinds, seconds]));
 
 /* ---------- OAuth identities ---------- */
 const identity = (provider, subject) => one('SELECT * FROM oauth_identities WHERE provider = $1 AND subject = $2', [provider, subject]);

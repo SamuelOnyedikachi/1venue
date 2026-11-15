@@ -8,7 +8,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { boot, client, signupPayload } = require('./helpers/server');
 
-const skip = !process.env.DATABASE_URL ? 'set DATABASE_URL' : false;
+const skip = !process.env.DATABASE_URL && process.env.DB_DRIVER !== 'sqlite' ? 'set DATABASE_URL' : false;
 
 /** The code from the "[mail] ... code=123456" console line (SMTP unset in tests). */
 async function codeFor(s, email, after) {
@@ -71,7 +71,7 @@ test('delete account: password, email code, limits, data removed or anonymised, 
     assert.equal((await c.post('/api/auth/delete/verify', { code: code1 })).status, 429);
 
     // new code (pretend a minute passed), verify, then a grant is required to delete
-    await db.q("UPDATE account_deletion_codes SET created_at = NOW() - interval '2 minutes' WHERE user_id = $1", [me.id]);
+    await db.q(`UPDATE account_deletion_codes SET created_at = ${db.USE_PG ? "NOW() - interval '2 minutes'" : "strftime('%Y-%m-%dT%H:%M:%fZ','now','-2 minutes')"} WHERE user_id = $1`, [me.id]);
     mark = s.mark();
     assert.equal((await c.post('/api/auth/delete/start', { password: p.password })).status, 200);
     const code2 = await codeFor(s, p.email, mark);

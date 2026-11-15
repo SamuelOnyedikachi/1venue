@@ -1,3 +1,4 @@
+const { USE_PG } = require('../../../db');
 /**
  * Promotions: admin-picked events / posts shown as "Promoted" cards (sidebar on wide screens,
  * one inline card on phones). Views and clicks are simple counters.
@@ -36,7 +37,7 @@ async function live(placement, { limit = 3, viewerId = 0 } = {}) {
       LEFT JOIN users u ON u.id = e.host_user_id
       LEFT JOIN posts po ON po.id = p.post_id
      WHERE p.active AND p.starts_at <= NOW() AND (p.ends_at IS NULL OR p.ends_at > NOW())
-       AND $1 = ANY(p.placements)
+       AND ${USE_PG ? '$1 = ANY(p.placements)' : 'EXISTS (SELECT 1 FROM json_each(p.placements) WHERE value=$1)'}
        AND ((p.target_type = 'event' AND e.visibility = 'public' AND e.status IN ('scheduled','live','ended'))
          OR (p.target_type = 'post' AND po.id IS NOT NULL))
      ORDER BY p.weight DESC, random()

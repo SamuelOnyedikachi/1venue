@@ -1,4 +1,5 @@
 'use strict';
+require('./helpers/server');
 // Graceful restart: SIGTERM snapshots live rooms instead of ending them, clients get
 // "server-restarting", and a fresh process restores the room when they reconnect.
 // Needs DATABASE_URL (skipped otherwise).
@@ -8,7 +9,7 @@ const { spawn } = require('node:child_process');
 const path = require('node:path');
 const WebSocket = require('ws');
 
-const skip = !process.env.DATABASE_URL ? 'set DATABASE_URL' : false;
+const skip = !process.env.DATABASE_URL && process.env.DB_DRIVER !== 'sqlite' ? 'set DATABASE_URL' : false;
 const port = 4060 + Math.floor(Math.random() * 30);
 const base = `http://127.0.0.1:${port}`;
 const env = { ...process.env, PORT: String(port), AI_MOCK: 'true', JWT_SECRET: 'restart-test-secret', PUBLIC_URL: base, SHUTDOWN_GRACE_MS: '300' };

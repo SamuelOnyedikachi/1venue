@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { boot, client, signupPayload } = require('./helpers/server');
 
-const skip = !process.env.DATABASE_URL ? 'set DATABASE_URL' : false;
+const skip = !process.env.DATABASE_URL && process.env.DB_DRIVER !== 'sqlite' ? 'set DATABASE_URL' : false;
 const { mockFineTune } = require('../src/features/ai/finetune');
 
 test('mock fine-tune cleans wording but keeps @mentions and scripture refs', () => {
