@@ -43,10 +43,10 @@ Interfaces: `billing.start({user,code,name,hostName})`, `billing.check(meeting)`
 
 Files: create `public/js/credits.js`; modify app shell, wallet history, instant/new/room opening paths, meeting header/end notice, CSS and service worker.
 Interfaces: credit module `subscribeCredits(fn) -> unsubscribe`, `refreshCredits()`, `setCreditUser(id|null)`; foreground polling with bounded overlap and generation guard; warning shown only for caller's active payer session.
-- [ ] Write tests for stale-account results, polling concurrency and warning/rearm transitions using injected fetch/timers where meaningful.
-- [ ] Implement shared navbar and meeting-header badges, accessible persistent low-credit notice and top-up links opening separate tabs in-room. Refresh on purchase confirmation, session changes, visibility and foreground polling. Format signed usage ledger entries and label meeting usage.
-- [ ] Opening UI discloses minimum/rate, preserves free venue path, offers wallet/sign-in on errors. Ending for exhaustion explains cause.
-- [ ] Verify syntax and available browser layouts; commit UI task.
+- [x] Write tests for stale-account results, polling concurrency and warning/rearm transitions using injected fetch/timers where meaningful.
+- [x] Implement shared navbar and meeting-header badges, accessible persistent low-credit notice and top-up links opening separate tabs in-room. Refresh on purchase confirmation, session changes, visibility and foreground polling. Format signed usage ledger entries and label meeting usage.
+- [x] Opening UI discloses minimum/rate, preserves free venue path, offers wallet/sign-in on errors. Ending for exhaustion explains cause.
+- [x] Verify syntax and available browser layouts; commit UI task.
 
 ### Task 4: Verification and delivery
 
@@ -54,3 +54,5 @@ Files: update `docs/PAYMENTS.md`, README, approved spec status and this plan; is
 - [ ] Run `npm run test:sqlite` and temporary PostgreSQL full suite serially; inspect failures and run focused fixes.
 - [ ] Dispatch one fresh independent reviewer of the whole change. Address important findings with regression coverage.
 - [ ] Record limitations for actual LiveKit/Paystack credentials and unavailable browser tools, if applicable. Run `git diff --check`; commit final changes; report commit/test outcomes. No push.
+
+Visual verification: browser inventory returned no apps/browsers. UI implementation and syntax/store behavior are checked; desktop/mobile visual inspection remains unavailable in this session.

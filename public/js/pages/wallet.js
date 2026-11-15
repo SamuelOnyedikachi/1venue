@@ -1,3 +1,4 @@
+import { refreshCredits } from '../credits.js';
 import { h, api, timeAgo } from '../ui.js';
 import { icon } from '../icons.js';
 
@@ -35,13 +36,13 @@ export async function mount(view) {
     if (!append) entries.replaceChildren();
     if (!list.length && !append) entries.append(h('p', { class: 'small muted' }, 'No credit transactions yet. Completed purchases will appear here.'));
     for (const entry of list) entries.append(h('div', { class: 'wallet-item' },
-      h('div', null, h('strong', null, 'Credit purchase'), h('div', { class: 'tiny muted' }, timeAgo(entry.createdAt))),
-      h('div', { class: 'wallet-value' }, h('strong', null, '+' + credits(entry.credits)), h('div', { class: 'tiny muted' }, credits(entry.balanceAfter) + ' balance'))));
+      h('div', null, h('strong', null, entry.type === 'usage' ? 'Meeting usage' : 'Credit purchase'), h('div', { class: 'tiny muted' }, timeAgo(entry.createdAt))),
+      h('div', { class: 'wallet-value' }, h('strong', null, (entry.credits > 0 ? '+' : '') + credits(entry.credits)), h('div', { class: 'tiny muted' }, credits(entry.balanceAfter) + ' balance'))));
   }
   async function refresh() {
     const [summary, purchases, ledger] = await Promise.all([api('/api/wallet'), api('/api/wallet/payments'), api('/api/wallet/transactions')]);
     if (!alive) return;
-    wallet = summary; renderBalance();
+    wallet = summary; renderBalance(); refreshCredits();
     renderEntries(ledger.entries); cursor = ledger.nextBefore; more.hidden = !cursor;
     renderPurchases(purchases);
   }
