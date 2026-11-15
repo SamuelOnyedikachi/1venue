@@ -3,7 +3,9 @@
  * JSON API routes (see src/core/router.js for the route() contract).
  */
 module.exports = function routes(route, kit) {
-  const { config, clientIp, rateLimit, getAuthUser, data, ai, bible, httpError, roomParticipant, int } = kit;
+  const { config, clientIp, rateLimit, getAuthUser, data, ai, bible, httpError, roomParticipant, int, requireUser } = kit;
+  const usage = require('../../lib/usage');
+  const { mockFineTune } = require('./finetune');
 
   // ------------------------------------------------------------ AI
   async function aiGuard(ctx) {
@@ -64,6 +66,34 @@ module.exports = function routes(route, kit) {
       start: hints.start, end: hints.end, hasTime: hints.hasTime, endHasTime: hints.endHasTime,
       provider: r.provider, mock: !!r.mock,
     };
+  });
+
+  const finetuneLimit = () => Number(config.AI.finetuneDailyLimit || 0);
+  route('GET', '/api/ai/finetune', async (ctx) => {
+    const u = await getAuthUser(ctx.req, ctx.res);
+    const limit = finetuneLimit();
+    const used = u ? await usage.used(`u:${u.id}`, 'finetune') : 0;
+    return { enabled: limit > 0, dailyLimit: limit, used, left: Math.max(0, limit - used) };
+  });
+  route('POST', '/api/ai/finetune', async (ctx) => {
+    const u = await requireUser(ctx.req, ctx.res);
+    await aiGuard(ctx);
+    const limit = finetuneLimit();
+    if (limit <= 0) throw httpError(503, 'Fine-tune is turned off');
+    const raw = String((await ctx.body()).text || '').trim();
+    if (!raw) throw httpError(400, 'Write something first');
+    if (raw.length > 2000) throw httpError(400, 'That post is a little long to fine-tune');
+    const took = await usage.take(`u:${u.id}`, 'finetune', 1, limit);
+    if (!took.ok) throw httpError(429, `You’ve used your ${limit} fine-tunes for today — try again tomorrow`);
+    try {
+      const r = await ai().fineTune(raw);
+      let text = String(r.text || '').trim();
+      if (!text) text = mockFineTune(raw);
+      return { text, provider: r.provider, model: r.model, mock: !!r.mock, left: Math.max(0, limit - took.used), used: took.used };
+    } catch (e) {
+      await usage.refund(`u:${u.id}`, 'finetune', 1).catch(() => {});
+      throw e;
+    }
   });
   route('POST', '/api/ai/scripture', async (ctx) => {
     await aiGuard(ctx);

@@ -123,3 +123,14 @@ test('sqlite has every event template and rejects reversed event dates', async (
   const ev = await data.createEvent(user, { title: 'Dated event', startsAt: '2026-12-02T12:00:00Z', endsAt: '2026-12-02T13:00:00Z' });
   await assert.rejects(data.updateEvent(ev.id, user.id, { endsAt: '2026-12-01T12:00:00Z' }), (e) => e.code === '23514');
 });
+
+
+test('discovery combines host, tag and text filters on SQLite', async () => {
+  const ev = await data.createEvent(user, { title: 'Host filter test', tags: ['hosting'] });
+  for (const host of [String(user.id), 'HOST']) {
+    const found = await data.discover({ host, tag: 'hosting', q: 'Host filter' });
+    assert.equal(found.length, 1);
+    assert.equal(found[0].id, ev.id);
+  }
+  assert.deepEqual(await data.discover({ host: 'unknown_host', tag: 'hosting' }), []);
+});

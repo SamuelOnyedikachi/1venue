@@ -10,7 +10,7 @@ module.exports = function routes(route, kit) {
   route('GET', '/api/discover', async (ctx) => {
     const u = await getAuthUser(ctx.req, ctx.res);
     const s = ctx.url.searchParams;
-    const events = await data.discover({ q: s.get('q'), category: s.get('category'), status: s.get('status'), tag: s.get('tag'), limit: int(s.get('limit'), 24), offset: int(s.get('offset'), 0), viewerId: u && u.id });
+    const events = await data.discover({ q: s.get('q'), category: s.get('category'), status: s.get('status'), tag: s.get('tag'), host: s.get('host'), limit: int(s.get('limit'), 24), offset: int(s.get('offset'), 0), viewerId: u && u.id });
     return { events: events.map((e) => ({ ...e, live: liveInfo(e) })) };
   });
   route('GET', '/api/events/mine', async (ctx) => {

@@ -171,6 +171,15 @@ export function initTooltips() {
   let lp = null;
   document.addEventListener('touchstart', (e) => { const el = e.target.closest('[data-tip]'); if (!el) return; lp = setTimeout(() => { show(el); setTimeout(hide, 1600); }, 480); }, { passive: true });
   document.addEventListener('touchend', () => clearTimeout(lp), { passive: true });
+  document.addEventListener('focusin', (e) => {
+    const el = e.target.closest && e.target.closest('[data-tip]');
+    if (!el) return;
+    // keyboard focus only — pointer hover already handled above
+    if (e.target.matches && e.target.matches(':focus-visible')) { clearTimeout(timer); show(el); }
+  });
+  document.addEventListener('focusout', (e) => {
+    if (cur && e.target.closest && e.target.closest('[data-tip]') === cur) hide();
+  });
   document.addEventListener('scroll', hide, true); document.addEventListener('pointerdown', () => { clearTimeout(timer); hide(); });
 }
 
