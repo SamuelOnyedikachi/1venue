@@ -24,7 +24,7 @@ export function handle(R, m) {
     case 'removed': R.kicked(m); return;
     case 'meeting-ended': R.ended(m); return;
     case 'toast': toast(m.message, { icon: 'info' }); return;
-    case 'error': toast(m.error || 'Something went wrong', { icon: 'alert' }); return;
+    case 'error': if (m.code === 'content-rejected') R._presentPending = false; toast(m.error || 'Something went wrong', { icon: 'alert' }); return;
     case 'admitted': case 'declined': return; // handled during waiting
     default: return;
   }

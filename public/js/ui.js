@@ -229,11 +229,21 @@ export const isMobile = () => matchMedia('(max-width: 820px)').matches;
 export function readFileAsDataUrl(file) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); }); }
 /** Upload a File/Blob to /api/files (raw body). headers: room credentials when uploading as a guest. */
 export async function uploadFile(file, { purpose = 'attachment', headers = {} } = {}) {
-  const res = await fetch('/api/files?purpose=' + encodeURIComponent(purpose), {
-    method: 'POST', body: file, credentials: 'include',
-    headers: { 'Content-Type': file.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name || 'upload'), ...headers },
-  });
+  let res;
+  try {
+    res = await fetch('/api/files?purpose=' + encodeURIComponent(purpose), {
+      method: 'POST', body: file, credentials: 'include',
+      headers: { 'Content-Type': file.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name || 'upload'), ...headers },
+    });
+  } catch (err) {
+    console.warn('[upload] network error', file.name, err);
+    throw new Error(`Upload of ${file.name || 'file'} failed: network error. Check your connection and try again.`);
+  }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { const e = new Error(data.error || 'Upload failed'); e.status = res.status; throw e; }
+  if (!res.ok) {
+    const e = new Error(data.error || (res.status === 413 ? 'That file is too big for the server' : `Upload failed (HTTP ${res.status})`));
+    e.status = res.status; console.warn('[upload] failed', res.status, data.error || ''); throw e;
+  }
+  if (!data.url) throw new Error('Upload finished but the server returned no file link');
   return data;
 }
