@@ -62,6 +62,7 @@ module.exports = {
   suggestedPeople: social.suggestedPeople,
   createPost: social.createPost,
   feed: social.feed,
+  FEED_FILTERS: social.FEED_FILTERS,
   userTimeline: social.userTimeline,
   togglePostLike: social.togglePostLike,
   deletePost: social.deletePost,

@@ -2,8 +2,9 @@
 // Wide screens: a right sidebar with up to 3 cards. Phones / narrow: one inline card in the page.
 // Views are counted only when a card actually scrolls into view; clicks via sendBeacon.
 import { icon } from './icons.js';
-import { h, api, avatar, esc, profilePath } from './ui.js';
+import { h, api, avatar, esc, profilePath, fmtDate, toastErr } from './ui.js';
 import { eventCard } from './components.js';
+import { requireLogin } from './app.js';
 
 const cache = new Map(); // placement -> { at, p }
 const TTL = 60_000;
@@ -75,9 +76,49 @@ export function attachPromoRail(view, placement, { inline = true } = {}) {
   });
 }
 
+/** Compact rail card: small thumbnail, title, date, RSVP. Reuses view / click counting. */
+export function promoCompact(item) {
+  const ev = item.type === 'event' ? item.event : null;
+  const post = item.post;
+  const href = ev ? `/e/${ev.slug}` : (post ? profilePath(post.author) : '#');
+  const thumbSrc = ev?.coverUrl || (post && (post.media || []).find((m) => m.url && /^image\//.test(m.mime || 'image/')))?.url;
+  const title = ev?.title || String(post?.body || '').slice(0, 80) || (post?.author?.name || 'Promoted');
+  const date = ev?.startsAt ? fmtDate(ev.startsAt, { weekday: undefined }) : null;
+  const thumb = h('div', { class: 'feed-promo-thumb' },
+    thumbSrc ? h('img', { src: thumbSrc, alt: '', loading: 'lazy' }) : h('div', { class: 'feed-promo-ph', html: icon('sparkle', { size: 16 }) }));
+  const tag = h('span', { class: 'promo-tag', html: icon('sparkle', { size: 11 }) + 'Promoted' });
+  const body = h('div', { class: 'feed-promo-body' },
+    tag,
+    h('div', { class: 'feed-promo-title' }, title),
+    date ? h('div', { class: 'tiny muted' }, date) : null);
+  const el = h('div', { class: 'feed-promo', 'aria-label': `Promoted: ${title}` });
+  const link = h('a', { class: 'feed-promo-link', href, 'data-link': '' }, thumb, body);
+  el.append(link);
+  if (ev) {
+    let going = !!ev.rsvped;
+    const btn = h('button', { class: 'btn sm feed-promo-rsvp', type: 'button' });
+    const paint = () => { btn.textContent = going ? 'Going' : 'RSVP'; btn.classList.toggle('primary', !going); };
+    paint();
+    btn.onclick = async (e) => {
+      e.preventDefault(); e.stopPropagation();
+      if (!requireLogin('Sign in to RSVP')) return;
+      btn.disabled = true;
+      try {
+        const r = await api(`/api/events/${ev.id}/rsvp`, { method: 'POST' });
+        going = !!r.going; ev.rsvped = going; paint();
+      } catch (er) { toastErr(er); } finally { btn.disabled = false; }
+    };
+    el.append(btn);
+  }
+  el.dataset.promo = item.id;
+  el.addEventListener('click', () => click(item.id));
+  io && io.observe(el);
+  return el;
+}
+
 /** Phones / narrow: one promoted card inside a list (after its Nth child, from data-promo-slot). */
-export function promoInline(list, placement) {
-  if (!list || window.matchMedia(WIDE).matches) return;
+export function promoInline(list, placement, { wide = WIDE } = {}) {
+  if (!list || window.matchMedia(wide).matches) return;
   loadPromos(placement).then((items) => {
     if (!items.length || !list.isConnected || list.querySelector('.promo-inline')) return;
     const n = Math.max(0, parseInt(list.dataset.promoSlot || '3', 10));

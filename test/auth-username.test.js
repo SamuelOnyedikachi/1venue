@@ -42,9 +42,9 @@ test('phone: Nigeria default, E.164 storage, invalid numbers rejected', () => {
   assert.equal(normalizePhone('not-a-number', 'NG').ok, false);
 });
 
-test('service worker treats /auth/* as network-only and is bumped (v20)', () => {
+test('service worker treats /auth/* as network-only and is bumped (v22)', () => {
   const sw = fs.readFileSync(path.join(root, 'public/sw.js'), 'utf8');
-  assert.match(sw, /const VERSION = 'v20-2026-11-15'/);
+  assert.match(sw, /const VERSION = 'v22-2026-11-15'/);
   assert.match(sw, /pathname\.startsWith\('\/auth\/'\)/);
 });
 

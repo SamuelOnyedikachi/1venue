@@ -132,7 +132,7 @@ const ROUTES = [
   [/^\/(?:r\/|j\/)?([A-Za-z0-9]{3}-?[A-Za-z0-9]{3})\/?$/, () => import('./room/room.js'), 'code'],
 ];
 // Pages with a "Promoted" sidebar (wide) / inline card (phones). Discover and Feed place their own inline card.
-const RAILS = [[/^\/discover\/?$/, 'discover', false], [/^\/feed\/?$/, 'feed', false], [/^\/venues\/?$/, 'venues'], [/^\/(?:books|bible)\/?$/, 'books']];
+const RAILS = [[/^\/discover\/?$/, 'discover', false], [/^\/venues\/?$/, 'venues'], [/^\/(?:books|bible)\/?$/, 'books']];
 let currentPage = null;
 let routeSeq = 0;
 export function navigate(to, { replace = false } = {}) {
