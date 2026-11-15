@@ -113,12 +113,34 @@ async function createPost(userId, { kind = 'post', body, eventId, media }) {
     [userId, eventId || null, kind, b, JSON.stringify((media || []).slice(0, 4))]);
   return postOut(await one(`${POST_SELECT} WHERE p.id=$2`, [userId, r.id]));
 }
-async function feed(userId, { before, limit = 20 } = {}) {
+const FEED_FILTERS = ['all', 'following', 'events', 'verses', 'live'];
+
+async function feed(userId, { before, limit = 20, filter = 'all' } = {}) {
+  const f = FEED_FILTERS.includes(String(filter || '').toLowerCase()) ? String(filter).toLowerCase() : 'all';
+  const uid = userId || 0;
+  const lim = Math.min(50, limit);
+  // Private events stay hidden unless the viewer hosts them or has RSVPed.
+  const visible = `(e.id IS NULL OR e.visibility='public' OR e.host_user_id=$1
+    OR EXISTS (SELECT 1 FROM event_rsvps r WHERE r.event_id=e.id AND r.user_id=$1))`;
+  let scope;
+  if (f === 'following') {
+    scope = uid
+      ? `(p.user_id=$1 OR p.user_id IN (SELECT followee_id FROM follows WHERE follower_id=$1))`
+      : 'FALSE';
+  } else if (f === 'events') {
+    scope = `(p.event_id IS NOT NULL OR p.kind LIKE 'event_%')`;
+  } else if (f === 'verses') {
+    scope = `p.media @> '[{"type":"passage"}]'::jsonb`;
+  } else if (f === 'live') {
+    scope = `(p.kind='event_live' OR e.status='live')`;
+  } else {
+    // all: every visible post (a broader public feed than "following")
+    scope = 'TRUE';
+  }
   const rows = await many(`${POST_SELECT}
-    WHERE (p.user_id=$1 OR p.user_id IN (SELECT followee_id FROM follows WHERE follower_id=$1)
-      OR (p.kind IN ('event_live','event_scheduled','event_recap') AND e.visibility='public'))
+    WHERE ${visible} AND ${scope}
       AND ($2::timestamptz IS NULL OR p.created_at < $2)
-    ORDER BY p.created_at DESC LIMIT $3`, [userId || 0, before || null, Math.min(50, limit)]);
+    ORDER BY p.created_at DESC LIMIT $3`, [uid, before || null, lim]);
   return rows.map(postOut);
 }
 async function userTimeline(userId, viewerId, { before, limit = 20 } = {}) {
@@ -142,4 +164,4 @@ async function deletePost(postId, userId) {
   return (await q('DELETE FROM posts WHERE id=$1 AND user_id=$2', [postId, userId])).rowCount > 0;
 }
 
-module.exports = { PREF_DEFAULTS, prefsOut, getPrefs, setPrefs, userCard, getUserProfile, updateProfile, searchUsers, follow, suggestedPeople, postOut, POST_SELECT, createPost, feed, userTimeline, togglePostLike, deletePost };
+module.exports = { PREF_DEFAULTS, FEED_FILTERS, prefsOut, getPrefs, setPrefs, userCard, getUserProfile, updateProfile, searchUsers, follow, suggestedPeople, postOut, POST_SELECT, createPost, feed, userTimeline, togglePostLike, deletePost };

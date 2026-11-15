@@ -3,7 +3,7 @@
  * JSON API routes (see src/core/router.js for the route() contract).
  */
 module.exports = function routes(route, kit) {
-  const { rateLimit, getAuthUser, data, httpError, requireUser, int, liveInfo } = kit;
+  const { rateLimit, getAuthUser, data, httpError, requireUser, int, liveInfo, bible } = kit;
 
   // ------------------------------------------------------------ prefs & profile
   route('GET', '/api/prefs', async (ctx) => {
@@ -20,7 +20,37 @@ module.exports = function routes(route, kit) {
   // ------------------------------------------------------------ social
   route('GET', '/api/feed', async (ctx) => {
     const u = await getAuthUser(ctx.req, ctx.res);
-    return { posts: await data.feed(u ? u.id : 0, { before: ctx.url.searchParams.get('before') }) };
+    const s = ctx.url.searchParams;
+    const filter = s.get('filter') || 'all';
+    if (!data.FEED_FILTERS.includes(filter)) throw httpError(400, 'Unknown feed filter');
+    return { posts: await data.feed(u ? u.id : 0, { before: s.get('before'), filter }), filter };
+  });
+  route('GET', '/api/feed/rails', async (ctx) => {
+    const u = await getAuthUser(ctx.req, ctx.res);
+    const uid = u && u.id;
+    const upcoming = uid
+      ? (await data.rsvpedEvents(uid)).filter((e) => e.status === 'live' || e.status === 'scheduled').slice(0, 3)
+      : [];
+    const live = (await data.discover({ status: 'live', limit: 6, viewerId: uid || 0 })).map((e) => ({ ...e, live: liveInfo(e) }));
+    const suggested = await data.suggestedPeople(uid, 4);
+    const pick = require('./verse').verseOfTheDay();
+    let verse = { ...pick, translation: 'KJV' };
+    try {
+      const psg = await Promise.race([
+        bible().passage(pick.ref),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('verse timeout')), 2500)),
+      ]);
+      if (psg && (psg.text || (psg.verses && psg.verses.length))) {
+        const text = psg.text || psg.verses.map((v) => v.text).join(' ');
+        verse = {
+          ref: psg.reference || pick.ref,
+          text: String(text).replace(/\s+/g, ' ').trim(),
+          translation: (psg.translation && (psg.translation.short || psg.translation.id)) || psg.short || 'KJV',
+          href: '/books?ref=' + encodeURIComponent(psg.reference || pick.ref),
+        };
+      }
+    } catch { /* keep the local fallback */ }
+    return { upcoming, live, suggested, verse };
   });
   route('POST', '/api/posts', async (ctx) => {
     const u = await requireUser(ctx.req, ctx.res);
