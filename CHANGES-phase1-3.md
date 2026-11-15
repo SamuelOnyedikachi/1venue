@@ -497,3 +497,42 @@ What changed:
   the username; real 404 page for unknown users; share previews (og tags). Profile links app-wide
   use the username.
 - Service worker v17.
+
+## Materials uploads fix, Instant meeting overlay, composer mic toggle (Nov 15)
+
+**Root cause of "materials uploads don't work":** with R2 (`STORAGE_DRIVER=s3`) and `S3_PUBLIC_BASE_URL`
+set, `/api/files` returns `https://files.1venue.live/<key>`. Materials (`POST /api/materials`) and room
+presenting (`content-start` over the socket) only accepted `/files/…` URLs, so every deck/PDF/image was
+rejected *after* it had already reached the bucket. The 400 was never logged (only 5xx were) and the room
+dropped the share silently while the client still toasted "Presenting to everyone".
+
+- `src/lib/file-url.js`: one validator for stored-file URLs (`/files/…` or the S3 public base only).
+- Materials, room slides/images and live deck edits use it; a rejected share now tells the presenter why.
+- Decks no longer trip the 12/min upload limit: signed-in `purpose=content` uploads use the content limits.
+- Runtime logs: `[upload] received/ok/failed`, `[storage] put ok/put failed (R2 status + error code)`,
+  `[materials] create received/created/create failed (reason)`, `[pptx] …`, `[content] presenting/start rejected`.
+- Client: clear upload errors (network, HTTP status, too big), event-materials attach failure is toasted.
+- **Instant meeting** is an overlay over the current page (same blur and pill inputs as log in); hero,
+  dashboard, command bar and old `/create?instant=1` links all open it.
+- **Feed composer mic** is tap-to-talk: never listens on focus; tap again, typing, leaving the box,
+  posting, ~12 s of silence or leaving the page stops it; it never restarts itself.
+- Service worker v28, `app.css?v=19`.
+
+## PDF / PPTX materials with spaces in the file name (Nov 15, follow-up)
+
+**Root cause:** storage keys kept the original file name, so R2 URLs looked like
+`https://files.1venue.live/2026/11/<id>-CV - Web Developer - Chinedu Okonkwo-p1.jpg` (raw spaces). The
+stored-file validator added in the previous fix refused whitespace, so saving the material (and presenting the
+pages in a meeting) was rejected with 400 even though every page reached R2. Single images worked only when
+their name had no spaces. PPTX went through the same save step after conversion and failed the same way.
+
+- Storage keys are slugs now (`…-CV-Web-Developer-Chinedu-Okonkwo-p1.jpg`); public URLs are percent-encoded.
+- `src/lib/file-url.js` accepts raw or encoded URLs (old keys with spaces still save) and returns one canonical
+  encoded form; traversal, encoded slashes, markup and control characters are still refused.
+- File type detection reads the first bytes when the phone gives no type / extension (PDF, PPTX, images);
+  .ppt / Keynote get a clear "save as PPTX or PDF" message.
+- `[pptx] received` is logged first on every attempt (before auth / limits), every failure logs why, and the
+  server logs at boot whether LibreOffice + poppler are present (`[pptx] converter ready` / `converter MISSING`).
+- Browser-side failures in Materials, presenting and event-material attach are posted to `/api/client-log` and
+  logged as `[client] materials error {step, message, file, mime, size, …}`, with a 7 s toast in the browser.
+- Service worker v29, `app.css?v=20`.

@@ -4,7 +4,7 @@ import { state, requireLogin, loginUrl } from '../app.js';
 import { postCard, empty, personRow } from '../components.js';
 import { passageCard } from '../passage.js';
 import { promoInline, promoCompact, loadPromos } from '../promo.js';
-import { listenOn } from '../voice.js';
+import { listenOn, stopListening, isListening } from '../voice.js';
 import { createHistory } from '../history.js';
 
 const FILTERS = [
@@ -22,6 +22,8 @@ export function composer(onPost, { prefill = '', eventId, passage = null, autofo
     placeholder: 'Share a thought, a verse, or what you’re hosting next…',
     rows: 2,
     maxlength: 2000,
+    'aria-label': 'Write a post',
+    'data-voice': 'off', // never listens on focus: voice typing here is tap-to-talk on the mic button only
   });
   ta.value = prefill;
   let media = [];
@@ -49,7 +51,8 @@ export function composer(onPost, { prefill = '', eventId, passage = null, autofo
   const btn = h('button', { class: 'btn primary feed-post-btn', type: 'button', html: icon('send', { size: 16 }) + ' Post' });
   const undoBtn = h('button', { class: 'icon-btn sm', type: 'button', 'data-group': 'ai', 'data-tip': 'Undo', 'aria-label': 'Undo', html: icon('undo', { size: 18 }) });
   const redoBtn = h('button', { class: 'icon-btn sm', type: 'button', 'data-group': 'ai', 'data-tip': 'Redo', 'aria-label': 'Redo', html: icon('redo', { size: 18 }) });
-  const micBtn = h('button', { class: 'icon-btn sm', type: 'button', 'data-group': 'media', 'data-tip': 'Voice typing', 'aria-label': 'Voice typing', html: icon('mic', { size: 18 }) });
+  const micBtn = h('button', { class: 'icon-btn sm feed-mic', type: 'button', 'data-group': 'media', 'data-tip': 'Voice typing: tap to start', 'aria-label': 'Start voice typing', 'aria-pressed': 'false', html: icon('mic', { size: 18 }) });
+  const micLive = h('span', { class: 'feed-mic-live', role: 'status', 'aria-live': 'polite', hidden: true }, h('i', { class: 'dot' }), 'Listening');
   const tuneBtn = h('button', { class: 'icon-btn sm feed-finetune', type: 'button', 'data-group': 'ai', 'data-tip': 'Fine-tune', 'aria-label': 'Fine-tune wording', html: icon('sparkle', { size: 18 }) });
   const toggle = h('button', { class: 'chip sm feed-finetune-toggle hidden', type: 'button', 'aria-pressed': 'false' }, 'Original');
 
@@ -103,7 +106,28 @@ export function composer(onPost, { prefill = '', eventId, passage = null, autofo
     const v = hist.redo();
     if (v != null) { showingOriginal = false; applyText(v); }
   };
-  micBtn.onclick = () => { ta.focus(); listenOn(ta); };
+  // Mic = on/off toggle. Off is final: stopped by a second tap, typing, leaving the box, posting,
+  // ~12 s of silence or leaving the page; it never turns itself back on.
+  const STOP_MSG = { typing: 'Voice typing off — you started typing', silence: 'Voice typing off after a quiet spell', ended: 'Voice typing stopped' };
+  const paintMic = (on) => {
+    micBtn.classList.toggle('on', on);
+    micBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    micBtn.setAttribute('aria-label', on ? 'Stop voice typing' : 'Start voice typing');
+    micBtn.dataset.tip = on ? 'Listening: tap to stop' : 'Voice typing: tap to start';
+    micLive.hidden = !on;
+    micLive.textContent = ''; if (on) micLive.append(h('i', { class: 'dot' }), 'Listening');
+  };
+  micBtn.addEventListener('pointerdown', (e) => e.preventDefault()); // keep the caret in the box
+  micBtn.addEventListener('mousedown', (e) => e.preventDefault());
+  micBtn.onclick = async () => {
+    if (isListening(ta) || micBtn.classList.contains('on')) { stopListening(ta, 'user'); paintMic(false); return; }
+    ta.focus();
+    await listenOn(ta, {
+      manual: true,
+      onStart: () => paintMic(true),
+      onEnd: (reason) => { paintMic(false); if (STOP_MSG[reason] && ta.isConnected) toast(STOP_MSG[reason], { icon: 'micOff', group: 'media' }); },
+    });
+  };
   toggle.onclick = () => {
     if (!lastTuned) return;
     if (showingOriginal) { showingOriginal = false; applyText(lastTuned); }
@@ -133,6 +157,7 @@ export function composer(onPost, { prefill = '', eventId, passage = null, autofo
 
   btn.onclick = async () => {
     if (!requireLogin('Sign in to post')) return;
+    stopListening(ta, 'posted');
     if (!ta.value.trim() && !media.length && !passage) return;
     btn.disabled = true;
     try {
@@ -162,6 +187,7 @@ export function composer(onPost, { prefill = '', eventId, passage = null, autofo
         h('a', { class: 'icon-btn sm', href: '/create', 'data-link': '', 'data-group': 'engage', 'data-tip': 'Schedule an event', 'aria-label': 'Schedule an event', html: icon('calendar', { size: 18 }) }),
         h('span', { class: 'feed-compose-sep' }),
         micBtn,
+        micLive,
         tuneBtn,
         undoBtn,
         redoBtn,

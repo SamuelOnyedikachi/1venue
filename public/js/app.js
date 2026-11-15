@@ -60,6 +60,10 @@ export function signupUrl(nextPath) {
   const path = nextPath && String(nextPath).startsWith('/') ? nextPath : (location.pathname + location.search);
   return `/signup?next=${encodeURIComponent(path)}`;
 }
+/** Instant meeting setup = an overlay over whatever page you are on (blurred underneath). */
+export function openInstantOverlay(opts) {
+  return import('./instant.js').then((m) => m.openInstant(opts)).catch(() => navigate('/create?instant=1'));
+}
 /** Log in = an overlay over the current (blurred) page; sign up = its own page. */
 export function goLogin(nextPath, { signup = false, mode } = {}) {
   if (signup) return navigate(signupUrl(nextPath));
@@ -358,7 +362,7 @@ function registerGlobal() {
   const go = (p) => () => navigate(p);
   GLOBAL = [
     { id: 'create', label: 'Create event', short: 'Create', icon: 'plus', group: 'engage', keywords: ['go live', 'host', 'new meeting', 'schedule', 'start'], run: go('/create') },
-    { id: 'instant', label: 'Start instant meeting', short: 'Instant', icon: 'zap', group: 'media', keywords: ['meet now', 'quick call', 'new room'], run: go('/create?instant=1') },
+    { id: 'instant', label: 'Start instant meeting', short: 'Instant', icon: 'zap', group: 'media', keywords: ['meet now', 'quick call', 'new room'], run: () => openInstantOverlay() },
     { id: 'venues', label: 'Venues — permanent links', short: 'Venue', icon: 'door', group: 'media', keywords: ['venue', 'permanent room', 'personal room', 'short link', '/v/'], run: go('/venues') },
     { id: 'join', label: 'Join with code', short: 'Join', icon: 'login', group: 'people', keywords: ['enter code', 'meeting code', 'room'], run: () => joinPrompt() },
     { id: 'discover', label: 'Discover events', short: 'Discover', icon: 'compass', group: 'nav', keywords: ['browse', 'explore'], run: go('/discover') },
@@ -423,6 +427,7 @@ async function boot() {
     const url = new URL(a.href, location.href);
     if (url.origin !== location.origin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/files/') || url.pathname.startsWith('/auth/') || /^\/(privacy|terms)(\.html)?\/?$/.test(url.pathname)) return;
     e.preventDefault();
+    if (/^\/create\/?$/.test(url.pathname) && url.searchParams.get('instant') && !state.inRoom) return openInstantOverlay(); // over the current page
     if (/^\/(login|forgot-password)\/?$/.test(url.pathname) && !state.inRoom) { // log in opens as an overlay
       const p = Object.fromEntries(url.searchParams);
       return goLogin(p.next || location.pathname + location.search, { mode: url.pathname.startsWith('/forgot') || p.mode === 'forgot' ? 'forgot' : 'login' });
