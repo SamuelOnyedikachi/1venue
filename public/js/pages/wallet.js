@@ -18,7 +18,6 @@ export async function mount(view) {
   const price = h('p', { class: 'wallet-price', 'aria-live': 'polite' });
   const checkout = h('button', { class: 'btn primary', type: 'submit' }, 'Continue to Paystack');
   const choices = h('div', { class: 'wallet-bundles', role: 'group', 'aria-label': 'Credit bundles' });
-  const unavailable = h('p', { class: 'small muted' }, 'Credit purchases are currently unavailable. Please check back later.');
   const payments = h('div', { class: 'wallet-list' });
   const entries = h('div', { class: 'wallet-list' });
   const olderPurchases = h('button', { class: 'btn sm', type: 'button', hidden: true }, 'Load older purchases');
@@ -28,7 +27,6 @@ export async function mount(view) {
   const notify = (text, error = false) => { if (!alive) return; message.textContent = text; message.classList.toggle('wallet-error', error); };
   function renderBalance() {
     balance.textContent = credits(wallet.balanceCredits) + ' credits';
-    unavailable.hidden = wallet.purchasesEnabled;
     checkout.disabled = !wallet.purchasesEnabled || buying;
   }
   function renderEntries(list, append = false) {
@@ -100,7 +98,7 @@ export async function mount(view) {
     } catch (e) { notify(e.message + ' If you completed a payment, check it below before buying again.', true); await refresh().catch(() => {}); }
     finally { buying = false; if (alive) { amount.disabled = false; for (const choice of choices.children) choice.disabled = false; updateQuote(); } }
   } }, choices, h('label', { class: 'field', for: 'wallet-credits' }, h('span', { class: 'lbl' }, 'Or choose a custom number of credits'), amount),
-    price, h('p', { class: 'tiny muted' }, 'Paystack shows the final processing fee before you pay. Fees do not buy extra credits.'), unavailable, checkout);
+    price, h('p', { class: 'tiny muted' }, 'Paystack shows the final processing fee before you pay. Fees do not buy extra credits.'), checkout);
   olderPurchases.onclick = async () => {
     olderPurchases.disabled = true;
     try {
