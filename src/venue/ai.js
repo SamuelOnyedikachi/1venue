@@ -98,12 +98,29 @@ function mock(useCase, messages, opts) {
       return acts.length ? acts.map((a) => `- [ ] ${a}`).join('\n') : '- [ ] No explicit action items detected.';
     }
     case 'title': {
-      const t = kw.slice(0, 3).map((w) => w[0].toUpperCase() + w.slice(1)).join(', ');
-      const tags = kw.slice(0, 6).map((w) => w.toLowerCase().replace(/[^a-z0-9]/g, '')).filter((w) => w.length >= 2);
+      // Prefer the host's notes (not the "Category:" line) so thin placeholders
+      // like "Talk shows" never become "Conversations on Category, Talk, Show".
+      const notes = ((input.match(/Notes:\s*([\s\S]*)/i) || [])[1] || input).trim();
+      const noteKw = keywords(notes);
+      const first = notes.split(/[.!?\n]/)[0].trim().replace(/\s+/g, ' ').slice(0, 80);
+      let title = first;
+      if (!title || keywords(title).length < 2) {
+        const t = noteKw.slice(0, 5).map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+        title = t || 'Live session';
+      } else if (title[0] === title[0].toLowerCase()) {
+        title = title.charAt(0).toUpperCase() + title.slice(1);
+      }
+      const tags = noteKw.slice(0, 6).map((w) => w.toLowerCase().replace(/[^a-z0-9]/g, '')).filter((w) => w.length >= 2);
+      const draft = require('../features/ai/draft');
+      const palette = require('../lib/palette').pickPalette({ title, description: notes, category: (input.match(/Category:\s*(\S+)/i) || [])[1] });
       return JSON.stringify({
-        title: t ? `Conversations on ${t}` : 'Live session',
-        description: lines.slice(0, 2).join(' ').slice(0, 280) || 'Join us live on 1venue.',
+        title: title.slice(0, 80),
+        description: (notes.slice(0, 400) || lines.slice(0, 2).join(' ').slice(0, 280) || 'Join us live on 1venue.'),
         tags: tags.length ? tags : ['live', 'event'],
+        palette: palette.name,
+        category: draft.guessCategory(notes, (input.match(/Category:\s*(\S+)/i) || [])[1]),
+        venue: draft.extractVenue(notes) || '',
+        when: '',
       });
     }
     case 'moderate': {
@@ -357,9 +374,9 @@ module.exports = {
     { role: 'user', content: `Translate to ${lang}:\n${String(text).slice(0, 2000)}` },
   ], { maxTokens: 400, temperature: 0.1 }),
   titleDescription: (notes, category) => chat('title', [
-    { role: 'system', content: 'Write a catchy event title (max 80 chars), description (max 400 chars), and 3–8 short discovery tags (lowercase, no #, max 32 chars each). Also pick the event colour pair that best fits its mood from exactly one of: Ocean, Violet, Rose, Sunset, Gold, Emerald, Teal, Graphite. Reply as JSON {"title":"","description":"","tags":["tag1","tag2"],"palette":"Emerald"}.' },
-    { role: 'user', content: `Category: ${category || 'event'}\nNotes: ${String(notes).slice(0, 2000)}` },
-  ], { json: true, maxTokens: 350 }),
+    { role: 'system', content: 'Write a catchy event title (max 80 chars), description (max 400 chars), and 3–8 short discovery tags (lowercase, no #, max 32 chars each). Also pick the event colour pair that best fits its mood from exactly one of: Ocean, Violet, Rose, Sunset, Gold, Emerald, Teal, Graphite. If the notes name a category, pick one of: talk_show, presentation, seminar, sermon, webinar, workshop, meeting, concert, class, other. If they name a place or venue, put it in "venue". If they name a date or time, copy that phrase into "when". Do not invent a date, venue, title topic, or fact that is not in the notes. Reply as JSON {"title":"","description":"","tags":["tag1","tag2"],"palette":"Emerald","category":"workshop","venue":"","when":""}.' },
+    { role: 'user', content: `Category: ${category || 'event'}\nNotes: ${String(notes).slice(0, 4000)}` },
+  ], { json: true, maxTokens: 400 }),
   moderate: async (text) => {
     const r = await chat('moderate', [
       { role: 'system', content: 'You moderate a community comment section. Reply JSON {"allowed":true|false,"reason":"..."}; block hate, harassment, explicit sexual content, scams and spam.' },

@@ -23,6 +23,16 @@ test('GET /privacy and /terms return 200 text/html without auth', async () => {
     const terms = await (await fetch(base + '/terms')).text();
     assert.match(privacy, /Privacy policy/);
     assert.match(privacy, /Google API Services User Data Policy/);
+    assert.match(privacy, /Effective 15 November 2026/);
+    assert.match(privacy, /We don.t sell your personal data or use your recordings, transcripts, or voice to target ads/);
+    assert.match(privacy, /Promoted events and posts are chosen by 1venue admins and shown to everyone the same way/);
+    assert.match(privacy, /we only count total views and clicks, not who viewed them/);
+    assert.doesNotMatch(privacy, /we do not use it for advertising/);
+    assert.match(privacy, /outside speech provider \(Replicate\)|uploaded to Replicate, an outside speech provider/);
+    assert.match(privacy, /turn it off in Settings/);
+    assert.match(privacy, /about one hour/);
+    assert.match(privacy, /Write it for me/);
+    assert.match(privacy, /AI provider configured for this server/);
     assert.match(terms, /Terms of service/);
     assert.match(terms, /Federal Republic of Nigeria/);
     // Extensionless app routes still fall back to the SPA shell

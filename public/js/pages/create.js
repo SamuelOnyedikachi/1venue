@@ -1,7 +1,9 @@
 import { icon, LOGO_ART } from '../icons.js';
-import { h, api, esc, toast, toastErr, uploadFile, avatar, debounce } from '../ui.js';
+import { h, api, esc, toast, toastErr, uploadFile, avatar, debounce, sheet } from '../ui.js';
 import { state, navigate, requireLogin, CATS, ACCENTS } from '../app.js';
 import { catOf } from '../components.js';
+import { isRichInput } from '../event-draft.js';
+import { listenOn } from '../voice.js';
 
 const field = (label, ic, el, actions) => h('div', { class: 'field-row' },
   h('div', { class: 'field-lab' },
@@ -16,6 +18,7 @@ export async function mount(view, params) {
   const editing = params.edit ? await api(`/api/events/${encodeURIComponent(params.edit)}`).catch(() => null) : null;
   const ev = editing || { category: params.category || 'talk_show', visibility: 'public', speakerSeats: 4, theme: { accent: state.prefs.accent, accent2: state.prefs.accent2 || ACCENTS.find((a) => a[1] === state.prefs.accent)?.[2] || '#7c3aed' }, tags: [] };
   let category = ev.category, visibility = ev.visibility, seats = ev.speakerSeats || 4, coverUrl = ev.coverUrl || null;
+  let catTouched = !!editing, themeTouched = !!editing;
   let acc = ev.theme?.accent || '#2563eb', acc2 = ev.theme?.accent2 || '#7c3aed';
   let materialIds = [];
   let speakers = []; // { userId?, name, email?, headline?, avatarUrl? }
@@ -45,7 +48,7 @@ export async function mount(view, params) {
     if (k === category) o.selected = true;
     catSel.append(o);
   });
-  catSel.onchange = () => { category = catSel.value; preview(); };
+  catSel.onchange = () => { category = catSel.value; catTouched = true; preview(); };
 
   const visSeg = h('div', { class: 'seg' }, [['public', 'Public', 'globe'], ['unlisted', 'Unlisted', 'link'], ['private', 'Private', 'lock']].map(([v, l, ic]) =>
     h('button', { type: 'button', class: visibility === v ? 'on' : '', 'data-v': v, html: icon(ic, { size: 15 }) + l, onclick: () => { visibility = v; visSeg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === v)); } })));
@@ -133,8 +136,8 @@ export async function mount(view, params) {
   }, 180));
   matInput.addEventListener('blur', () => setTimeout(() => { matSug.hidden = true; }, 180));
 
-  const swatches = h('div', { class: 'swatches' }, ACCENTS.map(([n, a, a2]) => h('button', { type: 'button', class: `swatch${acc === a ? ' on' : ''}`, 'data-tip': n, style: { background: `linear-gradient(135deg, ${a}, ${a2})` }, 'aria-label': n, onclick: (e) => { acc = a; acc2 = a2; swatches.querySelectorAll('.swatch').forEach((s) => s.classList.remove('on')); e.currentTarget.classList.add('on'); preview(); } })));
-  const setTheme = (a, a2) => { acc = a; acc2 = a2; swatches.querySelectorAll('.swatch').forEach((sw, i) => sw.classList.toggle('on', ACCENTS[i][1] === a)); preview(); };
+  const setTheme = (a, a2, { touched = true } = {}) => { acc = a; acc2 = a2; if (touched) themeTouched = true; swatches.querySelectorAll('.swatch').forEach((sw, i) => sw.classList.toggle('on', ACCENTS[i][1] === a)); preview(); };
+  const swatches = h('div', { class: 'swatches' }, ACCENTS.map(([n, a, a2]) => h('button', { type: 'button', class: `swatch${acc === a ? ' on' : ''}`, 'data-tip': n, style: { background: `linear-gradient(135deg, ${a}, ${a2})` }, 'aria-label': n, onclick: () => setTheme(a, a2) })));
   const coverIn = h('input', { type: 'file', accept: 'image/*', class: 'hidden' });
   const prev = h('div', { class: 'ev-card card', style: { pointerEvents: 'none' } });
   function preview() {
@@ -149,24 +152,44 @@ export async function mount(view, params) {
     try { const r = await uploadFile(f, { purpose: 'cover' }); coverUrl = r.url; preview(); paintCoverBtn(); toast('Cover uploaded', { icon: 'image' }); } catch (e) { toastErr(e); }
   };
 
-  // ---- AI covers (flux-schnell, 16:9, text-free). Only the cover you pick is saved (event + Materials).
+  // ---- AI covers (flux-schnell, 16:9, text-free). Generated only when the host clicks "Design with AI".
+  // Only the cover they pick is saved (event + Materials). Upload your own is the main option.
   const coversOn = !!state.config?.covers?.enabled;
   const coverBtn = h('button', { type: 'button', class: 'btn sm', 'data-group': 'content', html: '' });
-  const paintCoverBtn = () => { coverBtn.innerHTML = icon('image', { size: 15 }) + (coverUrl ? 'Change cover' : 'Upload cover'); };
+  const paintCoverBtn = () => { coverBtn.innerHTML = icon('image', { size: 15 }) + (coverUrl ? 'Replace with your own' : 'Upload your own'); };
   paintCoverBtn(); coverBtn.onclick = () => coverIn.click();
-  const genBtn = coversOn ? h('button', { type: 'button', class: 'btn sm', 'data-group': 'ai', html: icon('sparkles', { size: 15 }) + 'Design with AI' }) : null;
+  const genBtn = coversOn ? h('button', { type: 'button', class: 'btn sm ghost', 'data-group': 'ai', html: icon('sparkles', { size: 15 }) + 'Design with AI' }) : null;
   const coverOpts = h('div', { class: 'cover-opts', hidden: true });
-  const coverNote = h('div', { class: 'tiny faint' });
-  let genBusy = false, autoDone = false;
+  const coverNote = h('div', { class: 'tiny faint cover-quota' });
+  let genBusy = false;
+  let coverLimit = state.config?.covers?.dailyLimit || 10;
+  let coverLeft = coverLimit;
+  const paintCoverQuota = (extra) => {
+    if (!coversOn) { coverNote.textContent = extra || ''; return; }
+    const quota = coverLeft <= 0
+      ? `No AI designs left today (${coverLimit} per day). Upload your own instead.`
+      : `${coverLeft} of ${coverLimit} left today`;
+    coverNote.textContent = extra ? `${extra} ${quota}` : quota;
+    if (genBtn) genBtn.disabled = genBusy || coverLeft <= 0;
+  };
+  paintCoverQuota();
+  if (coversOn) {
+    api('/api/covers/config').then((c) => {
+      if (typeof c.dailyLimit === 'number') coverLimit = c.dailyLimit;
+      if (typeof c.left === 'number') coverLeft = c.left;
+      paintCoverQuota();
+    }).catch(() => {});
+  }
   async function generateCovers() {
-    if (!coversOn || genBusy) return;
-    genBusy = true; genBtn.disabled = true;
+    if (!coversOn || genBusy || coverLeft <= 0) return;
+    genBusy = true; if (genBtn) genBtn.disabled = true;
     const n = state.config.covers.options || 2;
     coverOpts.hidden = false;
     coverOpts.replaceChildren(...Array.from({ length: n }, () => h('div', { class: 'cover-opt skel' })));
     coverNote.textContent = 'Designing covers…';
     try {
       const r = await api('/api/covers/generate', { method: 'POST', body: { title: title.value || catOf(category)[0], description: desc.value, category, accent: acc, accent2: acc2 } });
+      if (typeof r.left === 'number') coverLeft = r.left;
       coverOpts.replaceChildren(...r.options.map((o) => {
         const b = h('button', { type: 'button', class: 'cover-opt', 'aria-label': 'Use this cover' }, h('img', { src: o.url, alt: '' }), h('span', { class: 'cover-use', html: icon('check', { size: 14 }) + 'Use' }));
         b.onclick = async () => {
@@ -179,28 +202,148 @@ export async function mount(view, params) {
         };
         return b;
       }));
-      genBtn.innerHTML = icon('refresh', { size: 15 }) + 'Regenerate';
-      coverNote.textContent = `Pick one to use it. ${r.left} AI design${r.left === 1 ? '' : 's'} left today.`;
+      if (genBtn) genBtn.innerHTML = icon('refresh', { size: 15 }) + 'Regenerate';
+      paintCoverQuota('Pick one to use it.');
     } catch (e) {
-      coverOpts.hidden = true; coverNote.textContent = '';
+      coverOpts.hidden = true;
+      paintCoverQuota();
       toastErr(e);
-    } finally { genBusy = false; genBtn.disabled = false; }
+    } finally { genBusy = false; if (genBtn) genBtn.disabled = coverLeft <= 0; }
   }
-  if (genBtn) genBtn.onclick = () => { autoDone = true; generateCovers(); };
+  if (genBtn) genBtn.onclick = () => generateCovers();
 
   const aiBtn = h('button', { type: 'button', class: 'btn sm', 'data-group': 'ai', html: icon('sparkles', { size: 15 }) + 'Write it for me' });
+
+  function askEventNotes(seed = '') {
+    return new Promise((resolve) => {
+      let done = false;
+      const s = sheet({ title: 'Tell us about your event', icon: 'sparkles', group: 'ai', onClose: () => { if (!done) resolve(null); } });
+      s.el.previousElementSibling?.classList.add('heavy');
+      const box = h('textarea', { class: 'textarea tell-notes', rows: 8, maxlength: 4000, placeholder: "What's it about, who's it for, when and where, who's speaking, anything special?" });
+      box.value = seed;
+      const mic = h('button', { type: 'button', class: 'icon-btn tell-mic', 'aria-label': 'Voice typing', 'data-tip': 'Voice typing', html: icon('mic', { size: 18 }) });
+      mic.addEventListener('mousedown', (e) => e.preventDefault());
+      mic.onclick = () => { box.focus(); listenOn(box); };
+      const go = () => {
+        const t = box.value.trim();
+        if (!t) return toast('Tell us a little about the event first', { icon: 'info' });
+        done = true; resolve(t); s.close();
+      };
+      s.body.append(
+        h('p', { class: 'muted small', style: { margin: '0 0 .7rem' } }, 'A few sentences is enough — we will draft the title, description, category, tags, colours, and any date, time or place we can pick out.'),
+        h('div', { class: 'tell-box' }, box, mic),
+        h('div', { class: 'row', style: { justifyContent: 'flex-end', marginTop: '1rem', gap: '.5rem' } },
+          h('button', { type: 'button', class: 'btn ghost', onclick: () => s.close() }, 'Cancel'),
+          h('button', { type: 'button', class: 'btn primary', onclick: go, html: icon('sparkles', { size: 16 }) + 'Write it for me' })),
+      );
+      setTimeout(() => box.focus(), 80);
+    });
+  }
+
+  function applyDraft(r, apply) {
+    if (apply.title && r.title) title.value = r.title;
+    if (apply.description && r.description) desc.value = r.description;
+    if (apply.tags && Array.isArray(r.tags) && r.tags.length) tags.value = r.tags.join(', ');
+    if (apply.category && r.category) { category = r.category; catSel.value = r.category; catTouched = true; }
+    if (apply.theme && r.theme && r.theme.accent) setTheme(r.theme.accent, r.theme.accent2);
+    if (apply.starts && r.start) starts.value = r.start;
+    if (apply.ends && r.end) ends.value = r.end;
+    if (apply.venue && r.venue) {
+      const place = String(r.venue).trim();
+      if (place && !desc.value.toLowerCase().includes(place.toLowerCase())) {
+        desc.value = (desc.value.trim() ? desc.value.trim() + '\n\n' : '') + 'Where: ' + place;
+      }
+    }
+    preview();
+  }
+
+  function showDraftPreview(r, { notes }) {
+    return new Promise((resolve) => {
+      let done = false;
+      const s = sheet({ title: 'Review this draft', icon: 'sparkles', group: 'ai', wide: true, onClose: () => { if (!done) resolve(false); } });
+      s.el.previousElementSibling?.classList.add('heavy');
+      const filled = {
+        title: !!title.value.trim(),
+        description: !!desc.value.trim(),
+        tags: !!tags.value.trim(),
+        category: catTouched,
+        theme: themeTouched,
+        starts: !!starts.value,
+        ends: !!ends.value,
+        venue: !!(r.venue && desc.value.toLowerCase().includes(String(r.venue).toLowerCase())),
+      };
+      const tIn = h('input', { class: 'input', value: r.title || '', maxlength: 120 });
+      const dIn = h('textarea', { class: 'textarea', rows: 5 }); dIn.value = r.description || '';
+      const tagsIn = h('input', { class: 'input', value: (r.tags || []).join(', ') });
+      const catIn = h('select', { class: 'cat-select', 'aria-label': 'Category' });
+      CATS.concat([['other', 'Other', 'sparkle']]).forEach(([k, l]) => {
+        const o = h('option', { value: k }, l);
+        if (k === (r.category || category)) o.selected = true;
+        catIn.append(o);
+      });
+      const startIn = h('input', { class: 'input', type: 'datetime-local', value: r.start || '' });
+      const endIn = h('input', { class: 'input', type: 'datetime-local', value: r.end || '' });
+      const venueIn = h('input', { class: 'input', value: r.venue || '', placeholder: 'If we picked out a place' });
+      const themeName = r.theme?.name || (ACCENTS.find((a) => a[1] === r.theme?.accent) || [])[0] || 'Colours';
+      const themeSwatch = r.theme?.accent
+        ? h('div', { class: 'swatch on', style: { background: `linear-gradient(135deg, ${r.theme.accent}, ${r.theme.accent2 || r.theme.accent})` }, 'aria-label': themeName })
+        : h('span', { class: 'tiny faint' }, 'No colour suggested');
+      const checks = {};
+      const row = (key, label, el, ic) => {
+        const already = !!filled[key];
+        const c = h('input', { type: 'checkbox', checked: !already });
+        checks[key] = c;
+        const hint = already ? h('label', { class: 'draft-chk' }, c, `Replace the ${label.toLowerCase()} I already filled`) : h('span', { hidden: true }, c);
+        return field(label, ic, h('div', { class: 'col', style: { gap: '.35rem' } }, el, hint));
+      };
+      const useThis = () => {
+        const apply = {};
+        for (const k of Object.keys(checks)) apply[k] = checks[k].checked;
+        applyDraft({
+          title: tIn.value, description: dIn.value,
+          tags: tagsIn.value.split(',').map((x) => x.trim()).filter(Boolean),
+          category: catIn.value, theme: r.theme,
+          start: startIn.value, end: endIn.value, venue: venueIn.value.trim(),
+        }, apply);
+        done = true; s.close(); resolve('use');
+        toast(r.mock ? 'AI demo mode — add RunPod keys for real suggestions' : 'Drafted with AI', { icon: 'sparkles', group: 'ai' });
+      };
+      s.body.append(
+        h('p', { class: 'muted small', style: { margin: '0 0 .8rem' } }, 'Edit anything you like. Fields you already filled are left alone unless you tick the box.'),
+        row('title', 'Title', tIn, 'type'),
+        row('description', 'Description', dIn, 'notes'),
+        row('category', 'Category', catIn, 'tag'),
+        row('tags', 'Tags', tagsIn, 'hash'),
+        row('theme', 'Event colours', h('div', { class: 'row', style: { gap: '.5rem', alignItems: 'center' } }, themeSwatch, h('span', { class: 'small' }, themeName)), 'palette'),
+        h('div', { class: 'grid2' }, row('starts', 'Starts', startIn, 'calendar'), row('ends', 'Ends', endIn, 'clock')),
+        row('venue', 'Venue', venueIn, 'pin'),
+        h('div', { class: 'row wrap draft-actions' },
+          h('button', { type: 'button', class: 'btn primary', onclick: useThis }, 'Use this'),
+          h('button', { type: 'button', class: 'btn', onclick: () => { done = true; s.close(); resolve({ retry: true, notes }); } }, 'Try again'),
+          h('button', { type: 'button', class: 'btn ghost', onclick: () => { done = true; s.close(); resolve({ edit: true, notes }); } }, 'Edit')),
+      );
+    });
+  }
+
   aiBtn.onclick = async () => {
-    const notes = [title.value, desc.value].filter(Boolean).join('\n') || catOf(category)[0];
     aiBtn.disabled = true;
     try {
-      const r = await api('/api/ai/title', { method: 'POST', body: { notes, category } });
-      if (r.title) title.value = r.title;
-      if (r.description) desc.value = r.description;
-      if (Array.isArray(r.tags) && r.tags.length) tags.value = r.tags.join(', ');
-      if (r.theme && r.theme.accent) setTheme(r.theme.accent, r.theme.accent2);
-      preview();
-      if (coversOn && !coverUrl) { autoDone = true; generateCovers(); }
-      toast(r.mock ? 'AI demo mode — add RunPod keys for real suggestions' : 'Drafted with AI', { icon: 'sparkles', group: 'ai' });
+      let notes = null;
+      let ask = !isRichInput(title.value, desc.value);
+      while (true) {
+        if (ask) {
+          notes = await askEventNotes(notes || '');
+          if (!notes) return;
+        } else {
+          notes = notes || [title.value, desc.value].filter((x) => String(x).trim()).join('\n');
+        }
+        const r = await api('/api/ai/title', { method: 'POST', body: { notes, category, tzOffset: new Date().getTimezoneOffset(), now: new Date().toISOString() } });
+        const outcome = await showDraftPreview(r, { notes });
+        if (outcome === 'use' || outcome === false) return;
+        if (outcome && outcome.retry) { ask = false; continue; }
+        if (outcome && outcome.edit) { ask = true; continue; }
+        return;
+      }
     } catch (e) { toastErr(e); } finally { aiBtn.disabled = false; }
   };
 
@@ -252,7 +395,7 @@ export async function mount(view, params) {
     h('div', { class: 'card pad layer col has-suggest', style: { gap: '1rem' } },
       field('Event colours', 'palette', swatches),
       field('Cover', 'image', h('div', { class: 'col cover-step', style: { gap: '.6rem' } },
-        h('div', { class: 'row wrap', style: { gap: '.5rem' } }, genBtn, coverBtn, coverIn),
+        h('div', { class: 'row wrap', style: { gap: '.5rem' } }, coverBtn, genBtn, coverIn),
         coverOpts, coverNote)),
       field('Materials', 'folder', h('div', { class: 'col', style: { gap: '.5rem' } },
         h('div', { class: 'suggest-box' }, matInput, matSug),
@@ -261,11 +404,6 @@ export async function mount(view, params) {
       ))),
     h('div', { class: 'row wrap', style: { gap: '.6rem' } }, submit, liveNow));
 
-  // Reaching the cover step with a title but no cover designs one set automatically (once per visit).
-  if (coversOn && !coverUrl && 'IntersectionObserver' in window) {
-    const io = new IntersectionObserver((es) => { if (es[0].isIntersecting && !autoDone && !coverUrl && title.value.trim().length >= 4) { autoDone = true; io.disconnect(); generateCovers(); } }, { threshold: 0.6 });
-    setTimeout(() => { const el = form.querySelector('.cover-step'); if (el) io.observe(el); }, 0);
-  }
   view.append(
     h('div', { class: 'page-head' }, h('h1', { html: icon(editing ? 'pen' : 'calendarPlus', { size: 28 }) + (editing ? 'Edit event' : 'Create an event') })),
     h('div', { class: 'split' }, form, h('aside', { class: 'sticky col' },

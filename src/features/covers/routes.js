@@ -23,12 +23,21 @@ function sweep() {
 }
 
 module.exports = function routes(route, kit) {
-  const { config, requireUser, httpError, rateLimit, storage, data } = kit;
+  const { config, requireUser, getAuthUser, httpError, rateLimit, storage, data } = kit;
   const C = config.COVERS;
   const token = () => config.STT.replicate.token; // the one REPLICATE_API_TOKEN
   const enabled = () => !!token() && C.dailyLimit > 0;
 
-  route('GET', '/api/covers/config', async () => ({ enabled: enabled(), model: C.model, dailyLimit: C.dailyLimit, options: C.options, aspectRatio: '16:9' }));
+  route('GET', '/api/covers/config', async (ctx) => {
+    const out = { enabled: enabled(), model: C.model, dailyLimit: C.dailyLimit, options: C.options, aspectRatio: '16:9', used: 0, left: C.dailyLimit };
+    const u = await getAuthUser(ctx.req, ctx.res);
+    if (u && enabled()) {
+      const n = await usage.used(`u:${u.id}`, 'cover');
+      out.used = n;
+      out.left = Math.max(0, C.dailyLimit - n);
+    }
+    return out;
+  });
 
   route('POST', '/api/covers/generate', async (ctx) => {
     const u = await requireUser(ctx.req, ctx.res);
