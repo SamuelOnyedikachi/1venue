@@ -132,7 +132,7 @@ export async function mount(view, params) {
     if (!a) return null;
     if (a.kind === 'passage') return passageCard(a, { compact: true });
     const src = a.url || a.dataUrl; if (!src) return null;
-    if (a.kind === 'image') return h('img', { class: 'msg-img', src, alt: a.name || 'image', loading: 'lazy', onclick: () => { const s = sheet({ title: a.name || 'Photo', icon: 'image', wide: true }); s.body.append(h('img', { src, alt: '', class: 'msg-img-full' })); } });
+    if (a.kind === 'image') return h('img', { class: 'msg-img', src, alt: a.name || 'image', loading: 'lazy', tabindex: '0' });
     if (a.kind === 'voice') return h('audio', { class: 'msg-voice', controls: true, src, preload: 'metadata' });
     return h('a', { class: 'msg-file', href: src, target: '_blank', rel: 'noopener', download: a.name || 'file', html: icon('file', { size: 18 }) + `<span>${esc(a.name || 'file')}</span>` });
   }

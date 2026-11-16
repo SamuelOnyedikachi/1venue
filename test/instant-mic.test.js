@@ -53,3 +53,16 @@ test('feed composer mic: tap-to-talk only, clear on state, stops on typing / blu
   const css = read('public/css/app.css');
   assert.match(css, /\.feed-compose \.icon-btn\.feed-mic\.on \{[^}]*background: #e11d48/, 'obvious red on state (beats room.css .icon-btn.sm)');
 });
+
+test('sitewide mic toggle: shows on hover / focus, never readonly or blurs, typing keeps dictation going', () => {
+  const voice = read('public/js/voice.js');
+  assert.match(voice, /function initMic\(\)/);
+  assert.match(voice, /addEventListener\('pointerdown', keep\)/, 'tapping the mic never steals focus');
+  assert.match(voice, /addEventListener\('touchend', \(e\) => \{ e\.preventDefault\(\)/, 'iOS: no synthetic click, no blur');
+  assert.match(voice, /listenOn\(el, \{ keepTyping: true/);
+  assert.match(voice, /dropInterim\(\)/, 'interim words are lifted out before your keystroke lands');
+  assert.doesNotMatch(voice, /readOnly\s*=\s*true|setAttribute\('readonly'/, 'the field is never made readonly');
+  assert.doesNotMatch(voice, /addEventListener\('focusin', \(e\) => \{ const el = e\.target; if \(voiceKind\(el\)\) begin\(el\); \}\)/, 'no auto-listening on focus');
+  const css = read('public/css/app.css');
+  assert.match(css, /\.vmic\.on \{[^}]*background: var\(--accent\)/, 'on state follows the theme accent');
+});

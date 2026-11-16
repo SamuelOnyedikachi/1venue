@@ -69,7 +69,6 @@ export function createPanel(R) {
   const seg = (items, cur, onPick) => h('div', { class: 'seg block' }, items.map(([v, l, n]) => h('button', { class: v === cur ? 'on' : '', type: 'button', onclick: () => onPick(v) }, l, n ? h('em', { class: 'badge' }, n) : null)));
 
   /* ------------------------------------------------------------ CHAT */
-  function viewImage(src, name) { const s2 = sheet({ title: name || 'Photo', icon: 'image', wide: true }); s2.body.append(h('img', { src, alt: name || '', style: { width: '100%', borderRadius: '12px' } })); }
   function msgEl(m, { mine, name, at }) {
     const a = m.attachment;
     let att = null;
@@ -77,7 +76,7 @@ export function createPanel(R) {
     if (a && a.kind === 'passage') att = passageCard(a, { compact: true });
     else if (src) {
       const kb = a.size ? (a.size > 1048576 ? (a.size / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(a.size / 1024)) + ' KB') : '';
-      if (a.kind === 'image') att = h('img', { class: 'msg-img', src, alt: a.name || 'image', loading: 'lazy', onclick: () => viewImage(src, a.name) });
+      if (a.kind === 'image') att = h('img', { class: 'msg-img', src, alt: a.name || 'image', loading: 'lazy', tabindex: '0' }); // opens in the lightbox
       else if (a.kind === 'voice') att = h('audio', { class: 'msg-voice', controls: true, src, preload: 'metadata' });
       else att = h('a', { class: 'msg-file', href: src, target: '_blank', rel: 'noopener', download: a.name || 'file', html: icon('file', { size: 18 }) + `<span>${esc(a.name || 'file')}</span>${kb ? `<small>${kb}</small>` : ''}` });
     }

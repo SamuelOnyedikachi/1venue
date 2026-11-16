@@ -6,6 +6,7 @@ const { q, one, many } = require('../../core/db');
 const { normalizeStoredFileUrl } = require('../../lib/file-url');
 
 // ---------------------------------------------------------------- materials
+const KINDS = ['slides', 'image', 'youtube', 'pdf', 'pptx', 'doc', 'sheet'];
 function materialOut(r) {
   if (!r) return null;
   const payload = typeof r.payload === 'string' ? JSON.parse(r.payload) : (r.payload || {});
@@ -31,6 +32,19 @@ function sanitizeMaterialPayload(kind, payload) {
     if (!url) { const e = new Error('Image must be a file uploaded to 1venue'); e.status = 400; e.reason = `image url not accepted: ${String(p.url || '').slice(0, 120) || '(empty)'}`; throw e; }
     return { url };
   }
+  const source = {
+    sourceName: p.sourceName ? String(p.sourceName).slice(0, 120) : null,
+    sourceMime: p.sourceMime ? String(p.sourceMime).slice(0, 120) : null,
+    // The original file (PDF / PPTX / DOCX / XLSX / CSV) as uploaded, so it can be analysed and downloaded.
+    sourceUrl: p.sourceUrl ? normalizeStoredFileUrl(String(p.sourceUrl)) : null,
+    sourceSize: Number.isFinite(Number(p.sourceSize)) && Number(p.sourceSize) > 0 ? Math.round(Number(p.sourceSize)) : null,
+  };
+  if (p.sourceUrl && !source.sourceUrl) { const e = new Error('That file was not uploaded to 1venue storage — try the upload again'); e.status = 400; e.reason = `source url not accepted: ${String(p.sourceUrl).slice(0, 120)}`; throw e; }
+  if (kind === 'doc' || kind === 'sheet') {
+    // Word documents and spreadsheets: the file itself; previews are extracted on the server.
+    if (!source.sourceUrl) { const e = new Error('Upload the file first'); e.status = 400; e.reason = 'no source url'; throw e; }
+    return source;
+  }
   // slides | pdf | pptx — store page image URLs (+ optional source meta)
   const raw = Array.isArray(p.pages) ? p.pages : [];
   const pages = raw.map(normalizeStoredFileUrl).filter(Boolean).slice(0, 200);
@@ -39,11 +53,7 @@ function sanitizeMaterialPayload(kind, payload) {
     e.status = 400; e.reason = raw.length ? `0 of ${raw.length} page urls accepted (first: ${String(raw[0]).slice(0, 120)})` : 'no pages';
     throw e;
   }
-  return {
-    pages,
-    sourceName: p.sourceName ? String(p.sourceName).slice(0, 120) : null,
-    sourceMime: p.sourceMime ? String(p.sourceMime).slice(0, 80) : null,
-  };
+  return { pages, ...source };
 }
 async function listMaterials(userId, { limit = 50 } = {}) {
   const rows = await many(
@@ -58,7 +68,7 @@ async function getMaterial(id, userId) {
   return materialOut(r);
 }
 async function createMaterial(userId, { title, kind, payload }) {
-  const k = ['slides', 'image', 'youtube', 'pdf', 'pptx'].includes(kind) ? kind : 'slides';
+  const k = KINDS.includes(kind) ? kind : 'slides';
   const t = String(title || 'Untitled').trim().slice(0, 120) || 'Untitled';
   const pl = sanitizeMaterialPayload(k, payload);
   const r = await one(
@@ -102,4 +112,38 @@ async function setEventMaterials(eventId, userId, materialIds) {
   return listEventMaterials(eventId);
 }
 
-module.exports = { materialOut, sanitizeMaterialPayload, listMaterials, getMaterial, createMaterial, updateMaterial, deleteMaterial, listEventMaterials, setEventMaterials };
+/**
+ * A material someone may open on its own page: their own, their organisation's shared library, or one
+ * attached to a public event (or an event they host). Returns { material, canEdit } or null.
+ */
+async function viewableMaterial(id, userId) {
+  if (userId) {
+    const own = await getMaterial(id, userId);
+    if (own) return { material: own, canEdit: true };
+  }
+  const r = await one(
+    `SELECT m.* FROM materials m WHERE m.id=$1 AND EXISTS (SELECT 1 FROM event_materials em JOIN events e ON e.id=em.event_id
+       WHERE em.material_id=m.id AND (e.visibility='public' OR e.host_user_id=$2))`,
+    [id, userId || 0]
+  );
+  return r ? { material: materialOut(r), canEdit: false } : null;
+}
+function analysisOut(r) {
+  if (!r) return null;
+  const result = typeof r.result === 'string' ? JSON.parse(r.result) : r.result;
+  return { ...result, sourceKey: r.source_key, model: r.model, createdAt: r.created_at };
+}
+async function getAnalysis(materialId) {
+  return analysisOut(await one(`SELECT * FROM material_analyses WHERE material_id=$1`, [materialId]));
+}
+async function saveAnalysis(materialId, { sourceKey, result, model, userId }) {
+  const r = await one(
+    `INSERT INTO material_analyses (material_id, source_key, result, model, created_by) VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (material_id) DO UPDATE SET source_key=EXCLUDED.source_key, result=EXCLUDED.result, model=EXCLUDED.model, created_by=EXCLUDED.created_by, created_at=NOW()
+     RETURNING *`,
+    [materialId, sourceKey, JSON.stringify(result), model || null, userId || null]
+  );
+  return analysisOut(r);
+}
+
+module.exports = { KINDS, viewableMaterial, getAnalysis, saveAnalysis, materialOut, sanitizeMaterialPayload, listMaterials, getMaterial, createMaterial, updateMaterial, deleteMaterial, listEventMaterials, setEventMaterials };

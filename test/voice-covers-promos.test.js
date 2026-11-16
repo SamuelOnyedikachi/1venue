@@ -90,7 +90,7 @@ test('create page: Write-it-for-me overlay when input is thin; covers generate o
   assert.match(create, /isRichInput\(/);
   assert.match(create, /Tell us about your event/);
   assert.match(create, /What's it about, who's it for, when and where, who's speaking, anything special\?/);
-  assert.match(create, /listenOn\(box\)/);
+  assert.match(create, /listenOn\(box, \{ keepTyping: true/, 'the notes mic is a toggle: you can keep typing while it listens');
   assert.match(create, /Use this/);
   assert.match(create, /Try again/);
   assert.match(create, /'Edit'\)\)/);

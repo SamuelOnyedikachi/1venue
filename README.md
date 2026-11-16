@@ -104,6 +104,7 @@ Every setting is an environment variable, documented in [.env.example](.env.exam
 | Media | `LIVEKIT_*`, `SIMULCAST`, `VIDEO_*`, `MAX_PARTICIPANTS`, `MAX_AUDIENCE` | [livekit-coolify.md](docs/livekit-coolify.md) |
 | Storage | `STORAGE_DRIVER`, `S3_*`, `UPLOAD_*` | `.env.example` |
 | AI and speech | `AI_*`, `STT_*`, `REPLICATE_API_TOKEN`, `TTS_*` | [TTS.md](docs/TTS.md) |
+| Materials analysis | `REPLICATE_MODEL`, `MATERIAL_ANALYSIS_*` | [MATERIALS.md](docs/MATERIALS.md) |
 | Monitoring | `METRICS_TOKEN`, `METRICS_LOG` | |
 
 ## Credit wallets

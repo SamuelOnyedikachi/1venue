@@ -38,7 +38,7 @@ export async function mount(view) {
       card('Bible', 'bookOpen',
         row('languages', 'faith', 'Default translation', 'Used in the reader and for scripture shown during events', translationSelect(P().bibleTranslation || 'eng_kjv', (v) => { setPrefs({ bibleTranslation: v }); toast('Translation saved', { icon: 'bookOpen', group: 'faith' }); }, { compact: true }), 'bible')),
       card('Voice & captions', 'captions',
-        row('mic', 'ai', 'Voice typing', 'Text boxes and the / bar listen while you’re in them and type what you say (Whisper on Replicate, or your browser’s speech service). Never in password, email, phone or code fields. This device only.', toggle(() => voicePrefs.enabled, (v) => { voicePrefs.set(v); toast(v ? 'Voice typing on' : 'Voice typing off', { icon: v ? 'mic' : 'micOff', group: 'ai' }); }), 'voice'),
+        row('mic', 'ai', 'Voice typing', 'A small mic appears when you hover or tap into a text box. Tap it to dictate, tap again to stop; you can keep typing while it listens (Whisper on Replicate, or your browser’s speech service). Never in password, email, phone or code fields. This device only.', toggle(() => voicePrefs.enabled, (v) => { voicePrefs.set(v); toast(v ? 'Voice typing on' : 'Voice typing off', { icon: v ? 'mic' : 'micOff', group: 'ai' }); }), 'voice'),
         row('captions', 'ai', 'Speech language', 'A hint for voice typing and captions. Auto-detect works for most people; pick one if words come out in the wrong language.', capSel, 'captions'),
         row('download', 'content', 'Recordings', 'Recordings stay on your device — they are never uploaded', h('span', { class: 'chip' }, 'Local only'))),
       card('App', 'install',

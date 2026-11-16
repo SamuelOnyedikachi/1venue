@@ -110,6 +110,7 @@ const ROUTES = [
   [/^\/e\/([\w-]+)\/?$/, () => import('./pages/event.js'), 'slug'],
   [/^\/create\/?$/, () => import('./pages/create.js')],
   [/^\/materials\/?$/, () => import('./pages/materials.js')],
+  [/^\/materials\/(\d+)\/?$/, () => import('./pages/material.js'), 'id'],
   [/^\/dashboard\/?$/, () => import('./pages/dashboard.js')],
   [/^\/a\/([a-f0-9]{32,})\/?$/, () => import('./pages/attendance.js'), 'token'],
   [/^\/feed\/?$/, () => import('./pages/feed.js')],
@@ -461,6 +462,7 @@ async function boot() {
   await route();
   initPwa();
   import('./voice.js').then((m) => m.initVoice()).catch(() => {}); // voice typing in every eligible text box
+  import('./lightbox.js').then((m) => m.initLightbox()).catch(() => {}); // full-screen viewer for content images
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 if (!window.__1venueBooted) { window.__1venueBooted = true; boot(); }

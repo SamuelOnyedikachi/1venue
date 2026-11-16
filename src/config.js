@@ -146,6 +146,13 @@ const COVERS = {
   timeoutMs: int('AI_COVER_TIMEOUT_MS', 60_000),
 };
 
+// Material analysis (/materials/:id → Analyse): Llama 3 70B Instruct on Replicate. Mock when AI_MOCK=true or no token.
+const MATERIALS = {
+  model: env('REPLICATE_MODEL', 'meta/meta-llama-3-70b-instruct'),
+  timeoutMs: int('MATERIAL_ANALYSIS_TIMEOUT_MS', 90_000),
+  maxChars: int('MATERIAL_ANALYSIS_MAX_CHARS', 12_000), // excerpt sent to the model
+};
+
 // Storage: VPS disk by default, S3-compatible when STORAGE_DRIVER=s3
 const STORAGE = {
   driver: env('STORAGE_DRIVER', 'local'),
@@ -245,5 +252,5 @@ module.exports = {
   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
   AUTH, ALLOW_LOCAL_SIGNUP, ADMIN_EMAILS, CANONICAL_HOST,
   MEETING_INACTIVITY_MS, MEETING_CLEANUP_INTERVAL_MS, MAX_PARTICIPANTS, MAX_AUDIENCE, DEFAULT_SPEAKER_SEATS,
-  MEDIA, AI, STT, COVERS, STORAGE, UPLOADS, BIBLE, MEMORY, RESTART, RATE_LIMIT_PER_MIN, TRUST_PROXY, MIME,
+  MEDIA, AI, STT, COVERS, MATERIALS, STORAGE, UPLOADS, BIBLE, MEMORY, RESTART, RATE_LIMIT_PER_MIN, TRUST_PROXY, MIME,
 };
