@@ -106,6 +106,10 @@ Every setting is an environment variable, documented in [.env.example](.env.exam
 | AI and speech | `AI_*`, `STT_*`, `REPLICATE_API_TOKEN`, `TTS_*` | [TTS.md](docs/TTS.md) |
 | Monitoring | `METRICS_TOKEN`, `METRICS_LOG` | |
 
+## Credit wallets
+
+Open `/wallet` from the account menu, Settings or the command bar. The first payment increment supports non-expiring credits at ₦500 each, the 10/30/60/120 bundles and custom whole-credit purchases through Paystack. Customer-paid processing fees are added by Paystack at checkout. Configure test/live keys, the merchant fee preference and signed webhooks as described in [docs/PAYMENTS.md](docs/PAYMENTS.md). Purchases remain disabled until configured. Meeting billing and paid admission follow in a separate increment.
+
 ## Accounts and sign-in
 
 Full details, Google Cloud Console steps and SMTP examples: [docs/AUTH.md](docs/AUTH.md).

@@ -48,6 +48,7 @@ export async function mount(view) {
         row('shield', 'admin', 'Privacy policy', 'How 1venue uses your information', h('a', { class: 'btn sm', href: '/privacy' }, 'Read')),
         row('file', 'admin', 'Terms of service', 'The rules for using 1venue', h('a', { class: 'btn sm', href: '/terms' }, 'Read')))));
   if (state.user) {
+    view.querySelector('.set-grid').append(card('Credits', 'creditCard', h('p', { class: 'small muted' }, 'View your balance, buy credits and check your payments.'), h('a', { class: 'btn sm', href: '/wallet', 'data-link': '' }, 'Open credit wallet')));
     await accountCard(card, row).then((sec) => view.querySelector('.set-grid').append(sec)).catch(() => {});
     await deleteAccountCard(card).then((sec) => { if (sec) view.querySelector('.set-grid').append(sec); }).catch(() => {});
   }

@@ -33,7 +33,8 @@ async function uniqueCode(c) {
 }
 
 async function removeIn(c) {
-  const ids = (await c.query('SELECT id FROM users WHERE is_seed')).rows.map((r) => r.id);
+  const ids = (await c.query('SELECT id FROM users WHERE is_seed ORDER BY id FOR UPDATE')).rows.map((r) => r.id);
+  for (const id of ids) await require('../wallet/data').assertCanDelete(c, id);
   const tracked = async (tbl) => (await c.query('SELECT row_id FROM seed_rows WHERE tbl=$1', [tbl])).rows.map((r) => r.row_id);
   const histIds = [...new Set([...(await tracked('meeting_history')).map(Number),
     ...(await c.query('SELECT id FROM meeting_history WHERE host_user_id = ANY($1::int[])', [ids])).rows.map((r) => r.id)])];
@@ -61,7 +62,7 @@ async function removeIn(c) {
   await del('files', 'DELETE FROM files WHERE owner_user_id = ANY($1::int[])', [ids]);
   // Everything else (events, RSVPs, speakers, posts, likes, follows, venues, materials,
   // whiteboards, prefs, scheduled meetings, sessions) cascades from the user rows.
-  await c.query('DELETE FROM users WHERE is_seed');
+  await c.query('DELETE FROM users WHERE id = ANY($1::int[])', [ids]);
   await c.query('DELETE FROM seed_rows');
   return counts;
 }
