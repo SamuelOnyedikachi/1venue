@@ -14,15 +14,9 @@ function heroVisual() {
       h('div', { class: 'preview-row' }, h('span', null, 'Testimony'), h('b', null, '38%')),
       h('div', { class: 'preview-meter lavender' }, h('i', { style: { width: '38%' } }))),
     h('div', { class: 'hero-preview preview-live' },
-      h('div', { class: 'live-thumb' }, h('span', { class: 'live-badge' }, '● LIVE'), h('img', { src: '/img/hero/speaker.webp', alt: '' })),
+      h('div', { class: 'live-thumb' }, h('span', { class: 'live-badge' }, '● LIVE'), h('img', { src: '/img/hero/meeting.png', alt: '' })),
       h('div', { class: 'preview-row' }, h('span', null, '128 viewers'), h('b', null, '16:45'))),
-    h('div', { class: 'hero-preview preview-bible' },
-      h('strong', null, 'John 3:16'), h('span', null, 'KJV'), h('small', null, 'For God so loved the world...')),
-    h('div', { class: 'hero-preview preview-goals' },
-      h('strong', null, 'Q4 GOALS'),
-      h('div', { class: 'preview-row' }, h('span', null, 'Progress'), h('b', null, '17%')),
-      h('div', { class: 'preview-meter lavender' }, h('i', { style: { width: '17%' } })),
-      h('small', null, '2/12 slides')));
+  );
 }
 
 function band(cls, ...kids) {
