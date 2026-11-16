@@ -38,6 +38,7 @@
     "node": ">=20"
   },
   "devDependencies": {
-    "better-sqlite3": "^12.11.1"
+    "better-sqlite3": "^12.11.1",
+    "prettier": "^3.10.1"
   }
 }

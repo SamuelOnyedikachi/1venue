@@ -9,6 +9,7 @@ import { voicePrefs } from '../voice.js';
 const CAPTION_LANGS = [['', 'Auto-detect'], ['en', 'English (Nigerian)'], ['yo', 'Yorùbá'], ['ig', 'Igbo'], ['ha', 'Hausa'], ['pcm', 'Naija Pidgin']];
 
 export async function mount(view) {
+  view.classList.add('settings-view');
   const P = () => state.prefs;
   const row = (ic, g, title, hint, control, id) => h('div', { class: 'set-row', id }, h('span', { class: 'ico', style: { '--g': `var(--g-${g})` }, html: icon(ic) }), h('div', { class: 'grow' }, h('div', { style: { fontWeight: 650 } }, title), hint ? h('div', { class: 'tiny faint' }, hint) : null), control);
   const seg = (opts, get, set) => { const s = h('div', { class: 'seg' }); const paint = () => s.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === String(get()))); opts.forEach(([v, l, ic]) => s.append(h('button', { 'data-v': String(v), html: (ic ? icon(ic, { size: 15 }) : '') + esc(l), onclick: () => { set(v); paint(); } }))); paint(); return s; };

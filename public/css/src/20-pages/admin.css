@@ -1,3 +1,15 @@
-.admin-seed-people { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: .25rem; }
-.admin-plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .5rem; }
-.admin-plan-grid label { display: grid; gap: .2rem; font-size: .8rem; }
+.admin-seed-people {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.25rem;
+}
+.admin-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.5rem;
+}
+.admin-plan-grid label {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+}
