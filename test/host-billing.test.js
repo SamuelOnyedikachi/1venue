@@ -89,7 +89,7 @@ test('restart snapshots resume the same paid session below the opening minimum, 
   const start=Date.now()-minutes*60000,id=await payer(30),{historyId,session}=await open(id,start);
   const meeting={code:session.code,name:'Recovered',historyId,billingId:historyId,mediaRoom:session.media_room,participants:new Map(),createdAt:start};
   await db.q('INSERT INTO meeting_snapshots(code,history_id,state) VALUES($1,$2,$3::jsonb)',[session.code,historyId,snapshots.serialize(meeting)]);
-  await billing.heartbeat('test-worker',true);await runner.recoverSession(await billing.get(historyId));
+  await billing.heartbeat('test-worker',true);await runner.recoverSession(await billing.get(historyId),Date.now()+60000);
   const row=await billing.get(historyId);
   if(minutes===1){assert.ok(store.getMeeting(session.code));assert.equal(row.state,'active');assert.equal(row.owner_id,runner.ownerId);assert.ok(Number(row.charged_units)>=60000);assert.equal(String(row.history_id),String(historyId));store.deleteMeeting(session.code);}
   else {assert.equal(store.getMeeting(session.code),undefined);assert.equal(row.end_reason,'credits-exhausted');assert.equal(Number(row.charged_units),1800000);}

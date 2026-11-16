@@ -201,6 +201,9 @@ const MEMORY = {
 const RESTART = {
   restoreMaxMs: int('MEETING_RESTORE_MAX_MINUTES', 30) * 60 * 1000, // older snapshots are ended instead
   shutdownGraceMs: int('SHUTDOWN_GRACE_MS', 1500), // time for "server-restarting" frames to flush
+  // Another server only adopts a restarted room after this long, so the people reconnecting to the new
+  // process get it first (and a second app/test process on the same DB can't steal it).
+  adoptGraceMs: int('RESTART_ADOPT_GRACE_MS', 15000),
 };
 
 // Monitoring: GET /metrics (Prometheus text) needs METRICS_TOKEN as a Bearer token; unset = /metrics is 404.
