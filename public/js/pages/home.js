@@ -3,27 +3,26 @@ import { h, api, esc, frag, fmtNum } from '../ui.js';
 import { state, navigate, CATS, joinPrompt, parseCode } from '../app.js';
 import { eventCard, skeletonCards, sectionHead, empty, catOf } from '../components.js';
 
-/** Homepage hero visual — transparent collage (see docs/CREDITS.md). */
+/** Homepage hero visual — lightweight preview cards around the join-first hero. */
 function heroVisual() {
-  const alt = '1venue product collage: a live stage, Q4 goals, a poll, John 3:16, and reaction bubbles';
-  return h('div', { class: 'hero-visual' },
-    h('picture', null,
-      h('source', {
-        type: 'image/webp',
-        srcset: '/img/hero/collage-sm.webp 640w, /img/hero/collage.webp 1168w',
-        sizes: '(max-width: 899px) calc(100vw - 2.5rem), (max-width: 1023px) 42vw, min(600px, 14rem + 25vw)',
-      }),
-      h('img', {
-        class: 'hero-visual-img',
-        src: '/img/hero/collage.webp',
-        srcset: '/img/hero/collage-sm.webp 640w, /img/hero/collage.webp 1168w',
-        sizes: '(max-width: 899px) calc(100vw - 2.5rem), (max-width: 1023px) 42vw, min(600px, 14rem + 25vw)',
-        width: 1168,
-        height: 742,
-        alt,
-        fetchpriority: 'high',
-        decoding: 'async',
-      })));
+  return h('div', { class: 'hero-visual', 'aria-label': 'Preview of a 1venue room' },
+    h('div', { class: 'hero-preview preview-poll' },
+      h('div', { class: 'preview-kicker' }, 'POLL · 24 VOTES'),
+      h('strong', null, 'What should we take first?'),
+      h('div', { class: 'preview-row' }, h('span', null, 'Questions'), h('b', null, '62%')),
+      h('div', { class: 'preview-meter' }, h('i', { style: { width: '62%' } })),
+      h('div', { class: 'preview-row' }, h('span', null, 'Testimony'), h('b', null, '38%')),
+      h('div', { class: 'preview-meter lavender' }, h('i', { style: { width: '38%' } }))),
+    h('div', { class: 'hero-preview preview-live' },
+      h('div', { class: 'live-thumb' }, h('span', { class: 'live-badge' }, '● LIVE'), h('img', { src: '/img/hero/speaker.webp', alt: '' })),
+      h('div', { class: 'preview-row' }, h('span', null, '128 viewers'), h('b', null, '16:45'))),
+    h('div', { class: 'hero-preview preview-bible' },
+      h('strong', null, 'John 3:16'), h('span', null, 'KJV'), h('small', null, 'For God so loved the world...')),
+    h('div', { class: 'hero-preview preview-goals' },
+      h('strong', null, 'Q4 GOALS'),
+      h('div', { class: 'preview-row' }, h('span', null, 'Progress'), h('b', null, '17%')),
+      h('div', { class: 'preview-meter lavender' }, h('i', { style: { width: '17%' } })),
+      h('small', null, '2/12 slides')));
 }
 
 function band(cls, ...kids) {
@@ -31,23 +30,23 @@ function band(cls, ...kids) {
 }
 
 export async function mount(view) {
-  const codeIn = h('input', { class: 'input', placeholder: 'Enter code  e.g. y5yi87', maxlength: 8, 'aria-label': 'Room code', autocapitalize: 'none', autocomplete: 'off', spellcheck: 'false' });
+  const codeIn = h('input', { class: 'input', placeholder: 'Enter code, e.g. y5yi87', maxlength: 8, 'aria-label': 'Room code', autocapitalize: 'none', autocomplete: 'off', spellcheck: 'false' });
   const joinGo = () => { const c = parseCode(codeIn.value); if (c) navigate(`/${c}`); else joinPrompt(); };
   codeIn.addEventListener('keydown', (e) => e.key === 'Enter' && joinGo());
   const hello = state.user ? `Welcome back, ${state.user.displayName.split(' ')[0]}` : 'Your stage is ready';
   document.body.dataset.page = 'home';
-  const hero = h('section', { class: 'hero' },
+  const hero = h('section', { class: 'hero hero-join-first' },
     h('div', { class: 'hero-layout' },
+      heroVisual(),
       h('div', { class: 'hero-copy' },
         h('div', { class: 'eyebrow', html: esc(hello) }),
-        h('h1', null, 'Host it. Stream it.', h('br', { class: 'hero-break', 'aria-hidden': 'true' }), ' ', h('span', { class: 'grad-text' }, 'Gather everyone.')),
+        h('h1', null, 'Host it. Stream it.', h('br', { class: 'hero-break', 'aria-hidden': 'true' }), ' ', h('span', { class: 'grad-text' }, 'Gather Everyone. Workspace Collaboration.')),
         h('p', null, 'Talk shows, seminars, sermons and team meetings — with speaker seats, live scripture, Nigerian-language captions and one-click AI summaries.'),
+        h('div', { class: 'join-box' }, frag(icon('hash', { size: 20 })), codeIn, h('button', { class: 'btn primary', onclick: joinGo, html: icon('arrowRight', { size: 18 }) + 'Join' })),
         h('div', { class: 'row wrap hero-ctas' },
           h('a', { class: 'btn primary lg', href: '/create', 'data-link': '', html: icon('radio', { size: 20 }) + 'Go live' }),
           h('a', { class: 'btn lg hero-cta-icon', href: '/create?instant=1', 'data-link': '', 'data-group': 'media', 'data-tip': 'Instant meeting', 'aria-label': 'Instant meeting', html: icon('zap', { size: 20 }) + '<span class="lbl">Instant meeting</span>' }),
-          h('a', { class: 'btn lg hero-cta-icon', href: '/venues', 'data-link': '', 'data-group': 'media', 'data-tip': 'Venue', 'aria-label': 'Venue', html: icon('door', { size: 20 }) + '<span class="lbl">Venue</span>' })),
-        h('div', { class: 'join-box' }, frag(icon('hash', { size: 20 })), codeIn, h('button', { class: 'btn primary', onclick: joinGo, html: icon('arrowRight', { size: 18 }) + 'Join' }))),
-      heroVisual()));
+          h('a', { class: 'btn lg hero-cta-icon', href: '/venues', 'data-link': '', 'data-group': 'media', 'data-tip': 'Venue', 'aria-label': 'Venue', html: icon('door', { size: 20 }) + '<span class="lbl">Venue</span>' })))));
 
   const liveWrap = h('div', null, skeletonCards(3));
   const upWrap = h('div', null, skeletonCards(3));
