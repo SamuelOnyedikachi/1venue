@@ -19,8 +19,8 @@ test('GET /privacy and /terms return 200 text/html without auth', async () => {
       assert.match(body, /legal@1venue\.live/, p);
       assert.doesNotMatch(body, /1venue needs JavaScript to run/, p + ' must not be the SPA shell');
     }
-    const privacy = await (await fetch(base + '/privacy')).text();
-    const terms = await (await fetch(base + '/terms')).text();
+    const privacy = (await (await fetch(base + '/privacy')).text()).replace(/\s+/g, ' '); // formatters wrap lines
+    const terms = (await (await fetch(base + '/terms')).text()).replace(/\s+/g, ' ');
     assert.match(privacy, /Privacy policy/);
     assert.match(privacy, /Google API Services User Data Policy/);
     assert.match(privacy, /Effective 15 November 2026/);

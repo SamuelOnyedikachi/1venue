@@ -32,8 +32,8 @@ function render(u, origin) {
   const url = u ? `${origin}/u/${encodeURIComponent(u.username)}` : '';
   const img = u && u.avatar_url ? (/^https?:\/\//.test(u.avatar_url) ? u.avatar_url : origin + u.avatar_url) : `${origin}/icons/icon-512.png`;
   html = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`)
-    .replace(/<meta name="description" content="[^"]*">/, `<meta name="description" content="${esc(desc)}">`)
-    .replace(/<meta property="og:title" content="[^"]*"><meta property="og:image" content="[^"]*">/,
+    .replace(/<meta\s+name="description"\s+content="[^"]*"\s*\/?>/, `<meta name="description" content="${esc(desc)}">`)
+    .replace(/<meta\s+property="og:title"\s+content="[^"]*"\s*\/?>\s*<meta\s+property="og:image"\s+content="[^"]*"\s*\/?>/,
       `<meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}"><meta property="og:image" content="${esc(img)}"><meta property="og:type" content="profile">${u ? `<meta property="og:url" content="${esc(url)}"><link rel="canonical" href="${esc(url)}">` : '<meta name="robots" content="noindex">'}`);
   return html;
 }
