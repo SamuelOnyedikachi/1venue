@@ -13,17 +13,30 @@ function settings() {
     const url = new URL(publicUrl);
     if (url.protocol === 'https:' || (mode === 'test' && url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) callback = new URL('/wallet', url).href;
   } catch (_) {}
-  const enabled = !!(mode && callback && process.env.PAYSTACK_PASS_FEES_CONFIRMED === 'true' && (mode !== 'test' || process.env.NODE_ENV !== 'production'));
-  const base = process.env.PAYSTACK_API_URL || 'https://api.paystack.co';
+  // PAYSTACK_BASE_URL points the Paystack API at a sandbox (e.g. Bannk) instead of api.paystack.co.
+  // A sandbox must be https and is only allowed with an sk_test_ key, so live money can never go to it.
+  const base = process.env.PAYSTACK_BASE_URL || process.env.PAYSTACK_API_URL || 'https://api.paystack.co';
   const url = new URL(base);
-  const allowed = url.origin === 'https://api.paystack.co' || (process.env.NODE_ENV === 'test' && mode === 'test' && url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname));
+  const official = url.origin === 'https://api.paystack.co';
+  const sandbox = !official && mode === 'test' && url.protocol === 'https:';
+  const loopback = process.env.NODE_ENV === 'test' && mode === 'test' && url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
+  const allowed = official || sandbox || loopback;
+  const enabled = !!(mode && callback && process.env.PAYSTACK_PASS_FEES_CONFIRMED === 'true' && (mode !== 'test' || process.env.NODE_ENV !== 'production' || sandbox));
   if (!allowed || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw fail(503, 'Payment service configuration needs attention');
-  return { secretKey, webhookSecret, mode, callback, enabled, base: url.origin };
+  return { secretKey, webhookSecret, mode, callback, enabled, base: url.origin, sandbox };
 }
 function enabled() { try { return settings().enabled; } catch (_) { return false; } }
-async function call(path, body) {
+async function call(path, body, { raw = false } = {}) {
   const s = settings();
   if (!s.enabled) throw fail(503, 'Credit purchases are not available yet');
+  if (raw) {
+    // Returns the gateway reply even when it declines (status:false), so callers can record the reason.
+    try {
+      const r = await fetch(s.base + path, { method: 'POST', headers: { Authorization: `Bearer ${s.secretKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+      let json = null; try { json = await r.json(); } catch (_) {}
+      return { httpStatus: r.status, ok: r.ok && json && json.status === true && !!json.data, data: json && json.data, message: json && typeof json.message === 'string' ? json.message.slice(0, 200) : null };
+    } catch (_) { return { httpStatus: 0, ok: false, data: null, message: 'network' }; }
+  }
   try {
     const r = await fetch(s.base + path, { method: body ? 'POST' : 'GET', headers: { Authorization: `Bearer ${s.secretKey}`, 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(10000) });
     const json = await r.json();
@@ -31,8 +44,8 @@ async function call(path, body) {
     return json.data;
   } catch (_) { throw fail(502, 'Paystack could not confirm this request. Your payment can be checked again.'); }
 }
-function checkoutUrl(value) {
-  try { const u = new URL(value); if (u.origin === 'https://checkout.paystack.com' && !u.username && !u.password) return u.href; } catch (_) {}
+function checkoutUrl(value, s = settings()) {
+  try { const u = new URL(value); if ((u.origin === 'https://checkout.paystack.com' || (s.sandbox && u.origin === s.base)) && !u.username && !u.password) return u.href; } catch (_) {}
   throw fail(502, 'Paystack returned an invalid checkout link');
 }
 async function initialize(user, amount) {
@@ -42,7 +55,7 @@ async function initialize(user, amount) {
   const payment = await data.createPayment(user, priced, s.mode);
   const result = await call('/transaction/initialize', { email: payment.payer_email, amount: payment.price_kobo, currency: 'NGN', reference: payment.reference, callback_url: s.callback, metadata: { wallet_reference: payment.reference, user_id: String(user.id) } });
   if (result.reference !== payment.reference) throw fail(502, 'Paystack returned an unexpected payment reference');
-  const url = checkoutUrl(result.authorization_url);
+  const url = checkoutUrl(result.authorization_url, s);
   await data.checkoutReady(payment.reference, url);
   return { ...data.paymentOut(payment), authorizationUrl: url };
 }
@@ -92,4 +105,4 @@ function verifyWebhook(raw, headers, { secretKey, webhookSecret, now = Date.now(
   if (!secretKey) return false;
   return equalHex(crypto.createHmac('sha512', secretKey).update(raw).digest(), headers['x-paystack-signature']);
 }
-module.exports = { settings, enabled, initialize, confirm, verifyWebhook };
+module.exports = { settings, enabled, initialize, confirm, verifyWebhook, call, checkoutUrl, metadata };

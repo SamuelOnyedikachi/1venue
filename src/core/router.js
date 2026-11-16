@@ -50,7 +50,7 @@ async function dispatch(req, res, parsed) {
     } catch (e) {
       const status = e.status || 500;
       if (status >= 500) console.error('[api]', req.method, path, e);
-      sendJSON(res, status, { error: status >= 500 && !e.expose ? (e.message || 'Server error') : e.message, ...(e.fallback ? { fallback: e.fallback } : {}) });
+      sendJSON(res, status, { error: status >= 500 && !e.expose ? (e.message || 'Server error') : e.message, ...(e.fallback ? { fallback: e.fallback } : {}), ...(e.upgrade ? { upgrade: true } : {}) });
     }
     return true;
   }

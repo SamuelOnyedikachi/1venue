@@ -78,7 +78,7 @@ const stagePlugin = {
       const st = stage.ensure(meeting);
       const wasEnabled = st.enabled;
       if (typeof msg.enabled === 'boolean') st.enabled = msg.enabled;
-      if (msg.seats != null) st.seats = Math.min(50, Math.max(1, parseInt(msg.seats, 10) || st.seats));
+      if (msg.seats != null) st.seats = Math.min(50, (meeting.limits && meeting.limits.speakerSeats) || 50, Math.max(1, parseInt(msg.seats, 10) || st.seats));
       if (typeof msg.camerasForSpeakers === 'boolean') st.camerasForSpeakers = msg.camerasForSpeakers;
       if (wasEnabled !== st.enabled) {
         for (const [id, p] of meeting.participants) if (p.status === 'ACTIVE') await repermit(meetingCode, meeting, id);

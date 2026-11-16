@@ -15,6 +15,22 @@ module.exports = async function handle(req, res, url) {
       if (payment) {
         try { await gateway.confirm(payment); }
         catch (e) { if (e.status !== 409) throw e; /* A permanent mismatch is retained for review. */ }
+      } else {
+        // Subscriptions, renewals and short-link add-ons share this signed endpoint.
+        const billing = require('../billing/service');
+        const bp = await billing.getPayment(event.data.reference);
+        if (bp) {
+          try { await billing.confirm(bp); }
+          catch (e) { if (e.status !== 409) throw e; }
+        } else {
+          // Tickets, donations and self-serve promotions.
+          const commerce = require('../commerce/service');
+          const cp = await commerce.getPayment(event.data.reference);
+          if (cp) {
+            try { await commerce.confirm(cp); }
+            catch (e) { if (e.status !== 409) throw e; }
+          }
+        }
       }
     }
     sendJSON(res, 200, { ok: true });

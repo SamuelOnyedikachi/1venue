@@ -14,6 +14,7 @@ function promoOut(r) {
   return {
     id: Number(r.id), type: r.target_type, placements: r.placements || [], startsAt: r.starts_at, endsAt: r.ends_at,
     active: r.active, weight: r.weight, note: r.note, views: r.views, clicks: r.clicks, createdAt: r.created_at,
+    review: r.review_status || 'approved', days: r.days || null, ownerUserId: r.owner_user_id || null, selfServe: !!r.owner_user_id,
   };
 }
 function eventCardOut(r) {

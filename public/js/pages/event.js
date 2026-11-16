@@ -127,7 +127,7 @@ export async function mount(view, { slug }) {
         live ? h('span', { class: 'pill live static' }, `LIVE · ${fmtNum(ev.live?.viewers || ev.liveViewers || 0)} watching`) : ev.status === 'ended' ? h('span', { class: 'pill static' }, 'Ended') : null),
       h('h1', null, ev.title),
       h('div', { class: 'row wrap ev-meta' },
-        h('a', { class: 'row', href: profilePath(ev.host), 'data-link': '' }, avatar(ev.host.name, ev.host.avatarUrl, 'sm ring'), h('strong', null, ev.host.name)),
+        h('a', { class: 'row', href: profilePath(ev.host), 'data-link': '' }, avatar(ev.host.name, ev.host.avatarUrl, 'sm ring'), h('strong', null, ev.host.name), ev.host.verified ? h('span', { class: 'chip tiny verified-badge', title: 'Verified host', html: icon('check', { size: 12 }) + 'Verified' }) : null),
         ev.startsAt ? h('span', { html: icon('calendar', { size: 16 }) + esc(fmtDate(ev.startsAt)) }) : null,
         h('span', { html: icon('ticket', { size: 16 }) + fmtNum(ev.rsvps || 0) + ' going' }))));
 
@@ -143,6 +143,8 @@ export async function mount(view, { slug }) {
         h('div', { class: 'grow' }, h('strong', null, ev.title), h('div', { class: 'tiny muted' }, whenLine)))) : null);
 
   const matsSlot = h('div');
+  const ticketSlot = h('div');
+  const replaySlot = h('div');
   const speakersBlock = speakers.length ? h('div', null, sectionHead('Speakers', 'stage'), h('div', { class: 'speaker-cards' }, speakers.map((sp) => h(sp.userId ? 'a' : 'div', { class: 'card speaker-card', href: sp.userId ? profilePath({ username: sp.username, id: sp.userId }) : null, 'data-link': sp.userId ? '' : null, style: { '--c1': c1, '--c2': c2 } },
     h('div', { class: 'band' }), avatar(sp.name, sp.avatarUrl, 'xl ring'), h('strong', null, sp.name), h('span', { class: 'muted small' }, sp.headline || 'Speaker'))))) : null;
 
@@ -150,6 +152,8 @@ export async function mount(view, { slug }) {
     hero,
     h('div', { class: 'ev-summary' }, factsCard()),
     hostMenu,
+    ticketSlot,
+    replaySlot,
     ev.description ? h('div', { class: 'card pad prose', html: md(ev.description) }) : null,
     ev.tags?.length ? h('div', { class: 'chips' }, ev.tags.map((t) => h('a', { class: 'chip', href: `/discover?q=${encodeURIComponent(t)}`, 'data-link': '' }, '#' + t))) : null,
     speakersBlock,
@@ -176,6 +180,42 @@ export async function mount(view, { slug }) {
     return () => { el.removeEventListener('scroll', on); clearTimeout(t); };
   };
   const stopScroll = [slim(left), slim(right)];
+
+  // Tickets, donations and replays (Phase 3). Returning from Paystack carries ?reference=1vc-…
+  const naira = (k) => '₦' + (Number(k || 0) / 100).toLocaleString('en-NG');
+  async function paintTickets() {
+    const t = await api(`/api/events/${ev.id}/tickets`).catch(() => null);
+    if (!t || !ticketSlot.isConnected || (!t.tiers.length && !t.donations)) { ticketSlot.replaceChildren(); return; }
+    const buy = async (tier, qty) => {
+      if (!requireLogin('Sign in to get a ticket')) return;
+      const r = await api(`/api/events/${ev.id}/tickets`, { method: 'POST', body: { tierId: tier.id, quantity: qty } });
+      if (r.authorizationUrl) { location.assign(r.authorizationUrl); return; }
+      toast('You have a ticket', { icon: 'ticket' }); paintTickets();
+    };
+    const gift = h('input', { class: 'input', type: 'number', min: t.donationMinKobo / 100, step: 100, value: Math.max(1000, t.donationMinKobo / 100), style: { maxWidth: '8rem' }, 'aria-label': 'Gift amount in naira' });
+    ticketSlot.replaceChildren(h('div', { class: 'ev-card' }, sectionHead(t.tiers.length ? 'Tickets' : 'Support this event', 'ticket'),
+      t.mine && t.mine.length ? h('p', { class: 'small' }, `You have ${t.mine.length} ticket${t.mine.length === 1 ? '' : 's'}${t.mine[0].tier ? ' · ' + t.mine[0].tier : ''}.`) : null,
+      ...t.tiers.map((tier) => {
+        const qty = h('input', { class: 'input', type: 'number', min: 1, max: Math.min(t.maxPerOrder, tier.remaining ?? t.maxPerOrder), value: 1, style: { maxWidth: '4.5rem' }, 'aria-label': 'Quantity', hidden: tier.priceKobo === 0 });
+        const soldOut = tier.remaining === 0;
+        return h('div', { class: 'ev-meta-row' }, h('div', { class: 'grow min0' }, h('strong', null, tier.name), h('div', { class: 'tiny muted' }, `${tier.priceKobo ? naira(tier.priceKobo) : 'Free'}${tier.remaining != null ? ` · ${tier.remaining} left` : ''}`)),
+          qty, h('button', { class: 'btn sm primary', type: 'button', disabled: soldOut || (!t.purchasesEnabled && tier.priceKobo > 0), onclick: () => buy(tier, Number(qty.value) || 1).catch(toastErr) }, soldOut ? 'Sold out' : tier.priceKobo ? 'Buy' : 'Get free ticket'));
+      }),
+      t.donations && t.purchasesEnabled ? h('div', { class: 'ev-meta-row' }, h('span', { class: 'grow small' }, 'Send the host a gift'), gift,
+        h('button', { class: 'btn sm', type: 'button', onclick: async () => { if (!requireLogin('Sign in to send a gift')) return; try { const r = await api(`/api/events/${ev.id}/donate`, { method: 'POST', body: { amountKobo: Math.round(Number(gift.value) * 100) } }); location.assign(r.authorizationUrl); } catch (e) { toastErr(e); } } }, 'Give')) : null));
+  }
+  const ref = new URLSearchParams(location.search).get('reference') || new URLSearchParams(location.search).get('trxref');
+  if (ref && ref.startsWith('1vc-')) {
+    api(`/api/commerce/payments/${encodeURIComponent(ref)}/verify`, { method: 'POST', body: {} })
+      .then((p) => { toast(p.status === 'paid' ? (p.kind === 'donation' ? 'Thank you for your gift!' : 'Payment confirmed. Your ticket is ready.') : `Payment ${p.status}`, { icon: 'ticket' }); history.replaceState(null, '', location.pathname); paintTickets(); })
+      .catch(toastErr);
+  }
+  paintTickets();
+  api(`/api/events/${ev.id}/replays`).then(({ replays }) => {
+    if (!replays.length || !replaySlot.isConnected) return;
+    replaySlot.append(h('div', { class: 'ev-card' }, sectionHead('Replay', 'play'),
+      ...replays.map((r) => h('a', { class: 'ev-meta-row', href: '/replay/' + r.id, 'data-link': '' }, h('span', { html: icon('play', { size: 16 }) }), h('strong', { class: 'grow' }, r.title)))));
+  }).catch(() => {});
 
   api(`/api/events/${ev.id}/materials`).then((r) => {
     const mats = r.materials || [];

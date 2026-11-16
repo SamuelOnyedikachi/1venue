@@ -139,6 +139,7 @@ class Room {
         }
         if (e.status === 404 && this.venueOwnerSlug) { this.intent = { create: true, venue: this.venueOwnerSlug, code: this.code, waitingRoom: true, name: this.venueName || 'Meeting' }; return this.join({ name, mic, cam, creating: true }); }
         if (e.status === 404 && this.event) throw new Error('This event hasn’t started yet — we’ll be here when it goes live.');
+        if (e.status === 403 && e.data && e.data.ticketRequired && e.data.eventSlug) { toast('You need a ticket for this event', { icon: 'ticket' }); location.assign('/e/' + e.data.eventSlug); return; }
         throw e;
       }
       if (this.params.key) this.inviteKey = this.params.key;

@@ -68,7 +68,7 @@ const CANONICAL_HOST = env('CANONICAL_HOST', '').replace(/^https?:\/\//i, '').re
 const MEETING_INACTIVITY_MS = int('MEETING_INACTIVITY_HOURS', 12) * 60 * 60 * 1000;
 const MEETING_CLEANUP_INTERVAL_MS = 15 * 60 * 1000;
 const MAX_PARTICIPANTS = int('MAX_PARTICIPANTS', 50);
-const MAX_AUDIENCE = int('MAX_AUDIENCE', 300); // stage events: listeners beyond speaker seats
+const MAX_AUDIENCE = int('MAX_AUDIENCE', 1000); // server hard ceiling for stage events; each plan's audience limit is capped by this
 const DEFAULT_SPEAKER_SEATS = int('DEFAULT_SPEAKER_SEATS', 4);
 
 // Media quality caps, tuned for a small server and SFU

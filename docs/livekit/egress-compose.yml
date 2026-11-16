@@ -1,0 +1,14 @@
+# Coolify → New resource → Docker Compose. Put it on the same network as LiveKit and Redis.
+services:
+  egress:
+    image: livekit/egress:latest
+    restart: unless-stopped
+    environment:
+      EGRESS_CONFIG_FILE: /etc/egress.yaml
+    volumes:
+      - ./egress.yaml:/etc/egress.yaml:ro
+    cap_add: [SYS_ADMIN]          # Chrome sandbox (recommended by LiveKit)
+    shm_size: 1gb                 # Chrome needs shared memory
+    deploy:
+      resources:
+        limits: { cpus: '4', memory: 4g }   # ~one 720p recording at a time; add replicas for more

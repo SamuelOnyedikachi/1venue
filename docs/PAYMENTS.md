@@ -69,3 +69,16 @@ Official references (checked 2026-11-16):
 - https://paystack.com/docs/api/transaction/
 - https://paystack.com/docs/payments/webhooks/
 - https://support.paystack.com/en/articles/2130306
+
+## Testing with a Paystack-compatible sandbox (Bannk)
+
+Set `PAYSTACK_BASE_URL=https://bannk.beuden.com.ng` and use a Bannk `sk_test_...` key as `PAYSTACK_SECRET_KEY`.
+A sandbox base URL must be https and is only accepted with an `sk_test_` key, so it also works when `NODE_ENV=production`.
+The sandbox's own checkout origin is then accepted as the authorization URL. Leave `PAYSTACK_WEBHOOK_SECRET` empty:
+Bannk signs webhooks with the legacy `x-paystack-signature` (HMAC-SHA512 of the raw body with the secret key).
+For real Paystack, remove `PAYSTACK_BASE_URL` and use your real keys.
+
+
+## Plans and subscriptions
+
+Plan subscriptions, renewals and short-link add-ons share this Paystack setup and webhook. See `docs/PLANS-BILLING.md`.

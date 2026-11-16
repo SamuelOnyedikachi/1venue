@@ -20,34 +20,58 @@ module.exports = function routes(route, kit) {
     if (!rp || !rp.meeting.historyId) return '';
     return data.transcriptToText(await data.getTranscript(rp.meeting.historyId, { limit: 1500 }));
   }
+  const plans = require('../../lib/plans');
+  /**
+   * Spend points from the shared daily AI pool. Inside a room the room's paying host is charged
+   * (guests count against the host's venue pool, with a per-IP daily cap); otherwise the user's own pool.
+   */
+  async function spend(ctx, kind, { u, rp }) {
+    const ownerId = rp ? ((rp.meeting.limits && rp.meeting.limits.ownerUserId) || rp.meeting.hostUserId || null) : u ? u.id : null;
+    const self = !!(u && ownerId && u.id === ownerId);
+    const guestIp = self ? null : clientIp(ctx.req);
+    const t = await plans.takeAi({ kind, ownerId, guestIp });
+    if (!t.ok) {
+      if (t.guestCap) throw httpError(429, 'You’ve reached today’s AI limit in this room. Try again tomorrow.');
+      throw httpError(429, self ? `You’ve used today’s AI allowance (${t.limit} points). Upgrade for more, or try again tomorrow.` : 'The host’s AI allowance for today is used up. Try again tomorrow.');
+    }
+    return t;
+  }
+  async function metered(ctx, kind, who, fn) {
+    const t = await spend(ctx, kind, who);
+    try { return { ...(await fn()), aiLeft: t.left }; } catch (e) { await t.refund(); throw e; }
+  }
   const aiOut = (r) => ({ text: r.text, provider: r.provider, model: r.model, mock: !!r.mock });
   route('POST', '/api/ai/ask', async (ctx) => {
-    const { rp } = await aiGuard(ctx);
+    const who = await aiGuard(ctx);
+    const { rp } = who;
     const b = await ctx.body();
     if (!b.question) throw httpError(400, 'Ask a question');
     const context = (await roomContext(rp)) || (rp ? `Session: ${rp.meeting.name}` : '');
-    return aiOut(await ai().ask(String(b.question).slice(0, 1000), context));
+    return metered(ctx, 'ask', who, async () => aiOut(await ai().ask(String(b.question).slice(0, 1000), context)));
   });
   route('POST', '/api/ai/catchup', async (ctx) => {
-    const { rp } = await aiGuard(ctx);
+    const who = await aiGuard(ctx);
+    const { rp } = who;
     if (!rp) throw httpError(400, 'Catch-up works inside a room');
     const segs = rp.meeting.historyId ? await data.getTranscript(rp.meeting.historyId, { limit: 2000 }) : [];
     const minutes = Math.min(60, Math.max(2, int((await ctx.body()).minutes, 10)));
     const since = Date.now() - minutes * 60000;
     const recent = data.transcriptToText(segs.filter((s) => new Date(s.at).getTime() >= since));
     if (!recent) return { text: 'Nothing has been said in that window yet, or captions are off.', provider: 'local', mock: true };
-    return aiOut(await ai().catchUp(recent, minutes));
+    return metered(ctx, 'catchup', who, async () => aiOut(await ai().catchUp(recent, minutes)));
   });
   route('POST', '/api/ai/translate', async (ctx) => {
-    await aiGuard(ctx);
+    const who = await aiGuard(ctx);
     const b = await ctx.body();
-    return aiOut(await ai().translate(String(b.text || ''), String(b.lang || 'English').slice(0, 30)));
+    return metered(ctx, 'translate', who, async () => aiOut(await ai().translate(String(b.text || ''), String(b.lang || 'English').slice(0, 30))));
   });
   route('POST', '/api/ai/title', async (ctx) => {
-    await aiGuard(ctx);
+    const who = await aiGuard(ctx);
     const b = await ctx.body();
     const notes = String(b.notes || '');
-    const r = await ai().titleDescription(notes, b.category);
+    const t = await spend(ctx, 'title', who);
+    let r;
+    try { r = await ai().titleDescription(notes, b.category); } catch (e) { await t.refund(); throw e; }
     let out = {};
     try { out = JSON.parse(String(r.text).replace(/^```(json)?|```$/g, '').trim()); } catch (_) { out = { title: String(r.text).split('\n')[0].slice(0, 80), description: String(r.text).slice(0, 400) }; }
     const tags = Array.isArray(out.tags)
@@ -64,7 +88,7 @@ module.exports = function routes(route, kit) {
       title, description: out.description || '', tags, theme,
       category: hints.category || null, venue: hints.venue,
       start: hints.start, end: hints.end, hasTime: hints.hasTime, endHasTime: hints.endHasTime,
-      provider: r.provider, mock: !!r.mock,
+      provider: r.provider, mock: !!r.mock, aiLeft: t.left,
     };
   });
 
@@ -73,7 +97,14 @@ module.exports = function routes(route, kit) {
     const u = await getAuthUser(ctx.req, ctx.res);
     const limit = finetuneLimit();
     const used = u ? await usage.used(`u:${u.id}`, 'finetune') : 0;
-    return { enabled: limit > 0, dailyLimit: limit, used, left: Math.max(0, limit - used) };
+    let left = Math.max(0, limit - used);
+    if (u) {
+      const s = await plans.getSettings();
+      const ent = await plans.entitlements(u.id, { settings: s });
+      const w = plans.aiWeight(s, 'finetune');
+      if (w > 0) left = Math.min(left, Math.floor(Math.max(0, ent.limits.aiDaily - await plans.aiUsed(u.id)) / w));
+    }
+    return { enabled: limit > 0, dailyLimit: limit, used, left };
   });
   route('POST', '/api/ai/finetune', async (ctx) => {
     const u = await requireUser(ctx.req, ctx.res);
@@ -85,18 +116,21 @@ module.exports = function routes(route, kit) {
     if (raw.length > 2000) throw httpError(400, 'That post is a little long to fine-tune');
     const took = await usage.take(`u:${u.id}`, 'finetune', 1, limit);
     if (!took.ok) throw httpError(429, `You’ve used your ${limit} fine-tunes for today — try again tomorrow`);
+    let pool;
+    try { pool = await spend(ctx, 'finetune', { u, rp: null }); } catch (e) { await usage.refund(`u:${u.id}`, 'finetune', 1).catch(() => {}); throw e; }
     try {
       const r = await ai().fineTune(raw);
       let text = String(r.text || '').trim();
       if (!text) text = mockFineTune(raw);
-      return { text, provider: r.provider, model: r.model, mock: !!r.mock, left: Math.max(0, limit - took.used), used: took.used };
+      return { text, provider: r.provider, model: r.model, mock: !!r.mock, left: Math.max(0, limit - took.used), used: took.used, aiLeft: pool.left };
     } catch (e) {
       await usage.refund(`u:${u.id}`, 'finetune', 1).catch(() => {});
+      await pool.refund();
       throw e;
     }
   });
   route('POST', '/api/ai/scripture', async (ctx) => {
-    await aiGuard(ctx);
+    const who = await aiGuard(ctx);
     const b = await ctx.body();
     const query = String(b.query || '').slice(0, 300);
     const corpus = String(b.corpus || 'bible').toLowerCase() === 'quran' ? 'quran' : 'bible';
@@ -105,7 +139,9 @@ module.exports = function routes(route, kit) {
     if (corpus === 'quran' && !/^quran_/i.test(translation || '')) translation = 'quran_en_sahih';
     if (corpus === 'bible' && /^quran_/i.test(translation || '')) translation = config.BIBLE?.defaultTranslation || 'eng_kjv';
 
-    const r = await ai().scripture(query, translation, corpus);
+    const t = await spend(ctx, 'scripture', who);
+    let r;
+    try { r = await ai().scripture(query, translation, corpus); } catch (e) { await t.refund(); throw e; }
     const parsed = String(r.text).split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
       const [ref, why] = l.replace(/^[-*\d.\s]+/, '').split('|').map((x) => (x || '').trim());
       return bible().parseReference(ref) ? { reference: ref, why: why || '' } : null;

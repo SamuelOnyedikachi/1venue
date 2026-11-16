@@ -25,9 +25,10 @@ function lkRoomClient() {
 
 function init(meeting, { enabled = false, seats } = {}) {
   const n = parseInt(seats, 10);
+  const planSeats = meeting.limits && meeting.limits.speakerSeats ? meeting.limits.speakerSeats : 50;
   meeting.stage = {
     enabled: !!enabled,
-    seats: Math.min(50, Math.max(1, Number.isFinite(n) ? n : config.DEFAULT_SPEAKER_SEATS)),
+    seats: Math.min(50, planSeats, Math.max(1, Number.isFinite(n) ? n : Math.min(config.DEFAULT_SPEAKER_SEATS, planSeats))),
     speakers: new Set(),
     requests: [], // [{ id, name, at, note }]
     camerasForSpeakers: true,
@@ -41,7 +42,9 @@ function ensure(meeting) {
 
 function capacity(meeting) {
   const st = meeting.stage;
-  const cap = st && st.enabled ? config.MAX_AUDIENCE : config.MAX_PARTICIPANTS;
+  const l = meeting.limits;
+  // Plan limit of the paying host, never above the server hard ceilings (MAX_AUDIENCE / MAX_PARTICIPANTS).
+  const cap = st && st.enabled ? Math.min(config.MAX_AUDIENCE, (l && l.audience) || config.MAX_AUDIENCE) : Math.min(config.MAX_PARTICIPANTS, (l && l.meeting) || config.MAX_PARTICIPANTS);
   const manual = meeting.settings && meeting.settings.maxParticipants;
   return manual ? Math.min(cap, manual) : cap;
 }

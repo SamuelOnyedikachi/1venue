@@ -54,10 +54,21 @@ export async function mount(view, params) {
     h('button', { type: 'button', class: visibility === v ? 'on' : '', 'data-v': v, html: icon(ic, { size: 15 }) + l, onclick: () => { visibility = v; visSeg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === v)); } })));
 
   const seatVal = h('strong', { style: { minWidth: '2ch', textAlign: 'center', fontSize: '1.2rem' } }, String(seats));
+  // Speaker seats are capped by the host's plan (from /api/billing). The server clamps too.
+  let maxSeats = 50;
+  const seatInput = h('input', { type: 'hidden', name: 'speakerSeats', min: '1', max: '50', value: String(seats) });
+  const seatHint = h('span', { class: 'tiny muted', hidden: true }, 'Upgrade for more seats. ', h('a', { href: '/upgrade', 'data-link': '' }, 'See plans'));
+  function setSeats(n) {
+    seats = Math.min(maxSeats, Math.max(1, n));
+    seatVal.textContent = seats; seatInput.value = String(seats);
+    seatHint.hidden = !(n > maxSeats || seats >= maxSeats) || maxSeats >= 50;
+  }
+  if (state.user) api('/api/billing').then((b) => { maxSeats = Math.max(1, Math.min(50, b.limits.speakerSeats || 50)); seatInput.max = String(maxSeats); setSeats(seats); }).catch(() => {});
   const stepper = h('div', { class: 'row' },
-    h('button', { type: 'button', class: 'icon-btn', 'data-group': 'people', 'aria-label': 'Fewer seats', html: icon('chevronLeft'), onclick: () => { seats = Math.max(1, seats - 1); seatVal.textContent = seats; } }),
+    h('button', { type: 'button', class: 'icon-btn', 'data-group': 'people', 'aria-label': 'Fewer seats', html: icon('chevronLeft'), onclick: () => setSeats(seats - 1) }),
     seatVal,
-    h('button', { type: 'button', class: 'icon-btn', 'data-group': 'people', 'aria-label': 'More seats', html: icon('chevronRight'), onclick: () => { seats = Math.min(50, seats + 1); seatVal.textContent = seats; } }));
+    h('button', { type: 'button', class: 'icon-btn', 'data-group': 'people', 'aria-label': 'More seats', html: icon('chevronRight'), onclick: () => setSeats(seats + 1) }),
+    seatInput, seatHint);
 
   // Speakers picker
   const speakerChips = h('div', { class: 'row wrap', style: { gap: '.4rem' } });
