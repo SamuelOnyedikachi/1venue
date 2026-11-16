@@ -216,7 +216,9 @@ async function settle(purchase, verified) {
   const settingsNow = await settings();
   const out = await tx(async (c) => {
     const p = (await c.query('SELECT * FROM commerce_payments WHERE reference=$1 FOR UPDATE', [purchase.reference])).rows[0];
-    if (p.status === 'paid') return p;
+    // provider_id is only ever set here, so a payment that has it was already settled once (paid, or
+    // review after selling out). Never settle it again, even if a late webhook arrives after a refund.
+    if (p.status === 'paid' || p.provider_id) return p;
     let status = 'paid'; let err = null;
     if (p.kind === 'ticket') {
       const r = await c.query('UPDATE ticket_tiers SET sold=sold+$2 WHERE id=$1 AND (quantity IS NULL OR sold+$2 <= quantity)', [p.tier_id, Number(p.quantity)]);

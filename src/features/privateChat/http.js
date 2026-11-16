@@ -88,10 +88,17 @@ module.exports = async function handle(req, res, parsed) {
     const peerUserId = parseInt(urlObj.searchParams.get('userId') || '', 10);
     if (!peerUserId) return sendJSON(res, 400, { error: 'userId required' });
     try {
-      const thread = await db.findOrCreateDmThread(user.id, peerUserId);
+      // Same allow-list as Messages: existing thread, mutual follow, same org or shared meeting,
+      // the peer's "who can message me" setting, and blocks (either way).
+      const access = require('../messages/access');
+      const allowed = await access.canStartDm(user.id, peerUserId);
+      if (!allowed.ok) return sendJSON(res, allowed.status || 403, { error: allowed.reason });
+      const conv = await require('../messages/service').openDm(user, peerUserId);
+      const thread = { id: (await db.q('SELECT dm_thread_id FROM conversations WHERE id = $1', [conv.id])).rows[0].dm_thread_id };
       const messages = await db.getDmMessages(thread.id, 200);
       return sendJSON(res, 200, {
         threadId: thread.id,
+        conversationId: conv.id,
         messages: messages.map((m) => ({
           id: m.id,
           fromUserId: m.sender_user_id,
@@ -103,6 +110,7 @@ module.exports = async function handle(req, res, parsed) {
         })),
       });
     } catch (e) {
+      if (e.status && e.status < 500) return sendJSON(res, e.status, { error: e.message });
       console.error('[dm/with-user]', e);
       return sendJSON(res, 500, { error: 'Failed to load DM' });
     }

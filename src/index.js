@@ -58,7 +58,7 @@ async function start() {
   ];
   const billingTimer = require('./features/billing/service').startWorker();
   if (billingTimer) timers.push(billingTimer);
-  for (const w of ['./features/recurring/reminders', './features/replays/service']) {
+  for (const w of ['./features/recurring/reminders', './features/replays/service', './features/messages/calls', './features/messages/retention']) {
     try { const t = require(w).startWorker(); if (t) timers.push(t); } catch (e) { console.error('[worker]', w, e.message); }
   }
   const metricsLog = metrics.startLogger();
@@ -82,6 +82,7 @@ async function start() {
     wss.notifyRestart(config.RESTART.shutdownGraceMs);
     await new Promise((r) => setTimeout(r, Math.min(config.RESTART.shutdownGraceMs, 5000)));
     for (const ws of wss.clients) { try { ws.terminate(); } catch (_) {} }
+    try { require('./features/messages/socket').closeAll(); } catch (_) {}
     await db.close().catch(() => {});
     process.exit(0);
   };
