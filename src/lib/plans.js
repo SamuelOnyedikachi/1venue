@@ -19,9 +19,10 @@ const LIMIT_KEYS = ['venues', 'audience', 'meeting', 'speakerSeats', 'aiDaily', 
 const PRICE_KEYS = ['priceMonthKobo', 'priceYearKobo'];
 const AI_KINDS = ['ask', 'catchup', 'translate', 'title', 'summary', 'finetune', 'scripture'];
 // Phase 2/3 feature switches per plan (0 = off, 1 = on), editable from /admin like the limits.
-const FEATURE_KEYS = ['branding', 'recurring', 'reminders', 'whatsapp', 'exports', 'analytics', 'badge', 'selfPromo', 'ticketing', 'replays'];
+const FEATURE_KEYS = ['branding', 'recurring', 'reminders', 'whatsapp', 'exports', 'analytics', 'badge', 'selfPromo', 'ticketing', 'replays', 'callVideo'];
 // Numeric Phase 3 limits per plan: organisation members (0 = cannot create an organisation), replay storage.
-const EXTRA_LIMIT_KEYS = ['orgMembers', 'replayMB'];
+// Messages: standing group size, call size (2 = 1:1 only) and message history in days (0 = forever).
+const EXTRA_LIMIT_KEYS = ['orgMembers', 'replayMB', 'groupMembers', 'callParticipants', 'historyDays'];
 // Site-wide money and scheduling settings (not per plan).
 const PLATFORM_KEYS = {
   feeBps: [500, 5000], // platform cut of tickets and donations, basis points (500 = 5%)
@@ -50,9 +51,9 @@ const DEFAULTS = Object.freeze({
   graceDays: 5,
   aiGuestPerIpDaily: 30, // points one guest IP may spend from a host's pool per day
   features: {
-    free: { branding: 0, recurring: 0, reminders: 0, whatsapp: 0, exports: 0, analytics: 0, badge: 0, selfPromo: 1, ticketing: 0, replays: 0, orgMembers: 0, replayMB: 0 },
-    premium: { branding: 1, recurring: 1, reminders: 1, whatsapp: 1, exports: 1, analytics: 1, badge: 1, selfPromo: 1, ticketing: 0, replays: 0, orgMembers: 0, replayMB: 0 },
-    organisation: { branding: 1, recurring: 1, reminders: 1, whatsapp: 1, exports: 1, analytics: 1, badge: 1, selfPromo: 1, ticketing: 1, replays: 1, orgMembers: 25, replayMB: 51200 },
+    free: { branding: 0, recurring: 0, reminders: 0, whatsapp: 0, exports: 0, analytics: 0, badge: 0, selfPromo: 1, ticketing: 0, replays: 0, orgMembers: 0, replayMB: 0, callVideo: 0, groupMembers: 8, callParticipants: 2, historyDays: 365 },
+    premium: { branding: 1, recurring: 1, reminders: 1, whatsapp: 1, exports: 1, analytics: 1, badge: 1, selfPromo: 1, ticketing: 0, replays: 0, orgMembers: 0, replayMB: 0, callVideo: 1, groupMembers: 32, callParticipants: 8, historyDays: 0 },
+    organisation: { branding: 1, recurring: 1, reminders: 1, whatsapp: 1, exports: 1, analytics: 1, badge: 1, selfPromo: 1, ticketing: 1, replays: 1, orgMembers: 25, replayMB: 51200, callVideo: 1, groupMembers: 64, callParticipants: 16, historyDays: 0 },
   },
   platform: Object.fromEntries(Object.entries(PLATFORM_KEYS).map(([k, [d]]) => [k, d])),
 });

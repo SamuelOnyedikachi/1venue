@@ -129,6 +129,8 @@ class Room {
       }
       sessionStorage.removeItem('venue.intent');
       this.code = r.code; this.inviteKey = r.inviteToken;
+      // Started from a Messages thread: post the meeting card there (host only; best effort).
+      if (it.thread) api(`/api/messages/conversations/${Number(it.thread)}/cards`, { method: 'POST', body: { type: 'meeting', code: r.code, key: r.inviteToken || '' } }).catch(() => {});
       history.replaceState({}, '', '/' + fmtCode(r.code));
     } else {
       try {
