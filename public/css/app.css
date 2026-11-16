@@ -6107,7 +6107,21 @@ body[data-page="books"] .main {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  background: linear-gradient(120deg, var(--s1), var(--s2));
+  color: #fff;
+  background:
+    radial-gradient(
+      60rem 30rem at 0% 0%,
+      color-mix(in srgb, var(--accent) 95%, #000),
+      transparent
+    ),
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 80%, #0b1020),
+      color-mix(in srgb, var(--accent-2) 75%, #0b1020)
+    );
+}
+.wallet-summary .muted {
+  color: rgb(255 255 255 / 88%);
 }
 .wallet-balance {
   font-size: clamp(1.6rem, 5vw, 2.4rem);
