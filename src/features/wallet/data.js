@@ -52,26 +52,27 @@ async function history(userId, before) {
         (SELECT latest.balance_after_units FROM credit_ledger latest
           WHERE latest.user_id=l.user_id AND latest.billing_session_id=l.billing_session_id
           ORDER BY latest.id DESC LIMIT 1) AS balance_after_units,
-        b.code AS meeting_code,MAX(l.created_at) AS created_at
+        b.code AS meeting_code,m.name AS meeting_name,MAX(l.created_at) AS created_at
       FROM credit_ledger l JOIN credit_billing_sessions b ON b.id=l.billing_session_id
+      LEFT JOIN meeting_history m ON m.id=b.history_id
       WHERE l.user_id=$1 AND l.kind='usage' AND l.billing_session_id IS NOT NULL
-      GROUP BY l.user_id,l.billing_session_id,b.code
+      GROUP BY l.user_id,l.billing_session_id,b.code,m.name
     ), history_entries AS (
       SELECT l.id,l.user_id,l.kind,l.delta_units,l.balance_after_units,p.reference,
-        NULL AS meeting_code,l.created_at
+        NULL AS meeting_code,NULL AS meeting_name,l.created_at
       FROM credit_ledger l LEFT JOIN credit_payments p ON p.id=l.payment_id
       WHERE l.user_id=$1 AND l.kind='purchase'
       UNION ALL
-      SELECT id,user_id,'usage',delta_units,balance_after_units,NULL,meeting_code,created_at
+      SELECT id,user_id,'usage',delta_units,balance_after_units,NULL,meeting_code,meeting_name,created_at
       FROM usage_entries
       UNION ALL
-      SELECT l.id,l.user_id,l.kind,l.delta_units,l.balance_after_units,NULL,b.code,l.created_at
+      SELECT l.id,l.user_id,l.kind,l.delta_units,l.balance_after_units,NULL,b.code,NULL,l.created_at
       FROM credit_ledger l LEFT JOIN credit_billing_sessions b ON b.id=l.billing_session_id
       WHERE l.user_id=$1 AND l.kind='usage' AND l.billing_session_id IS NULL
     )
     SELECT * FROM history_entries ${before ? 'WHERE id<$2' : ''} ORDER BY id DESC LIMIT 31`, before ? [userId, before] : [userId])).rows;
   const page = rows.slice(0, 30);
-  return { entries: page.map((r) => ({ id: String(r.id), type: r.kind, credits: credits(r.delta_units), balanceAfter: credits(r.balance_after_units), reference: r.reference, meetingCode: r.meeting_code || null, createdAt: r.created_at })), nextBefore: rows.length > 30 ? String(page[page.length - 1].id) : null };
+  return { entries: page.map((r) => ({ id: String(r.id), type: r.kind, credits: credits(r.delta_units), balanceAfter: credits(r.balance_after_units), reference: r.reference, meetingCode: r.meeting_code || null, meetingName: r.meeting_name || null, createdAt: r.created_at })), nextBefore: rows.length > 30 ? String(page[page.length - 1].id) : null };
 }
 async function assertCanDelete(c, userId) {
   const wallet = (await c.query('SELECT balance_units FROM credit_wallets WHERE user_id=$1', [userId])).rows[0];
