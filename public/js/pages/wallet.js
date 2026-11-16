@@ -87,7 +87,15 @@ export async function mount(view) {
           "No credit transactions yet. Completed purchases will appear here.",
         ),
       );
-    for (const entry of list)
+    for (const entry of list) {
+      const title =
+        entry.type === "usage"
+          ? entry.meetingName || entry.meetingCode || "Meeting usage"
+          : "Credit purchase";
+      const detail =
+        entry.type === "usage"
+          ? `Meeting usage · ${timeAgo(entry.createdAt)}`
+          : timeAgo(entry.createdAt);
       entries.append(
         h(
           "div",
@@ -95,12 +103,8 @@ export async function mount(view) {
           h(
             "div",
             null,
-            h(
-              "strong",
-              null,
-              entry.type === "usage" ? "Meeting usage" : "Credit purchase",
-            ),
-            h("div", { class: "tiny muted" }, timeAgo(entry.createdAt)),
+            h("strong", null, title),
+            h("div", { class: "tiny muted" }, detail),
           ),
           h(
             "div",
@@ -118,6 +122,7 @@ export async function mount(view) {
           ),
         ),
       );
+    }
   }
   async function refresh() {
     const [summary, purchases, ledger] = await Promise.all([
@@ -231,8 +236,7 @@ export async function mount(view) {
         body: { credits: count },
       });
       if (!alive || version !== quoteVersion) return;
-      price.textContent =
-        money(result.priceKobo) + " + Paystack processing fee";
+      price.textContent = money(result.priceKobo) + " + Processing fee";
       checkout.disabled = !wallet.purchasesEnabled || buying;
     } catch (e) {
       if (alive && version === quoteVersion) price.textContent = e.message;

@@ -57,6 +57,7 @@ test('usage history groups settlement checkpoints into one row per meeting',{ski
  assert.equal(usage[0].credits,-2);
  assert.equal(usage[0].balanceAfter,28);
  assert.ok(usage[0].meetingCode);
+ assert.equal(usage[0].meetingName,'Billing test');
  assert.equal(Number((await db.q('SELECT COUNT(*) AS count FROM credit_ledger WHERE billing_session_id=$1',[historyId])).rows[0].count),2);
 });
 test('a late top-up reconciles exhaustion before adding funds and never revives a closed session',{skip},async()=>{
