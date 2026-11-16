@@ -47,6 +47,18 @@ test('usage history includes negative meeting debits with no payment reference',
  const history=await require('../src/features/wallet/data').history(id);
  assert.equal(history.entries[0].type,'usage');assert.equal(history.entries[0].credits,-1.5);assert.ok(history.entries[0].meetingCode);assert.equal(history.entries[0].reference,null);
 });
+test('usage history groups settlement checkpoints into one row per meeting',{skip},async()=>{
+ const id=await payer(30),{historyId}=await open(id);
+ await billing.settle(historyId,{now:now+60000});
+ await billing.settle(historyId,{now:now+120000});
+ const history=await require('../src/features/wallet/data').history(id);
+ const usage=history.entries.filter(entry=>entry.type==='usage');
+ assert.equal(usage.length,1);
+ assert.equal(usage[0].credits,-2);
+ assert.equal(usage[0].balanceAfter,28);
+ assert.ok(usage[0].meetingCode);
+ assert.equal(Number((await db.q('SELECT COUNT(*) AS count FROM credit_ledger WHERE billing_session_id=$1',[historyId])).rows[0].count),2);
+});
 test('a late top-up reconciles exhaustion before adding funds and never revives a closed session',{skip},async()=>{
  const id=await payer(30),{historyId}=await open(id);
  await db.tx(async c=>{await c.query('SELECT id FROM users WHERE id=$1 FOR UPDATE',[id]);await billing.reconcileLocked(c,id,now+1800001);await c.query('UPDATE credit_wallets SET balance_units=600000 WHERE user_id=$1',[id]);});

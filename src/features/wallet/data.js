@@ -47,8 +47,29 @@ async function payments(userId, before) {
 }
 async function history(userId, before) {
   if (before != null && (!/^\d{1,15}$/.test(String(before)) || Number(before) < 1)) throw fail(400, 'Invalid history page');
-  const rows = (await q(`SELECT l.*,p.reference,b.code AS meeting_code FROM credit_ledger l LEFT JOIN credit_payments p ON p.id=l.payment_id LEFT JOIN credit_billing_sessions b ON b.id=l.billing_session_id
-    WHERE l.user_id=$1 ${before ? 'AND l.id<$2' : ''} ORDER BY l.id DESC LIMIT 31`, before ? [userId, before] : [userId])).rows;
+  const rows = (await q(`WITH usage_entries AS (
+      SELECT MAX(l.id) AS id,l.user_id,SUM(l.delta_units) AS delta_units,
+        (SELECT latest.balance_after_units FROM credit_ledger latest
+          WHERE latest.user_id=l.user_id AND latest.billing_session_id=l.billing_session_id
+          ORDER BY latest.id DESC LIMIT 1) AS balance_after_units,
+        b.code AS meeting_code,MAX(l.created_at) AS created_at
+      FROM credit_ledger l JOIN credit_billing_sessions b ON b.id=l.billing_session_id
+      WHERE l.user_id=$1 AND l.kind='usage' AND l.billing_session_id IS NOT NULL
+      GROUP BY l.user_id,l.billing_session_id,b.code
+    ), history_entries AS (
+      SELECT l.id,l.user_id,l.kind,l.delta_units,l.balance_after_units,p.reference,
+        NULL AS meeting_code,l.created_at
+      FROM credit_ledger l LEFT JOIN credit_payments p ON p.id=l.payment_id
+      WHERE l.user_id=$1 AND l.kind='purchase'
+      UNION ALL
+      SELECT id,user_id,'usage',delta_units,balance_after_units,NULL,meeting_code,created_at
+      FROM usage_entries
+      UNION ALL
+      SELECT l.id,l.user_id,l.kind,l.delta_units,l.balance_after_units,NULL,b.code,l.created_at
+      FROM credit_ledger l LEFT JOIN credit_billing_sessions b ON b.id=l.billing_session_id
+      WHERE l.user_id=$1 AND l.kind='usage' AND l.billing_session_id IS NULL
+    )
+    SELECT * FROM history_entries ${before ? 'WHERE id<$2' : ''} ORDER BY id DESC LIMIT 31`, before ? [userId, before] : [userId])).rows;
   const page = rows.slice(0, 30);
   return { entries: page.map((r) => ({ id: String(r.id), type: r.kind, credits: credits(r.delta_units), balanceAfter: credits(r.balance_after_units), reference: r.reference, meetingCode: r.meeting_code || null, createdAt: r.created_at })), nextBefore: rows.length > 30 ? String(page[page.length - 1].id) : null };
 }
