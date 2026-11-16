@@ -54,6 +54,12 @@
 .dz-menu { max-height: min(70vh, 460px); overflow: auto; }
 .dz-head img { max-width: 100%; height: auto; }
 body[data-page="discover"] .main { overflow-x: clip; }
+/* Feed entry (phones: Messages took Feed's bottom-nav slot) */
+.dz-feed { display: flex; align-items: center; gap: .75rem; margin: .75rem 0 0; padding: .7rem .9rem; border-radius: var(--r-md); background: var(--s1); border: 1px solid var(--line); color: var(--text); box-shadow: var(--shadow-1); }
+.dz-feed:hover { border-color: var(--line-2); }
+.dz-feed-ic { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; color: var(--g-social); background: color-mix(in srgb, var(--g-social) 12%, transparent); flex: none; }
+.dz-feed-txt { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.dz-feed-txt span { font-size: .8rem; color: var(--muted); }
 
 @media (min-width: 821px) {
   .dz-head { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "title search filters"; gap: 1rem; }
@@ -64,6 +70,7 @@ body[data-page="discover"] .main { overflow-x: clip; }
   .dz-dd:hover { border-color: var(--line-2); }
   .dz-dd.set { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
   .dz-win { min-width: 5.6rem; max-width: 9rem; }
+  .dz-feed { display: none; }
 }
 
 @media (max-width: 380px) {

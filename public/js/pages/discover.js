@@ -78,6 +78,9 @@ export async function mount(view, params) {
     // Phone: [◎ Discover ........ Timing | Category] / [search]. Wide (CSS grid): [◎ Discover] [search] [Timing] [Category].
     view.append(
       h('div', { class: 'dz-head' }, h('h1', { class: 'dz-title', html: icon('compass', { size: 22 }) + 'Discover' }), searchLine, picker),
+      // Phones: Messages took Feed's bottom-nav slot, so Feed is reached from here.
+      h('a', { class: 'dz-feed', href: '/feed', 'data-link': '' }, h('span', { class: 'dz-feed-ic', html: icon('feed', { size: 20 }) }),
+        h('span', { class: 'dz-feed-txt' }, h('b', null, 'Your feed'), h('span', null, 'Posts and updates from people you follow')), h('span', { html: icon('chevronRight', { size: 18 }) })),
       results);
   }
   function sync() {

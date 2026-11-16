@@ -42,7 +42,7 @@ export async function mount(view) {
     busy(true);
     try { const r = await api('/api/admin/seed', { method: 'DELETE' }); paint(r); toast('Demo data removed', { icon: 'check' }); } catch (e) { toastErr(e); } finally { busy(false); }
   };
-  view.append(plansCard(), userPlanCard(), promoCard(), commerceCard(), ttsCard());
+  view.append(plansCard(), userPlanCard(), promoCard(), commerceCard(), reportsCard(), ttsCard());
   body.append(h('p', { class: 'tiny muted' }, 'Loading…'));
   await refresh().catch((e) => body.replaceChildren(h('p', { class: 'small' }, e.message || 'Could not load')));
 }
@@ -145,7 +145,7 @@ function promoCard() {
 // ---------------------------------------------------------------- plans: limits, prices, AI weights (app_settings)
 const PLAN_LABEL = { free: 'Free', premium: 'Premium', organisation: 'Organisation' };
 const FIELDS = [['venues', 'Venues'], ['audience', 'Stage audience'], ['meeting', 'Meeting size'], ['speakerSeats', 'Speaker seats'], ['aiDaily', 'AI points / day'], ['uploadMB', 'Uploads (MB)'], ['priceMonthKobo', 'Monthly (kobo)'], ['priceYearKobo', 'Annual (kobo)']];
-const FEATURE_FIELDS = [['branding', 'Branding'], ['recurring', 'Recurring'], ['reminders', 'Reminders'], ['whatsapp', 'WhatsApp reminders'], ['exports', 'Exports'], ['analytics', 'Analytics'], ['badge', 'Verified badge eligible'], ['selfPromo', 'Self-serve promotions'], ['ticketing', 'Tickets & donations'], ['replays', 'Cloud replays'], ['orgMembers', 'Org members (0 = no org)'], ['replayMB', 'Replay storage (MB)']];
+const FEATURE_FIELDS = [['branding', 'Branding'], ['recurring', 'Recurring'], ['reminders', 'Reminders'], ['whatsapp', 'WhatsApp reminders'], ['exports', 'Exports'], ['analytics', 'Analytics'], ['badge', 'Verified badge eligible'], ['selfPromo', 'Self-serve promotions'], ['ticketing', 'Tickets & donations'], ['replays', 'Cloud replays'], ['orgMembers', 'Org members (0 = no org)'], ['replayMB', 'Replay storage (MB)'], ['callVideo', '1:1 video calls'], ['groupMembers', 'Group chat members'], ['callParticipants', 'Call participants (2 = 1:1 only)'], ['historyDays', 'Message history days (0 = forever)']];
 const PLATFORM_FIELDS = [['feeBps', 'Platform fee (basis points, 500 = 5%)'], ['promoDayKobo', 'Promotion price per day (kobo)'], ['promoMaxDays', 'Promotion max days'], ['promoApproval', 'Approve promotions first (1/0)'], ['payoutMinKobo', 'Minimum payout (kobo)'], ['ticketMaxPerOrder', 'Tickets per order'], ['donationMinKobo', 'Minimum gift (kobo)'], ['reminderLeadA', 'First reminder (minutes before)'], ['reminderLeadB', 'Second reminder (minutes, 0 = off)'], ['whatsappEnabled', 'WhatsApp on (1/0, needs env keys)'], ['verifiedBoost', 'Verified Discover boost (1/0)'], ['replayUploadMB', 'Replay upload cap (MB)'], ['seriesMax', 'Max occurrences per series']];
 const numIn = (value, name) => h('input', { class: 'input', type: 'number', min: '0', step: '1', value: String(value), name });
 function plansCard() {
@@ -246,6 +246,34 @@ function userPlanCard() {
       ...d.audit.map((a) => h('div', { class: 'tiny muted' }, `${new Date(a.at).toLocaleString()} · ${a.action}${a.detail ? ' · ' + JSON.stringify(a.detail) : ''}`)));
   }
   search();
+  return card;
+}
+
+// ---------------------------------------------------------------- message reports (Messages: block and report)
+function reportsCard() {
+  let status = 'open';
+  const out = h('div', { class: 'col', style: { gap: '.6rem' } }, h('p', { class: 'tiny muted' }, 'Loading…'));
+  const seg = h('div', { class: 'seg' });
+  const card = h('section', { class: 'card pad col', style: { gap: '.8rem', marginTop: '1rem' } },
+    h('div', { class: 'row', style: { gap: '.6rem' } }, h('span', { class: 'ico-tile', 'data-group': 'admin', html: icon('alert', { size: 18 }) }),
+      h('div', { class: 'grow' }, h('h3', null, 'Message reports'), h('p', { class: 'muted small' }, 'Reports from Messages. The reported text is a snapshot taken when it was reported, so it stays even if the sender deletes it.'))),
+    seg, out);
+  const act = (id, st) => async (e) => { e.currentTarget.disabled = true; try { await api(`/api/admin/message-reports/${id}`, { method: 'POST', body: { status: st } }); toast('Saved', { icon: 'check' }); await load(); } catch (err) { toastErr(err); } };
+  async function load() {
+    seg.replaceChildren(...[['open', 'Open'], ['actioned', 'Actioned'], ['dismissed', 'Dismissed'], ['all', 'All']].map(([k, l]) => h('button', { type: 'button', class: status === k ? 'on' : '', onclick: () => { status = k; load(); } }, l)));
+    const r = await api(`/api/admin/message-reports?status=${status}`);
+    if (!r.reports.length) { out.replaceChildren(h('p', { class: 'small muted' }, 'Nothing here.')); return; }
+    out.replaceChildren(...r.reports.map((x) => h('div', { class: 'col', style: { gap: '.3rem', paddingBottom: '.6rem', borderBottom: '1px solid var(--line)' } },
+      h('span', { class: 'small' }, h('strong', null, x.reportedName || x.reported || 'Deleted user'), ` reported by @${x.reporter || 'deleted'} · ${new Date(x.createdAt).toLocaleString()} · ${x.status}`),
+      x.reason ? h('span', { class: 'small' }, `Reason: ${x.reason}`) : null,
+      x.text || x.attachmentUrl ? h('blockquote', { class: 'small muted', style: { margin: 0, paddingLeft: '.6rem', borderLeft: '3px solid var(--line-2)' } }, x.text || '', x.attachmentUrl ? h('a', { href: x.attachmentUrl, target: '_blank', rel: 'noopener' }, ' attachment') : null) : null,
+      h('div', { class: 'row wrap', style: { gap: '.5rem' } },
+        x.reportedUserId ? h('a', { class: 'btn sm', href: `/u/${x.reportedUserId}`, 'data-link': '' }, 'Profile') : null,
+        x.status !== 'actioned' ? h('button', { class: 'btn sm primary', type: 'button', onclick: act(x.id, 'actioned') }, 'Mark actioned') : null,
+        x.status !== 'dismissed' ? h('button', { class: 'btn sm', type: 'button', onclick: act(x.id, 'dismissed') }, 'Dismiss') : null,
+        x.status !== 'open' ? h('button', { class: 'btn sm ghost', type: 'button', onclick: act(x.id, 'open') }, 'Reopen') : null))));
+  }
+  load().catch((e) => out.replaceChildren(h('p', { class: 'small' }, e.message || 'Could not load')));
   return card;
 }
 
