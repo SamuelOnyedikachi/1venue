@@ -94,5 +94,5 @@ async function cleanupTick(now=Date.now()) {
   } finally {mediaBusy=false;}
 }
 async function recover(){await tick();}
-async function stop(){stopping=true;await data.heartbeat(ownerId,true);}
+async function stop(){stopping=true;for(let i=0;busy&&i<100;i++)await new Promise(r=>setTimeout(r,20));await data.heartbeat(ownerId,true);}
 module.exports={cleanupTick,sweepRetired,start,check,end,tick,recover,stop,closeMedia,recoverSession,ownerId};
