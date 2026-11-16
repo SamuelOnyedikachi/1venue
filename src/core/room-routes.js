@@ -337,6 +337,14 @@ module.exports = async function handle(req, res, parsed) {
         return sendJSON(res, 403, { error: `This room is full (max ${cap})` });
       }
 
+      // Ticketed events: a valid ticket is needed to join (hosts, speakers and returning hosts skip).
+      if (meeting.eventId && !(rejoinCandidate && (rejoinCandidate.role === 'host' || rejoinCandidate.role === 'cohost'))) {
+        try {
+          const gate = await require('../features/commerce/service').canJoinEvent(meeting.eventId, authUser);
+          if (!gate.ok) return sendJSON(res, 403, { error: gate.reason, ticketRequired: true, eventSlug: meeting.eventSlug || null });
+        } catch (e) { console.warn('[tickets] gate', e.message); }
+      }
+
       let role = isGuest ? 'guest' : 'participant';
       let status = 'ACTIVE';
 

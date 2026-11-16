@@ -42,7 +42,7 @@ export async function mount(view) {
     busy(true);
     try { const r = await api('/api/admin/seed', { method: 'DELETE' }); paint(r); toast('Demo data removed', { icon: 'check' }); } catch (e) { toastErr(e); } finally { busy(false); }
   };
-  view.append(plansCard(), userPlanCard(), promoCard(), ttsCard());
+  view.append(plansCard(), userPlanCard(), promoCard(), commerceCard(), ttsCard());
   body.append(h('p', { class: 'tiny muted' }, 'Loading…'));
   await refresh().catch((e) => body.replaceChildren(h('p', { class: 'small' }, e.message || 'Could not load')));
 }
@@ -145,6 +145,8 @@ function promoCard() {
 // ---------------------------------------------------------------- plans: limits, prices, AI weights (app_settings)
 const PLAN_LABEL = { free: 'Free', premium: 'Premium', organisation: 'Organisation' };
 const FIELDS = [['venues', 'Venues'], ['audience', 'Stage audience'], ['meeting', 'Meeting size'], ['speakerSeats', 'Speaker seats'], ['aiDaily', 'AI points / day'], ['uploadMB', 'Uploads (MB)'], ['priceMonthKobo', 'Monthly (kobo)'], ['priceYearKobo', 'Annual (kobo)']];
+const FEATURE_FIELDS = [['branding', 'Branding'], ['recurring', 'Recurring'], ['reminders', 'Reminders'], ['whatsapp', 'WhatsApp reminders'], ['exports', 'Exports'], ['analytics', 'Analytics'], ['badge', 'Verified badge eligible'], ['selfPromo', 'Self-serve promotions'], ['ticketing', 'Tickets & donations'], ['replays', 'Cloud replays'], ['orgMembers', 'Org members (0 = no org)'], ['replayMB', 'Replay storage (MB)']];
+const PLATFORM_FIELDS = [['feeBps', 'Platform fee (basis points, 500 = 5%)'], ['promoDayKobo', 'Promotion price per day (kobo)'], ['promoMaxDays', 'Promotion max days'], ['promoApproval', 'Approve promotions first (1/0)'], ['payoutMinKobo', 'Minimum payout (kobo)'], ['ticketMaxPerOrder', 'Tickets per order'], ['donationMinKobo', 'Minimum gift (kobo)'], ['reminderLeadA', 'First reminder (minutes before)'], ['reminderLeadB', 'Second reminder (minutes, 0 = off)'], ['whatsappEnabled', 'WhatsApp on (1/0, needs env keys)'], ['verifiedBoost', 'Verified Discover boost (1/0)'], ['replayUploadMB', 'Replay upload cap (MB)'], ['seriesMax', 'Max occurrences per series']];
 const numIn = (value, name) => h('input', { class: 'input', type: 'number', min: '0', step: '1', value: String(value), name });
 function plansCard() {
   const out = h('div', { class: 'col', style: { gap: '.8rem' } }, h('p', { class: 'tiny muted' }, 'Loading…'));
@@ -161,6 +163,10 @@ function plansCard() {
     const other = h('div', { class: 'col', style: { gap: '.3rem' } }, h('strong', null, 'Add-ons and billing'),
       h('div', { class: 'admin-plan-grid' }, field('slugAddons.slug3', 'slug3 link (kobo)', s.slugAddons.slug3, d.slugAddons.slug3), field('slugAddons.slug2', 'slug2 link (kobo)', s.slugAddons.slug2, d.slugAddons.slug2),
         field('graceDays', 'Grace days after failed renewal', s.graceDays, d.graceDays), field('aiGuestPerIpDaily', 'Guest AI points per IP / day', s.aiGuestPerIpDaily, d.aiGuestPerIpDaily)));
+    const featureBlocks = Object.keys(PLAN_LABEL).map((p) => h('div', { class: 'col', style: { gap: '.3rem' } }, h('strong', null, `${PLAN_LABEL[p]} features (1 = on, 0 = off)`),
+      h('div', { class: 'admin-plan-grid' }, ...FEATURE_FIELDS.map(([k, l]) => field(`features.${p}.${k}`, l, s.features[p][k], d.features[p][k])))));
+    const platformBlock = h('div', { class: 'col', style: { gap: '.3rem' } }, h('strong', null, 'Tickets, promotions, payouts, reminders and replays'),
+      h('div', { class: 'admin-plan-grid' }, ...PLATFORM_FIELDS.map(([k, l]) => field(`platform.${k}`, l, s.platform[k], d.platform[k]))));
     const save = h('button', { class: 'btn primary', type: 'button' }, 'Save settings');
     const reset = h('button', { class: 'btn', type: 'button' }, 'Reset to env defaults');
     save.onclick = async () => {
@@ -173,7 +179,7 @@ function plansCard() {
       if (!(await confirmDlg('Reset every plan limit and price to the env defaults?', { ok: 'Reset' }))) return;
       try { paint(await api('/api/admin/billing/settings', { method: 'DELETE' })); toast('Reset to defaults', { icon: 'check' }); } catch (e) { toastErr(e); }
     };
-    out.replaceChildren(...planBlocks, weights, other, h('div', { class: 'row wrap', style: { gap: '.5rem' } }, save, reset));
+    out.replaceChildren(...planBlocks, weights, other, ...featureBlocks, platformBlock, h('div', { class: 'row wrap', style: { gap: '.5rem' } }, save, reset));
   };
   api('/api/admin/billing/settings').then(paint).catch((e) => out.replaceChildren(h('p', { class: 'small' }, e.message || 'Could not load')));
   return card;
@@ -223,6 +229,9 @@ function userPlanCard() {
       h('p', { class: 'small' }, `${PLAN_LABEL[d.plan]}${s ? ` · ${s.status} (${s.source})${s.periodEnd ? ' until ' + new Date(s.periodEnd).toLocaleDateString() : ''}${s.graceUntil ? ' · grace until ' + new Date(s.graceUntil).toLocaleDateString() : ''}${s.card ? ' · card •••• ' + s.card.last4 : ''}` : ''}`),
       h('div', { class: 'admin-plan-grid' }, h('label', null, h('span', null, 'Plan'), plan), h('label', null, h('span', null, 'Complimentary until (blank = no end)'), until)),
       h('strong', { class: 'small' }, 'Limit overrides (blank = plan default)'), ovGrid, reason, savePlan,
+      h('div', { class: 'row wrap', style: { gap: '.5rem' } }, h('span', { class: 'small grow' }, 'Verified badge (Premium and up; boosts Discover ranking)'),
+        h('button', { class: 'btn sm', type: 'button', onclick: async () => { try { await api('/api/admin/verified/' + id, { method: 'POST', body: { verified: true, note: reason.value } }); toast('Verified', { icon: 'check' }); } catch (e) { toastErr(e); } } }, 'Grant badge'),
+        h('button', { class: 'btn sm', type: 'button', onclick: async () => { try { await api('/api/admin/verified/' + id, { method: 'POST', body: { verified: false, note: reason.value } }); toast('Badge removed', { icon: 'check' }); } catch (e) { toastErr(e); } } }, 'Remove badge')),
       d.venues.length ? h('strong', { class: 'small' }, 'Venues') : null,
       ...d.venues.map((v) => {
         const tier = h('select', { class: 'input' }, ...['none', 'slug3', 'slug2'].map((t) => h('option', { value: t, selected: t === v.slugTier }, t)));
@@ -237,5 +246,38 @@ function userPlanCard() {
       ...d.audit.map((a) => h('div', { class: 'tiny muted' }, `${new Date(a.at).toLocaleString()} · ${a.action}${a.detail ? ' · ' + JSON.stringify(a.detail) : ''}`)));
   }
   search();
+  return card;
+}
+
+// ---------------------------------------------------------------- self-serve promotions review, payouts and refunds
+const naira = (k) => '₦' + (Number(k || 0) / 100).toLocaleString('en-NG');
+function commerceCard() {
+  const out = h('div', { class: 'col', style: { gap: '.6rem' } }, h('p', { class: 'tiny muted' }, 'Loading…'));
+  const card = h('section', { class: 'card pad col', style: { gap: '.8rem', marginTop: '1rem' } },
+    h('div', { class: 'row', style: { gap: '.6rem' } }, h('span', { class: 'ico-tile', 'data-group': 'settings', html: icon('creditCard', { size: 18 }) }),
+      h('div', { class: 'grow' }, h('h3', null, 'Promotions to review, payouts and refunds'), h('p', { class: 'muted small' }, 'Payouts and refunds are done outside 1venue (bank transfer or the Paystack dashboard). Mark them here once done so the host ledger stays right.'))), out);
+  const act = (fn) => async (e) => { e.currentTarget.disabled = true; try { await fn(); toast('Saved', { icon: 'check' }); await load(); } catch (err) { toastErr(err); e.currentTarget.disabled = false; } };
+  async function load() {
+    const [pr, po, pay] = await Promise.all([api('/api/admin/promotions'), api('/api/admin/payouts?status=requested'), api('/api/admin/commerce/payments')]);
+    const pending = pr.promotions.filter((p) => p.review === 'pending');
+    out.replaceChildren(
+      h('strong', { class: 'small' }, `Paid promotions waiting for approval (${pending.length})`),
+      ...pending.map((p) => h('div', { class: 'row wrap', style: { gap: '.5rem' } }, h('span', { class: 'grow small' }, `${p.target.title} · ${p.days || '?'} days`),
+        h('button', { class: 'btn sm primary', type: 'button', onclick: act(() => api(`/api/admin/promotions/${p.id}/review`, { method: 'POST', body: { decision: 'approve' } })) }, 'Approve'),
+        h('button', { class: 'btn sm', type: 'button', onclick: act(() => api(`/api/admin/promotions/${p.id}/review`, { method: 'POST', body: { decision: 'reject' } })) }, 'Reject'))),
+      h('strong', { class: 'small' }, `Payout requests (${po.payouts.length})`),
+      ...po.payouts.map((p) => {
+        const ref = h('input', { class: 'input', placeholder: 'Transfer reference' });
+        return h('div', { class: 'col', style: { gap: '.3rem' } }, h('span', { class: 'small' }, `${naira(p.amountKobo)} to ${p.username || p.email || 'host ' + p.hostUserId} · ${p.bankDetails || ''}`),
+          h('div', { class: 'row wrap', style: { gap: '.5rem' } }, ref,
+            h('button', { class: 'btn sm primary', type: 'button', onclick: act(() => api(`/api/admin/payouts/${p.id}`, { method: 'POST', body: { action: 'paid', reference: ref.value } })) }, 'Mark paid'),
+            h('button', { class: 'btn sm', type: 'button', onclick: act(() => api(`/api/admin/payouts/${p.id}`, { method: 'POST', body: { action: 'rejected', note: ref.value } })) }, 'Reject')));
+      }),
+      h('strong', { class: 'small' }, 'Recent ticket, gift and promotion payments'),
+      ...pay.payments.slice(0, 40).map((p) => h('div', { class: 'row wrap', style: { gap: '.5rem' } },
+        h('span', { class: 'grow tiny' }, `${p.kind} · ${naira(p.priceKobo)} · ${p.status}${p.refunded ? ' · refunded' : ''}${p.error ? ' · ' + p.error : ''} · ${p.payer || ''} · ${p.event || ''} · ${new Date(p.createdAt).toLocaleString()}`),
+        ['paid', 'review'].includes(p.status) && !p.refunded ? h('button', { class: 'btn sm', type: 'button', onclick: act(async () => { if (await confirmDlg(`Mark ${naira(p.priceKobo)} as refunded? Refund the buyer in Paystack first. Tickets are cancelled and the host balance is reduced.`, { ok: 'Mark refunded' })) await api(`/api/admin/commerce/payments/${p.reference}/refund`, { method: 'POST', body: {} }); }) }, 'Mark refunded') : null)));
+  }
+  load().catch((e) => out.replaceChildren(h('p', { class: 'small' }, e.message || 'Could not load')));
   return card;
 }

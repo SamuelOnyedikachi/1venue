@@ -162,6 +162,7 @@ async function settle(purchase, verified, now = new Date()) {
 async function syncVenues(userId) {
   try { require('../../lib/auth').forgetUser(userId); } catch (_) {} // session payload carries users.plan
   const ent = await plans.entitlements(userId);
+  await require('../branding/service').refreshVerified(userId).catch((e) => console.warn('[billing] badge sync', e.message));
   return require('../venues/data').applyPlanToVenues(userId, ent.plan, ent.limits.venues);
 }
 
@@ -328,12 +329,14 @@ async function summary(userId) {
     require('../venues/data').activeVenueCount(userId), plans.aiUsed(userId),
     q('SELECT * FROM billing_payments WHERE user_id=$1 ORDER BY id DESC LIMIT 50', [userId]),
   ]);
-  return { plan: ent.plan, limits: ent.limits, usage: { venues, aiUsed, aiLeft: Math.max(0, ent.limits.aiDaily - aiUsed) }, subscription: subOut(ent.subscription),
+  return { plan: ent.plan, orgPlan: ent.orgPlan || null, features: ent.features, limits: ent.limits, usage: { venues, aiUsed, aiLeft: Math.max(0, ent.limits.aiDaily - aiUsed) }, subscription: subOut(ent.subscription),
     payments: payments.rows.map(paymentOut), purchasesEnabled: gateway.enabled() };
 }
 async function publicPlans() {
   const s = await plans.getSettings();
-  return { currency: 'NGN', plans: plans.PLAN_IDS.map((id) => ({ id, ...plans.limitsFor(s, id), priceMonthKobo: s.plans[id].priceMonthKobo, priceYearKobo: s.plans[id].priceYearKobo })),
+  const pf = plans.platform(s);
+  return { currency: 'NGN', plans: plans.PLAN_IDS.map((id) => ({ id, ...plans.limitsFor(s, id), features: plans.featuresFor(s, id), priceMonthKobo: s.plans[id].priceMonthKobo, priceYearKobo: s.plans[id].priceYearKobo })),
+    platform: { feeBps: pf.feeBps, promoDayKobo: pf.promoDayKobo, promoMaxDays: pf.promoMaxDays },
     aiWeights: s.aiWeights, slugAddons: s.slugAddons, graceDays: s.graceDays, purchasesEnabled: gateway.enabled() };
 }
 async function assertCanDelete(c, userId) {

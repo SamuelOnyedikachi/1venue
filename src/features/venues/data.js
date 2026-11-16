@@ -11,7 +11,8 @@ const randSlug = () => Array.from(crypto.randomBytes(7), (b) => SLUG_CH[b % SLUG
 const codes = require('../../lib/codes');
 const randCode = () => codes.randCode(6); // same 6-char lowercase format as meeting codes
 const venueOut = (r) => r && ({ id: r.id, slug: r.slug, code: r.code, name: r.name, ownerUserId: r.owner_user_id, createdAt: r.created_at, meetings: r.meetings != null ? Number(r.meetings) : undefined, lastHeld: r.last_held || null, openedAt: r.opened_at || null, activeHistoryId: r.active_history_id || null, isCustom: !!r.is_custom,
-  slugTier: r.slug_tier || 'none', reservedSlug: r.reserved_slug || null, archivedAt: r.archived_at || null, archived: !!r.archived_at });
+  slugTier: r.slug_tier || 'none', reservedSlug: r.reserved_slug || null, archivedAt: r.archived_at || null, archived: !!r.archived_at,
+  orgId: r.org_id || null, brand: { logoUrl: r.brand_logo_url || null, coverUrl: r.brand_cover_url || null, accent: r.brand_accent || null, accent2: r.brand_accent2 || null, about: r.brand_about || null } });
 const plans = require('../../lib/plans');
 const httpErr = (status, message) => Object.assign(new Error(message), { status });
 /** Effective subscription plan (free | premium | organisation). */
@@ -29,7 +30,7 @@ async function activeVenueCount(userId) {
   const r = await one('SELECT COUNT(*) AS n FROM venues WHERE owner_user_id=$1 AND archived_at IS NULL', [userId]);
   return Number(r ? r.n : 0);
 }
-async function createVenue(userId, name, customInput, opts) {
+async function createVenue(userId, name, customInput, opts = {}) {
   const ent = await plans.entitlements(userId);
   if (await activeVenueCount(userId) >= ent.limits.venues) {
     const label = ent.plan[0].toUpperCase() + ent.plan.slice(1);
@@ -40,7 +41,7 @@ async function createVenue(userId, name, customInput, opts) {
     const slug = custom || randSlug(), code = randCode();
     const clash = await one(`SELECT 1 FROM venues WHERE lower(slug)=$1 OR lower(code)=$2 UNION ALL SELECT 1 FROM events WHERE lower(code)=$2 LIMIT 1`, [slug, code]).catch(() => null);
     if (clash) continue;
-    return venueOut(await one('INSERT INTO venues (slug, code, name, owner_user_id, is_custom) VALUES ($1,$2,$3,$4,$5) RETURNING *', [slug, code, name, userId, !!custom]));
+    return venueOut(await one('INSERT INTO venues (slug, code, name, owner_user_id, is_custom, org_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *', [slug, code, name, userId, !!custom, opts.orgId || null]));
   }
   throw new Error('Could not allocate a venue link');
 }
@@ -147,7 +148,10 @@ async function listVenueAdmins(venueId) {
 }
 async function isVenueAdmin(venueId, userId) {
   const r = await one('SELECT 1 FROM venue_admins WHERE venue_id=$1 AND user_id=$2', [venueId, userId]);
-  return !!r;
+  if (r) return true;
+  // Organisation venues: every member (owner, admin, moderator) can open and co-host them.
+  const o = await one('SELECT 1 FROM venues v JOIN org_members m ON m.org_id=v.org_id WHERE v.id=$1 AND m.user_id=$2', [venueId, userId]).catch(() => null);
+  return !!o;
 }
 async function logVenueAudit(venueId, actorId, actorName, action, detail) {
   await q('INSERT INTO venue_audit (venue_id, actor_user_id, actor_name, action, detail) VALUES ($1,$2,$3,$4,$5)',

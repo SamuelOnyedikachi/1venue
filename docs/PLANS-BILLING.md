@@ -1,5 +1,8 @@
 # Plans and billing (Phase 1)
 
+> Phase 2 and 3 (branding, recurring, reminders, exports, analytics, badge, promotions, tickets, payouts,
+> organisations, replays) and the Coolify deploy checklist: see [PHASE2-3.md](PHASE2-3.md).
+
 Free, Premium and Organisation now carry real limits, every AI feature draws from one daily pool,
 and hosts can pay in naira through Paystack hosted checkout (monthly or annual), with renewals charged
 to the saved card. The credit wallet (`/wallet`) is a separate product and is unchanged.

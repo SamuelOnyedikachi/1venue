@@ -79,7 +79,10 @@ module.exports = function routes(route, kit) {
     const u = await getAuthUser(ctx.req, ctx.res);
     const isOwner = !!(u && u.id === v.ownerUserId);
     if (v.archived && !isOwner) throw httpError(404, 'Venue not found');
-    return { slug: v.slug, name: v.name, code: v.code, isOwner, isCustom: v.isCustom, slugTier: v.slugTier, archived: v.archived, reservedSlug: isOwner ? v.reservedSlug : undefined, plan: isOwner ? await data.getUserPlan(u.id) : undefined, live: venueLive(v) };
+    const branding = require('../branding/service');
+    const canManage = !!(u && await require('../orgs/service').canManageVenue(u.id, v));
+    return { slug: v.slug, name: v.name, code: v.code, isOwner, canManage, orgId: v.orgId, isCustom: v.isCustom, slugTier: v.slugTier, archived: v.archived, reservedSlug: isOwner ? v.reservedSlug : undefined, plan: isOwner ? await data.getUserPlan(u.id) : undefined, live: venueLive(v),
+      brand: await branding.publicBranding(v), rawBrand: canManage ? v.brand : undefined, verified: await branding.isVerified(v.ownerUserId) };
   });
   route('PATCH', `/api/venues/${SLUG}`, async (ctx, [slug]) => {
     const u = await requireUser(ctx.req, ctx.res);

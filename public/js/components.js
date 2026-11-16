@@ -33,7 +33,7 @@ export function eventCard(ev, { compact = false } = {}) {
       h('span', { class: 'cat', style: { '--g': cc }, html: icon(ci, { size: 13 }) + esc(cl) }),
       h('div', { class: 'title' }, ev.title),
       compact ? null : h('div', { class: 'meta' },
-        h('span', null, avatar(ev.host?.name, ev.host?.avatarUrl, 'sm'), ev.host?.name || ''),
+        h('span', null, avatar(ev.host?.name, ev.host?.avatarUrl, 'sm'), ev.host?.name || '', ev.host?.verified ? h('span', { class: 'verified-dot', title: 'Verified host', 'aria-label': 'Verified host', html: icon('check', { size: 11 }) }) : null),
         ev.rsvps ? h('span', { html: icon('ticket', { size: 14 }) + fmtNum(ev.rsvps) }) : null,
         ev.speakerSeats && ev.category !== 'meeting' ? h('span', { html: icon('stage', { size: 14 }) + ev.speakerSeats + ' seats' }) : null)));
   return a;

@@ -80,9 +80,9 @@ async function putS3(key, buf, mime) {
   }
 }
 /** Stream an object from the bucket (no whole-file buffering in the app's memory). */
-async function getS3(key) {
+async function getS3(key, range) {
   const url = s3Url(key);
-  const headers = sign('GET', url, {}, sha(''));
+  const headers = sign('GET', url, range ? { range: `bytes=${range.start}-${range.end == null ? '' : range.end}` } : {}, sha(''));
   const r = await fetch(url, { headers });
   if (!r.ok) { try { await r.body?.cancel(); } catch (_) {} throw new Error(`S3 read failed (${r.status})`); }
   const len = Number(r.headers.get('content-length'));
@@ -90,8 +90,8 @@ async function getS3(key) {
 }
 
 /** Save a buffer and return a file record + public URL. */
-async function save(buf, { filename, mime, ownerUserId, ownerKey, purpose, roomCode } = {}) {
-  if (buf.length > S.maxUploadBytes) { const e = new Error(`File too large (max ${Math.round(S.maxUploadBytes / 1048576)} MB)`); e.status = 413; throw e; }
+async function save(buf, { filename, mime, ownerUserId, ownerKey, purpose, roomCode, maxBytes } = {}) {
+  if (buf.length > (maxBytes || S.maxUploadBytes)) { const e = new Error(`File too large (max ${Math.round((maxBytes || S.maxUploadBytes) / 1048576)} MB)`); e.status = 413; throw e; }
   const id = newId();
   const d = driver();
   const now = new Date();
@@ -110,16 +110,50 @@ async function save(buf, { filename, mime, ownerUserId, ownerKey, purpose, roomC
   catch (e) { log.error('storage', 'db insert failed', { id, key, error: e.message }); e.step = 'db-insert'; throw e; }
   return { ...rec, url: publicUrl(rec) };
 }
+/**
+ * Stream a large upload (e.g. a replay video) straight to disk or the bucket without buffering it
+ * in memory. `size` must be the declared Content-Length; more bytes than that (or than maxBytes)
+ * abort the upload. S3/R2 uses an UNSIGNED-PAYLOAD SigV4 PUT. Returns { driver, objectKey, size }.
+ */
+async function saveStream(input, { filename, mime, size, maxBytes }) {
+  if (!Number.isSafeInteger(size) || size <= 0) { const e = new Error('The upload needs a Content-Length'); e.status = 411; throw e; }
+  if (maxBytes && size > maxBytes) { const e = new Error(`File too large (max ${Math.round(maxBytes / 1048576)} MB)`); e.status = 413; throw e; }
+  const { Transform } = require('stream');
+  let seen = 0;
+  const guard = new Transform({ transform(chunk, _enc, cb) { seen += chunk.length; if (seen > size) cb(Object.assign(new Error('Upload is larger than declared'), { status: 400 })); else cb(null, chunk); } });
+  const body = input.pipe(guard);
+  input.on('error', (e) => guard.destroy(e));
+  const d = driver();
+  const now = new Date();
+  const key = `replays/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${newId()}-${slugName(filename)}`;
+  if (d === 's3') {
+    const url = s3Url(key);
+    const headers = sign('PUT', url, { 'content-type': mime || 'application/octet-stream', 'content-length': String(size) }, 'UNSIGNED-PAYLOAD');
+    let r;
+    try { r = await fetch(url, { method: 'PUT', headers, body, duplex: 'half', signal: AbortSignal.timeout(30 * 60000) }); }
+    catch (e) { const err = new Error(`Storage is unreachable (${e.message})`); err.status = e.status || 502; throw err; }
+    if (!r.ok) { const t = await r.text().catch(() => ''); const err = new Error(`Storage rejected the file (${r.status})`); err.status = 502; log.error('storage', 'stream put failed', { key, status: r.status, body: t.slice(0, 200) }); throw err; }
+  } else {
+    const p = localPath(key);
+    await fs.promises.mkdir(path.dirname(p), { recursive: true });
+    await require('stream/promises').pipeline(body, fs.createWriteStream(p)).catch(async (e) => { await fs.promises.unlink(p).catch(() => {}); throw e; });
+  }
+  if (seen !== size) { const e = new Error('The upload was incomplete'); e.status = 400; throw e; }
+  return { driver: d, objectKey: key, size: seen };
+}
 function publicUrl(rec) {
   // Each key segment is percent-encoded (older keys can contain spaces / parentheses).
   if (rec.driver === 's3' && S.s3.publicBaseUrl) return `${S.s3.publicBaseUrl}/${String(rec.objectKey || rec.object_key).split('/').map(encSeg).join('/')}`;
   return `/files/${rec.id}/${encodeURIComponent(rec.filename)}`;
 }
-async function open(row) {
-  if (row.driver === 's3') return getS3(row.object_key);
+/** Open a stored object for reading. Optional range { start, end } (inclusive) for video seeking. */
+async function open(row, range) {
+  if (row.driver === 's3') return getS3(row.object_key, range);
   const p = localPath(row.object_key);
   await fs.promises.access(p);
-  return { stream: fs.createReadStream(p), size: (await fs.promises.stat(p)).size };
+  const size = (await fs.promises.stat(p)).size;
+  if (range) return { stream: fs.createReadStream(p, { start: range.start, end: range.end == null ? undefined : range.end }), size: (range.end == null ? size - 1 : range.end) - range.start + 1 };
+  return { stream: fs.createReadStream(p), size };
 }
 
 /** Delete a stored object (account deletion). Missing objects count as removed. Never throws. */
@@ -141,4 +175,4 @@ async function remove(row) {
   }
 }
 
-module.exports = { save, open, remove, publicUrl, driver, slugName, _sign: sign };
+module.exports = { save, saveStream, open, remove, publicUrl, driver, slugName, s3Settings: () => S.s3, _sign: sign };

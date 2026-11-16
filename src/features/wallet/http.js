@@ -22,6 +22,14 @@ module.exports = async function handle(req, res, url) {
         if (bp) {
           try { await billing.confirm(bp); }
           catch (e) { if (e.status !== 409) throw e; }
+        } else {
+          // Tickets, donations and self-serve promotions.
+          const commerce = require('../commerce/service');
+          const cp = await commerce.getPayment(event.data.reference);
+          if (cp) {
+            try { await commerce.confirm(cp); }
+            catch (e) { if (e.status !== 409) throw e; }
+          }
         }
       }
     }

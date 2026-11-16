@@ -17,7 +17,7 @@ function rankOf(rights) {
   if (rights && typeof rights === 'object') return !rights.clean ? 0 : rights.tier === 'slug2' ? 3 : rights.tier === 'slug3' ? 2 : 1;
   return planRank(rights);
 }
-const RESERVED = new Set(['api', 'www', 'new', 'login', 'signup', 'logout', 'venues', 'venue', 'v', 'r', 'j', 'm', 'e', 'u', 'me', 'admin', 'settings', 'discover', 'feed', 'bible', 'dashboard', 'create', 'session', 'sessions', 'whiteboard', 'static', 'files', 'ws', 'profile', 'home', 'help', 'css', 'js', 'brand', 'icons', 'plan', 'plans', 'wallet', 'payments', 'billing', 'upgrade', 'pricing']);
+const RESERVED = new Set(['api', 'www', 'new', 'login', 'signup', 'logout', 'venues', 'venue', 'v', 'r', 'j', 'm', 'e', 'u', 'me', 'admin', 'settings', 'discover', 'feed', 'bible', 'dashboard', 'create', 'session', 'sessions', 'whiteboard', 'static', 'files', 'ws', 'profile', 'home', 'help', 'css', 'js', 'brand', 'icons', 'plan', 'plans', 'wallet', 'payments', 'billing', 'upgrade', 'pricing', 'host', 'replay', 'replays', 'promote', 'earnings']);
 const slugifyBase = (s) => String(s || '').toLowerCase().replace(/-venue$/, '').replace(/[^a-z0-9]/g, '');
 const SLUG_ROUTE_RE = /^(?:[a-z0-9]{2,16}|[a-z0-9]{5,16}-venue)$/;
 

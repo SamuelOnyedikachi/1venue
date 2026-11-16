@@ -232,11 +232,17 @@ async function ownerView(wrap, v) {
         h('span', { class: 'venue-mark', html: icon(ic, { size: 18 }) }),
         h('h3', null, title)),
       body));
+  // Paid-plan branding (Free venues render plain: the server sends brand = null).
+  const brand = v.brand || null;
+  if (brand && brand.accent) { wrap.style.setProperty('--accent', brand.accent); if (brand.accent2) wrap.style.setProperty('--accent-2', brand.accent2); }
   wrap.append(
+    brand && brand.coverUrl ? h('div', { class: 'venue-cover', style: { borderRadius: '16px', overflow: 'hidden', aspectRatio: '4 / 1', background: `linear-gradient(135deg, ${brand.accent || 'var(--accent)'}, ${brand.accent2 || 'var(--accent-2)'})` } },
+      h('img', { src: brand.coverUrl, alt: '', style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } })) : null,
     h('div', { class: 'row between wrap', style: { gap: '10px' } },
       h('div', { class: 'row', style: { gap: '.6rem', alignItems: 'center' } },
-        venueMark(v.name, 26),
-        h('h1', { style: { margin: 0 } }, v.name)),
+        brand && brand.logoUrl ? h('img', { src: brand.logoUrl, alt: '', width: 40, height: 40, style: { borderRadius: '10px', objectFit: 'cover' } }) : venueMark(v.name, 26),
+        h('h1', { style: { margin: 0 } }, v.name),
+        v.verified ? h('span', { class: 'chip tiny verified-badge', title: 'Verified host', html: icon('check', { size: 12 }) + 'Verified' }) : null),
       h('div', { class: 'row', style: { gap: '6px' } },
         h('button', { class: 'btn sm ghost', html: icon('link', { size: 15 }) + 'Copy link', onclick: () => copy(vlink(v.slug), 'Venue link copied') }),
         h('button', { class: 'btn sm ghost', html: icon('pencil', { size: 15 }) + 'Rename', onclick: async () => {
@@ -249,6 +255,8 @@ async function ownerView(wrap, v) {
           if (!r || !r.customSlug) return;
           try { const nv = await api(`/api/venues/${v.slug}`, { method: 'PATCH', body: { customSlug: r.customSlug } }); toast('Link updated'); navigate(`/v/${nv.slug}`, { replace: true }); } catch (e) { toastErr(e); }
         } }))),
+    brand && brand.about ? h('div', { class: 'card pad small', style: { whiteSpace: 'pre-line' } }, brand.about) : null,
+    v.canManage ? h('p', { class: 'tiny muted' }, h('a', { href: '/host?tab=branding', 'data-link': '' }, 'Branding, analytics and more host tools →')) : null,
     planNote(rightsKey(v.plan || myPlan(), v.slugTier)),
     v.live
       ? h('div', { class: 'card pad row wrap', style: { gap: '10px' } }, h('div', { class: 'grow' }, h('strong', null, 'Open now: '), v.live.meetingName || v.name), h('button', { class: 'btn primary', onclick: () => navigate('/' + fmtCode(v.code)) }, 'Rejoin'))

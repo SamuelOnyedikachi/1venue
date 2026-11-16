@@ -179,6 +179,9 @@ ${rows.join('\n')}
 }
 
 const T = {
+  orgInvite: (d) => layout({ ...d, title: `Join ${d.org} on ${d.app}`, intro: `${d.inviter || 'An organisation owner'} invited you to ${d.org} as ${d.role === 'admin' ? 'an admin' : 'a moderator'}. Sign in with this email to accept.`, button: 'Accept invite', link: d.link,
+    expiryNote: 'This invite expires in 7 days. If you were not expecting it, you can ignore this email.' }),
+  reminder: (d) => layout({ ...d, title: d.title || `Starting soon on ${d.app}`, intro: d.intro || '', button: d.button || 'Open', link: d.link }),
   billingNotice: (d) => layout({ ...d, title: d.title || `Your ${d.app} plan`, intro: d.intro || '', button: 'Open billing', link: d.link }),
   verify: (d) => layout({ ...d, title: `Confirm your email for ${d.app}`, intro: `Hi ${d.name || 'there'}, please confirm that this is your email address.`, button: 'Confirm email', link: d.link,
     expiryNote: `This link expires in ${d.expires}. If you didn't create an account, you can ignore this email.` }),

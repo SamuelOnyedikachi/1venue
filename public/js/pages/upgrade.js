@@ -5,6 +5,7 @@ import { state } from '../app.js';
 
 const money = (kobo) => new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(kobo / 100);
 const LABEL = { free: 'Free', premium: 'Premium', organisation: 'Organisation' };
+const FEATURES = [['branding', 'Venue branding: logo, colours, cover, about'], ['recurring', 'Recurring events and meetings'], ['reminders', 'Email reminders (WhatsApp when enabled)'], ['exports', 'Attendance and transcript exports (CSV, Excel)'], ['analytics', 'Analytics dashboard'], ['badge', 'Verified badge (granted on review)'], ['selfPromo', 'Promote your events'], ['ticketing', 'Tickets and donations'], ['replays', 'Cloud replays']];
 const size = (mb) => (mb >= 1024 ? `${Math.round(mb / 102.4) / 10} GB` : `${mb} MB`);
 
 export async function mount(view) {
@@ -39,7 +40,9 @@ export async function mount(view) {
           h('li', null, `Up to ${p.audience.toLocaleString()} in stage events, ${p.meeting} in meetings`),
           h('li', null, `${p.speakerSeats} speaker seats`),
           h('li', null, `${p.aiDaily.toLocaleString()} AI points a day`),
-          h('li', null, `${size(p.uploadMB)} uploads`)),
+          h('li', null, `${size(p.uploadMB)} uploads`),
+          ...FEATURES.filter(([k]) => p.features && p.features[k]).map(([, l]) => h('li', null, l)),
+          p.features && p.features.orgMembers ? h('li', null, `Organisation with ${p.features.orgMembers} members, roles and a shared library`) : null),
         p.id === 'free' ? null : buy);
     }));
   }

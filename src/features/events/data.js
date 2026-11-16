@@ -21,14 +21,15 @@ function eventOut(r) {
     startsAt: r.starts_at, endsAt: r.ends_at, startedAt: r.started_at, endedAt: r.ended_at,
     coverUrl: r.cover_url, theme: r.theme || {}, speakerSeats: r.speaker_seats, settings: r.settings || {},
     templateSlug: r.template_slug, liveViewers: r.live_viewers, peakViewers: r.peak_viewers, totalJoins: r.total_joins,
-    host: { id: r.host_user_id, username: r.host_username || null, name: r.host_name, avatarUrl: r.host_avatar || null },
+    host: { id: r.host_user_id, username: r.host_username || null, name: r.host_name, avatarUrl: r.host_avatar || null, verified: !!r.host_verified },
+    seriesId: r.series_id ? Number(r.series_id) : null,
     rsvps: r.rsvps != null ? Number(r.rsvps) : undefined,
     rsvped: r.rsvped != null ? !!r.rsvped : undefined,
     historyId: r.meeting_history_id || null,
     createdAt: r.created_at,
   };
 }
-const EVENT_SELECT = (viewer = '0') => `SELECT e.*, u.avatar_url AS host_avatar, u.username AS host_username,
+const EVENT_SELECT = (viewer = '0') => `SELECT e.*, u.avatar_url AS host_avatar, u.username AS host_username, u.verified_active AS host_verified,
   (SELECT COUNT(*) FROM event_rsvps WHERE event_id=e.id) AS rsvps,
   EXISTS(SELECT 1 FROM event_rsvps WHERE event_id=e.id AND user_id=${viewer}) AS rsvped
   FROM events e JOIN users u ON u.id=e.host_user_id`;
@@ -68,8 +69,15 @@ function validateEventInput(b, partial = false) {
   if (b.templateSlug != null) out.template_slug = String(b.templateSlug).slice(0, 40);
   return out;
 }
-async function createEvent(user, b) {
+/** Clamp requested speaker seats to the host's plan (the browser picker is capped too). */
+async function clampSeats(userId, v) {
+  if (v.speaker_seats == null) return;
+  try { const ent = await require('../../lib/plans').entitlements(userId); v.speaker_seats = Math.min(v.speaker_seats, ent.limits.speakerSeats); } catch (_) {}
+}
+async function createEvent(user, b, opts = {}) {
   const v = validateEventInput(b);
+  if (v.speaker_seats == null) v.speaker_seats = 4;
+  await clampSeats(user.id, v);
   const code = await uniqueEventCode();
   const r = await one(`INSERT INTO events (slug, code, host_user_id, host_name, title, description, category, tags, language, visibility,
       status, starts_at, ends_at, cover_url, theme, speaker_seats, settings, template_slug)
@@ -77,14 +85,16 @@ async function createEvent(user, b) {
   [slugify(v.title), code, user.id, user.displayName || user.username, v.title, v.description || null, v.category || 'meeting',
     v.tags || [], v.language || 'en', v.visibility || 'public', b.status === 'draft' ? 'draft' : 'scheduled',
     v.starts_at || null, v.ends_at || null, v.cover_url || null, v.theme || '{}', v.speaker_seats || 4, v.settings || '{}', v.template_slug || null]);
+  if (opts.seriesId) await q('UPDATE events SET series_id=$2 WHERE id=$1', [r.id, opts.seriesId]);
   const ev = await getEventById(r.id, user.id);
-  if (ev.visibility === 'public' && ev.status === 'scheduled') {
+  if (!opts.quiet && ev.visibility === 'public' && ev.status === 'scheduled') {
     await createPost(user.id, { kind: 'event_scheduled', eventId: ev.id, body: ev.title }).catch(() => {});
   }
   return ev;
 }
 async function updateEvent(id, userId, b) {
   const v = validateEventInput(b, true);
+  await clampSeats(userId, v);
   if (b.status && ['draft', 'scheduled', 'cancelled'].includes(b.status)) v.status = b.status;
   const keys = Object.keys(v);
   if (!keys.length) return getEventById(id, userId);
@@ -139,6 +149,10 @@ async function discover({ q: term, category, status, tag, host, limit = 24, offs
   } else {
     rank = `(e.status='live') DESC, (e.status='scheduled') DESC, ${rank}`;
   }
+  // Verified hosts get a ranking boost (admin setting platform.verifiedBoost), right after "live now".
+  let boost = 1;
+  try { boost = require('../../lib/plans').platform(await require('../../lib/plans').getSettings()).verifiedBoost; } catch (_) {}
+  if (boost) rank = rank.replace("(e.status='live') DESC", "(e.status='live') DESC, (CASE WHEN u.verified_active THEN 1 ELSE 0 END) DESC");
   params.push(Math.min(60, limit), Math.max(0, offset));
   const rows = await many(`${EVENT_SELECT('$1')} WHERE ${where.join(' AND ')} ORDER BY ${rank} LIMIT $${params.length - 1} OFFSET $${params.length}`, params);
   return rows.map(eventOut);
