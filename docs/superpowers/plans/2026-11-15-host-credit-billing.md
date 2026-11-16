@@ -51,8 +51,8 @@ Interfaces: credit module `subscribeCredits(fn) -> unsubscribe`, `refreshCredits
 ### Task 4: Verification and delivery
 
 Files: update `docs/PAYMENTS.md`, README, approved spec status and this plan; isolated test fixture helpers as needed.
-- [ ] Run `npm run test:sqlite` and temporary PostgreSQL full suite serially; inspect failures and run focused fixes.
-- [ ] Dispatch one fresh independent reviewer of the whole change. Address important findings with regression coverage.
-- [ ] Record limitations for actual LiveKit/Paystack credentials and unavailable browser tools, if applicable. Run `git diff --check`; commit final changes; report commit/test outcomes. No push.
+- [x] Run `npm run test:sqlite` and temporary PostgreSQL full suite serially; inspect failures and run focused fixes.
+- [x] Dispatch one fresh independent reviewer of the whole change. Address important findings with regression coverage.
+- [x] Record limitations for actual LiveKit/Paystack credentials and unavailable browser tools, if applicable. Run `git diff --check`; commit final changes; report commit/test outcomes. No push.
 
 Visual verification: browser inventory returned no apps/browsers. UI implementation and syntax/store behavior are checked; desktop/mobile visual inspection remains unavailable in this session.

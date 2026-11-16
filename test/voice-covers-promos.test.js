@@ -153,14 +153,14 @@ test('Whisper input mapping: auto-detect by default, language hint when set, Igb
 
 test('layout: / bar typing area is 50% at every width; Discover header; /u allows dots; Books API callers', () => {
   const css = read('public/css/app.css');
-  assert.match(css, /\.cmdbar \.cmd-in \{ flex: 0 0 50%;/);
-  assert.match(css, /\.cmdbar \.cmd-actions \{ flex: 1 1 50%;/);
-  assert.match(css, /\.cmdbar \.cmd-in \{ flex-basis: 50%; \}/);
+  assert.match(css, /\.cmdbar \.cmd-in\s*\{\s*flex:\s*0 0 50%;/);
+  assert.match(css, /\.cmdbar \.cmd-actions\s*\{\s*flex:\s*1 1 50%;/);
+  assert.match(css, /\.cmdbar \.cmd-in\s*\{\s*flex-basis:\s*50%;\s*\}/);
   assert.match(css, /width: min\(940px, calc\(100% - 24px\)\)/, 'bar width unchanged');
   assert.match(css, /@keyframes slashDance/);
-  assert.match(css, /\.dz-head \{[^}]*grid-template-areas: "title filters" "search search"/);
-  assert.match(css, /grid-template-areas: "title search filters"/);
-  assert.match(css, /prefers-reduced-motion: reduce\) \{ \.dz-txt/);
+  assert.match(css, /\.dz-head\s*\{[^}]*grid-template-areas:\s*"title filters" "search search"/);
+  assert.match(css, /grid-template-areas:\s*"title search filters"/);
+  assert.match(css, /prefers-reduced-motion:\s*reduce\)\s*\{\s*\.dz-txt/);
   const disc = read('public/js/pages/discover.js');
   assert.match(disc, /export function filterPicker/);
   assert.ok(!/statusSeg|class: 'chips free-grid'/.test(disc), 'old rows 3–4 removed');
