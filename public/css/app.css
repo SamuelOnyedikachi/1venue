@@ -1627,3 +1627,10 @@ body[data-page="books"] .main { overflow-x: clip; }
 .credit-warning { flex: none; padding: .65rem .8rem; color: var(--text); background: color-mix(in srgb,#b7791f 14%,var(--s1)); border: 1px solid #b7791f; border-radius: var(--r-sm); font-size: .85rem; }
 .credit-warning a { text-decoration: underline; }
 @media (max-width: 540px) { .credit-badge { padding-inline: .45rem; font-size: .73rem; } .room-head { flex-wrap: wrap; } .room-head .rh-title { flex: 1; min-width: 80px; } }
+@media (max-width: 420px) {
+  .topbar { gap: .35rem; padding-inline: max(.65rem,var(--safe-l)) max(.65rem,var(--safe-r)); }
+  .topbar .brand span { display: none; }
+  #userslot { gap: .35rem; }
+  .credit-badge { max-width: 48vw; }
+  .credit-badge > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+}

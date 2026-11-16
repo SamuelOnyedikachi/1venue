@@ -102,3 +102,13 @@ test('retired media recreated after the cleanup horizon is swept, and deletion f
  await runner.sweepRetired({listRooms:async()=>[{name:session.media_room}],deleteRoom:async name=>deleted.push(name)},later+1000);
  assert.deepEqual(deleted,[session.media_room]);
 });
+test('expired snapshots settle at their restore cutoff and stale owners cannot end an adopted active session',{skip},async()=>{
+ const snapshots=require('../src/rooms/snapshot'),runner=require('../src/features/wallet/billing'),config=require('../src/config');
+ const at=Date.now(),start=at-config.RESTART.restoreMaxMs-120000,id=await payer(120),{historyId,session}=await open(id,start);
+ const savedAt=at-config.RESTART.restoreMaxMs-60000;
+ await db.q('INSERT INTO meeting_snapshots(code,history_id,state,created_at) VALUES($1,$2,$3::jsonb,$4)',[session.code,historyId,snapshots.serialize({code:session.code,billingId:historyId,historyId,participants:new Map()}),new Date(savedAt).toISOString()]);
+ await billing.heartbeat('test-worker',true);await runner.recoverSession(await billing.get(historyId),at);
+ const row=await billing.get(historyId);assert.equal(Number(row.ended_ms),at-60000);assert.equal(Number(row.charged_units),Number(row.ended_ms)-start);assert.equal(row.end_reason,'restart-expired');
+ const other=await payer(30),opened=await open(other);await billing.claim(opened.historyId,runner.ownerId,at);
+ await assert.rejects(billing.settle(opened.historyId,{now:at+1000,endReason:'stale-ended',ownerId:'test-worker'}),e=>e.status===409);assert.equal((await billing.get(opened.historyId)).state,'active');
+});
