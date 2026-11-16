@@ -32,12 +32,15 @@ module.exports = function routes(route, kit) {
     const v = await data.getVenueByCode(normCode(code));
     if (!v) return { venue: null };
     const u = await getAuthUser(ctx.req, ctx.res);
+    if (v.archived && !(u && u.id === v.ownerUserId)) return { venue: null };
     return { venue: { slug: v.slug, name: v.name, code: v.code, isOwner: !!(u && u.id === v.ownerUserId), live: venueLive(v) } };
   });
   const SLUG = '([A-Za-z0-9]{2,16}(?:-venue)?)';
   route('GET', '/api/venues/plan', async (ctx) => {
     const u = await requireUser(ctx.req, ctx.res);
-    return { plan: await data.getUserPlan(u.id), plans: codes.PLANS };
+    const plans = require('../../lib/plans');
+    const ent = await plans.entitlements(u.id);
+    return { plan: ent.plan, plans: codes.PLANS, limits: ent.limits, venuesUsed: await data.activeVenueCount(u.id) };
   });
 
   // Admins & audit — registered before /api/venues/:slug so "admins"/"audit" are not treated as slugs
@@ -75,12 +78,14 @@ module.exports = function routes(route, kit) {
     if (!v) throw httpError(404, 'Venue not found');
     const u = await getAuthUser(ctx.req, ctx.res);
     const isOwner = !!(u && u.id === v.ownerUserId);
-    return { slug: v.slug, name: v.name, code: v.code, isOwner, isCustom: v.isCustom, plan: isOwner ? await data.getUserPlan(u.id) : undefined, live: venueLive(v) };
+    if (v.archived && !isOwner) throw httpError(404, 'Venue not found');
+    return { slug: v.slug, name: v.name, code: v.code, isOwner, isCustom: v.isCustom, slugTier: v.slugTier, archived: v.archived, reservedSlug: isOwner ? v.reservedSlug : undefined, plan: isOwner ? await data.getUserPlan(u.id) : undefined, live: venueLive(v) };
   });
   route('PATCH', `/api/venues/${SLUG}`, async (ctx, [slug]) => {
     const u = await requireUser(ctx.req, ctx.res);
     const v = await data.getVenueBySlug(slug.toLowerCase());
     if (!v || v.ownerUserId !== u.id) throw httpError(404, 'Venue not found');
+    if (v.archived) throw httpError(403, 'This venue is archived on your current plan. Upgrade to edit or open it again.');
     const b = await ctx.body();
     let out = v;
     if (b.name != null) out = await data.renameVenue(v.id, u.id, venueName(b.name));

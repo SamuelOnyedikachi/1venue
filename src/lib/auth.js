@@ -86,6 +86,7 @@ function shapeUser(row) {
     id: row.id,
     username: row.username,
     email: row.email,
+    plan: row.plan || 'free',
     displayName: row.display_name || niceDisplayName({ username: row.username, email: row.email }),
     avatarUrl: row.avatar_url || null,
     emailVerified: !!row.email_verified_at,

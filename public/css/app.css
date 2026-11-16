@@ -1617,3 +1617,11 @@ body[data-page="books"] .main { overflow-x: clip; }
 .im-opt .switch input:checked + span { background: var(--brand); }
 .im-modal .au-btn svg { flex: none; }
 .tiny.err, .muted.err { color: #dc2626; }
+
+/* Plans and billing (/upgrade, /billing, admin plans) */
+.plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-top: 1rem; }
+.plan-card.current { outline: 2px solid var(--accent, #003EA8); }
+.plan-price { font-size: 1.6rem; }
+.plan-list { margin: 0; padding-left: 1.1rem; display: grid; gap: .25rem; }
+.admin-plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .5rem; }
+.admin-plan-grid label { display: grid; gap: .2rem; font-size: .8rem; }

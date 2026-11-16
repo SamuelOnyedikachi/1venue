@@ -115,6 +115,8 @@ const ROUTES = [
   [/^\/u\/([\w.-]+)\/?$/, () => import('./pages/profile.js'), 'id'],
   [/^\/me\/?$/, () => import('./pages/profile.js'), { me: true }],
   [/^\/wallet\/?$/, () => import('./pages/wallet.js')],
+  [/^\/upgrade\/?$/, () => import('./pages/upgrade.js')],
+  [/^\/billing\/?$/, () => import('./pages/billing.js')],
   [/^\/settings\/?$/, () => import('./pages/settings.js')],
   [/^\/books\/?$/, () => import('./pages/bible.js')],
   // Legacy /bible → /books (same page; Qur’an is a first-class peer, not an afterthought)
@@ -267,6 +269,7 @@ function renderUserSlot() {
     b.onclick = () => menu(b, [
       { label: state.user.displayName, icon: 'user', hint: '@' + state.user.username, run: () => navigate(profilePath(state.user)) },
       { label: 'Dashboard', icon: 'dashboard', run: () => navigate('/dashboard') },
+      { label: 'Plan & billing', icon: 'crown', run: () => navigate('/billing') },
       { label: 'Credit wallet', icon: 'creditCard', run: () => navigate('/wallet') },
       { label: 'My sessions', icon: 'history', run: () => navigate('/sessions') },
       { label: 'My whiteboard', icon: 'board', group: 'content', run: () => navigate('/whiteboard') },
@@ -372,6 +375,8 @@ function registerGlobal() {
     { id: 'feed', label: 'Social feed', short: 'Feed', icon: 'feed', group: 'social', keywords: ['timeline', 'posts'], run: go('/feed') },
     { id: 'post', label: 'New post', icon: 'pen', group: 'social', keywords: ['write', 'share update', 'status'], run: go('/feed?compose=1') },
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', group: 'nav', keywords: ['stats', 'analytics'], run: go('/dashboard') },
+    { id: 'billing', label: 'Plan & billing', short: 'Billing', icon: 'crown', group: 'settings', keywords: ['upgrade', 'premium', 'organisation', 'subscription', 'plan', 'pricing'], when: () => !!state.user, run: go('/billing') },
+    { id: 'upgrade', label: 'Plans and pricing', icon: 'crown', group: 'settings', keywords: ['upgrade', 'premium', 'price'], when: () => true, run: go('/upgrade') },
     { id: 'wallet', label: 'Credit wallet', short: 'Credits', icon: 'creditCard', group: 'settings', keywords: ['credits', 'balance', 'payments', 'paystack', 'top up', 'buy credits'], when: () => !!state.user, run: go('/wallet') },
     { id: 'materials', label: 'Materials library', short: 'Materials', icon: 'folder', group: 'content', keywords: ['decks', 'slides', 'pdf', 'pptx', 'present', 'library', 'uploads'], when: () => !!state.user, run: go('/materials') },
     { id: 'profile', label: 'My profile', icon: 'user', group: 'people', keywords: ['me', 'account', 'timeline', 'public page'], run: () => navigate(state.user ? profilePath(state.user) : '/me') },
@@ -399,7 +404,7 @@ function registerGlobal() {
     { id: 'shortcuts', label: 'Keyboard shortcuts', icon: 'keyboard', group: 'nav', keywords: ['hotkeys', 'keys', 'help'], run: showShortcuts },
     { id: 'login', label: 'Sign in', icon: 'login', group: 'nav', keywords: ['log in', 'account', 'google'], when: () => !state.user, run: () => goLogin() },
     { id: 'signup', label: 'Create account', icon: 'user', group: 'nav', keywords: ['sign up', 'register', 'join'], when: () => !state.user, run: () => goLogin(undefined, { signup: true }) },
-    { id: 'admin', label: 'Admin: demo data', icon: 'shield', group: 'admin', keywords: ['seed', 'sample', 'demo'], when: () => !!state.user?.isAdmin, run: go('/admin') },
+    { id: 'admin', label: 'Admin: demo data, plans', icon: 'shield', group: 'admin', keywords: ['seed', 'sample', 'demo'], when: () => !!state.user?.isAdmin, run: go('/admin') },
     { id: 'logout', label: 'Sign out', icon: 'logout', group: 'admin', keywords: ['log out'], when: () => !!state.user, run: logout },
   ];
   registerCommands('global', GLOBAL);

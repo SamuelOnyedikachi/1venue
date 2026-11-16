@@ -10,21 +10,31 @@ const SLUG_CH = 'abcdefghjkmnpqrstuvwxyz23456789';
 const randSlug = () => Array.from(crypto.randomBytes(7), (b) => SLUG_CH[b % SLUG_CH.length]).join('');
 const codes = require('../../lib/codes');
 const randCode = () => codes.randCode(6); // same 6-char lowercase format as meeting codes
-const venueOut = (r) => r && ({ id: r.id, slug: r.slug, code: r.code, name: r.name, ownerUserId: r.owner_user_id, createdAt: r.created_at, meetings: r.meetings != null ? Number(r.meetings) : undefined, lastHeld: r.last_held || null, openedAt: r.opened_at || null, activeHistoryId: r.active_history_id || null, isCustom: !!r.is_custom });
-async function getUserPlan(userId) {
-  const r = await one('SELECT plan FROM users WHERE id=$1', [userId]).catch(() => null);
-  return codes.PLANS.includes(r && r.plan) ? r.plan : 'free';
-}
+const venueOut = (r) => r && ({ id: r.id, slug: r.slug, code: r.code, name: r.name, ownerUserId: r.owner_user_id, createdAt: r.created_at, meetings: r.meetings != null ? Number(r.meetings) : undefined, lastHeld: r.last_held || null, openedAt: r.opened_at || null, activeHistoryId: r.active_history_id || null, isCustom: !!r.is_custom,
+  slugTier: r.slug_tier || 'none', reservedSlug: r.reserved_slug || null, archivedAt: r.archived_at || null, archived: !!r.archived_at });
+const plans = require('../../lib/plans');
+const httpErr = (status, message) => Object.assign(new Error(message), { status });
+/** Effective subscription plan (free | premium | organisation). */
+async function getUserPlan(userId) { return (await plans.entitlements(userId)).plan; }
 async function slugTaken(slug, exceptId) {
-  return !!(await one('SELECT 1 FROM venues WHERE lower(slug)=lower($1) AND id IS DISTINCT FROM $2 LIMIT 1', [slug, exceptId || null]));
+  return !!(await one('SELECT 1 FROM venues WHERE (lower(slug)=lower($1) OR lower(reserved_slug)=lower($1)) AND id IS DISTINCT FROM $2 LIMIT 1', [slug, exceptId || null]));
 }
-/** Validate a requested custom slug for this user's plan; throws 400/409 with a clear message. */
-async function resolveCustomSlug(userId, input, opts = {}, exceptId) {
-  const { slug } = codes.customSlug(input, await getUserPlan(userId), opts);
+/** Validate a requested custom slug for this user's plan (and the venue's add-on); throws 400/409. */
+async function resolveCustomSlug(userId, input, opts = {}, exceptId, slugTier = 'none') {
+  const { slug } = codes.customSlug(input, plans.slugRights(await getUserPlan(userId), slugTier), opts);
   if (await slugTaken(slug, exceptId)) { const e = new Error(`/v/${slug} is taken — try another`); e.status = 409; throw e; }
   return slug;
 }
+async function activeVenueCount(userId) {
+  const r = await one('SELECT COUNT(*) AS n FROM venues WHERE owner_user_id=$1 AND archived_at IS NULL', [userId]);
+  return Number(r ? r.n : 0);
+}
 async function createVenue(userId, name, customInput, opts) {
+  const ent = await plans.entitlements(userId);
+  if (await activeVenueCount(userId) >= ent.limits.venues) {
+    const label = ent.plan[0].toUpperCase() + ent.plan.slice(1);
+    throw Object.assign(httpErr(403, `Your ${label} plan includes ${ent.limits.venues} venue${ent.limits.venues === 1 ? '' : 's'}. Upgrade to add more.`), { upgrade: true });
+  }
   const custom = customInput ? await resolveCustomSlug(userId, customInput, opts) : null;
   for (let i = 0; i < 8; i++) {
     const slug = custom || randSlug(), code = randCode();
@@ -40,10 +50,55 @@ async function myVenues(userId) {
     FROM venues v WHERE owner_user_id=$1 ORDER BY created_at DESC`, [userId])).map(venueOut);
 }
 async function getVenueBySlug(slug) { return venueOut(await one('SELECT * FROM venues WHERE slug=lower($1)', [String(slug || '')])); }
+async function getVenueById(id) { return venueOut(await one('SELECT * FROM venues WHERE id=$1', [id])); }
 async function getVenueByCode(code) { return venueOut(await one('SELECT * FROM venues WHERE lower(code)=lower($1)', [String(code || '')])); }
 async function setVenueSlug(id, userId, input, opts) {
-  const slug = await resolveCustomSlug(userId, input, opts, id);
-  return venueOut(await one('UPDATE venues SET slug=$3, is_custom=true WHERE id=$1 AND owner_user_id=$2 RETURNING *', [id, userId, slug]));
+  const v = await one('SELECT slug_tier FROM venues WHERE id=$1 AND owner_user_id=$2', [id, userId]);
+  if (!v) return null;
+  const slug = await resolveCustomSlug(userId, input, opts, id, v.slug_tier);
+  return venueOut(await one('UPDATE venues SET slug=$3, is_custom=true, reserved_slug=NULL WHERE id=$1 AND owner_user_id=$2 RETURNING *', [id, userId, slug]));
+}
+
+// ---------------------------------------------------------------- plan changes (downgrade / re-upgrade)
+/** Free-plan fallback for a clean or short link: base padded to 5 chars + "-venue", unique. */
+async function fallbackSlug(base, exceptId) {
+  const b = codes.slugifyBase(base).slice(0, 16);
+  for (let i = 0; i < 8; i++) {
+    let x = b.length >= 5 ? b : b + randSlug().slice(0, 5 - b.length);
+    if (i > 0) x = x.slice(0, 12) + randSlug().slice(0, 4);
+    const slug = `${x}-venue`;
+    if (!(await slugTaken(slug, exceptId))) return slug;
+  }
+  return `${randSlug()}-venue`;
+}
+/**
+ * Bring a user's venues in line with a plan: keep the oldest `limit` venues open and archive the rest
+ * (read-only, hidden, restored later). On Free, clean/short custom links are kept reserved for the
+ * owner but switch to a -venue fallback. On a paid plan, archived venues and reserved links come back.
+ */
+async function applyPlanToVenues(userId, plan, limit) {
+  const rows = await many('SELECT * FROM venues WHERE owner_user_id=$1 ORDER BY created_at ASC, id ASC', [userId]);
+  const changes = { archived: 0, restored: 0, linksParked: 0, linksRestored: 0 };
+  let open = 0;
+  for (const r of rows) {
+    if (open < limit) {
+      open++;
+      if (r.archived_at) { await q('UPDATE venues SET archived_at=NULL WHERE id=$1', [r.id]); changes.restored++; }
+    } else if (!r.archived_at) {
+      await q('UPDATE venues SET archived_at=NOW(), opened_at=NULL, active_history_id=NULL WHERE id=$1', [r.id]); changes.archived++;
+    }
+    const rights = plans.slugRights(plan, r.slug_tier);
+    if (!rights.clean && r.is_custom && !/-venue$/.test(r.slug)) {
+      await q('UPDATE venues SET reserved_slug=$2, slug=$3 WHERE id=$1', [r.id, r.slug, await fallbackSlug(r.slug, r.id)]); changes.linksParked++;
+    } else if (rights.clean && r.reserved_slug) {
+      try { codes.customSlug(r.reserved_slug, rights); } catch (_) { continue; } // e.g. short link without its add-on
+      await q('UPDATE venues SET slug=$2, reserved_slug=NULL WHERE id=$1', [r.id, r.reserved_slug]); changes.linksRestored++;
+    }
+  }
+  return changes;
+}
+async function setVenueSlugTier(venueId, tier) {
+  return venueOut(await one('UPDATE venues SET slug_tier=$2 WHERE id=$1 RETURNING *', [venueId, tier]));
 }
 async function renameVenue(id, userId, name) { return venueOut(await one('UPDATE venues SET name=$3 WHERE id=$1 AND owner_user_id=$2 RETURNING *', [id, userId, name])); }
 async function deleteVenue(id, userId) { return (await q('DELETE FROM venues WHERE id=$1 AND owner_user_id=$2', [id, userId])).rowCount > 0; }
@@ -104,4 +159,4 @@ async function getVenueAudit(venueId, limit = 100) {
     .map(r => ({ id: r.id, actorId: r.actor_user_id, actorName: r.display_name || r.actor_name || r.username || 'Unknown', action: r.action, detail: r.detail, at: r.created_at }));
 }
 
-module.exports = { SLUG_CH, randSlug, codes, randCode, venueOut, getUserPlan, slugTaken, resolveCustomSlug, createVenue, myVenues, getVenueBySlug, getVenueByCode, setVenueSlug, renameVenue, deleteVenue, markVenueOpen, markVenueClosed, venueMeetings, addVenueAdmins, removeVenueAdmin, listVenueAdmins, isVenueAdmin, logVenueAudit, getVenueAudit };
+module.exports = { SLUG_CH, randSlug, codes, randCode, venueOut, getUserPlan, slugTaken, resolveCustomSlug, activeVenueCount, createVenue, myVenues, getVenueBySlug, getVenueById, applyPlanToVenues, setVenueSlugTier, fallbackSlug, getVenueByCode, setVenueSlug, renameVenue, deleteVenue, markVenueOpen, markVenueClosed, venueMeetings, addVenueAdmins, removeVenueAdmin, listVenueAdmins, isVenueAdmin, logVenueAudit, getVenueAudit };
