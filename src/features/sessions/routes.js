@@ -34,8 +34,14 @@ module.exports = function routes(route, kit) {
     const kind = (await ctx.body()).kind === 'action_items' ? 'action_items' : 'summary';
     const transcript = data.transcriptToText(await data.getTranscript(h.id));
     if (!transcript) throw httpError(400, 'There is no transcript to summarise yet');
-    const r = kind === 'summary' ? await ai().summarize(transcript, h.name) : await ai().actionItems(transcript);
-    return data.saveSummary({ historyId: h.id, kind, content: r.text, provider: r.provider, model: r.model, userId });
+    // Summaries draw from the session host's daily AI pool (attendees cannot bypass it).
+    const ownerId = h.host_user_id || userId || null;
+    const self = !!(userId && ownerId === userId);
+    const t = await require('../../lib/plans').takeAi({ kind: 'summary', ownerId, guestIp: self ? null : clientIp(ctx.req) });
+    if (!t.ok) throw httpError(429, t.guestCap ? 'You’ve reached today’s AI limit for this session. Try again tomorrow.' : self ? `You’ve used today’s AI allowance (${t.limit} points). Upgrade for more, or try again tomorrow.` : 'The host’s AI allowance for today is used up. Try again tomorrow.');
+    let r;
+    try { r = kind === 'summary' ? await ai().summarize(transcript, h.name) : await ai().actionItems(transcript); } catch (e) { await t.refund(); throw e; }
+    return { ...(await data.saveSummary({ historyId: h.id, kind, content: r.text, provider: r.provider, model: r.model, userId })), aiLeft: t.left };
   });
   route('GET', '/api/sessions/(\\d+)/summary\\.md', async (ctx, [id]) => {
     const { h } = await historyAccess(ctx.req, ctx.res, int(id));

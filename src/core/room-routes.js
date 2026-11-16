@@ -99,6 +99,7 @@ module.exports = async function handle(req, res, parsed) {
         // A create aimed at a venue-bound code must open that venue, never fork a new code.
         venue = await vdata.getVenueByCode(normCode(body.code)).catch(() => null);
       }
+      if (venue && venue.archived) return sendJSON(res, 403, { error: 'This venue is archived because its plan changed. The owner can upgrade to open it again.', code: venue.code });
       if (venue) {
         if (!authUser) return sendJSON(res, 401, { error: 'Sign in to open your venue', code: venue.code });
         const isOwner = venue.ownerUserId === authUser.id;
@@ -206,6 +207,11 @@ module.exports = async function handle(req, res, parsed) {
       }
 
       const meeting = meetings.get(code);
+      // Plan limits come from whoever pays for the room: the venue owner, else the signed-in host.
+      try {
+        const ent = await require('../lib/plans').entitlements(venue ? venue.ownerUserId : authUser ? authUser.id : null);
+        meeting.limits = { plan: ent.plan, audience: ent.limits.audience, meeting: ent.limits.meeting, speakerSeats: ent.limits.speakerSeats, ownerUserId: venue ? venue.ownerUserId : authUser ? authUser.id : null };
+      } catch (e) { console.warn('[plan limits]', e.message); }
       stage.init(meeting, {
         enabled: !!(body.stage || (event && event.category !== 'meeting')),
         seats: body.speakerSeats || (event && event.speakerSeats),
@@ -329,6 +335,14 @@ module.exports = async function handle(req, res, parsed) {
       const cap = stage.capacity(meeting);
       if (activeCount >= cap && !(rejoinCandidate && rejoinCandidate.status === 'ACTIVE')) {
         return sendJSON(res, 403, { error: `This room is full (max ${cap})` });
+      }
+
+      // Ticketed events: a valid ticket is needed to join (hosts, speakers and returning hosts skip).
+      if (meeting.eventId && !(rejoinCandidate && (rejoinCandidate.role === 'host' || rejoinCandidate.role === 'cohost'))) {
+        try {
+          const gate = await require('../features/commerce/service').canJoinEvent(meeting.eventId, authUser);
+          if (!gate.ok) return sendJSON(res, 403, { error: gate.reason, ticketRequired: true, eventSlug: meeting.eventSlug || null });
+        } catch (e) { console.warn('[tickets] gate', e.message); }
       }
 
       let role = isGuest ? 'guest' : 'participant';

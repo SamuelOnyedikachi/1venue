@@ -51,3 +51,8 @@ A sandbox base URL must be https and is only accepted with an `sk_test_` key, so
 The sandbox's own checkout origin is then accepted as the authorization URL. Leave `PAYSTACK_WEBHOOK_SECRET` empty:
 Bannk signs webhooks with the legacy `x-paystack-signature` (HMAC-SHA512 of the raw body with the secret key).
 For real Paystack, remove `PAYSTACK_BASE_URL` and use your real keys.
+
+
+## Plans and subscriptions
+
+Plan subscriptions, renewals and short-link add-ons share this Paystack setup and webhook. See `docs/PLANS-BILLING.md`.

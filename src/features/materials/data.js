@@ -15,6 +15,7 @@ function materialOut(r) {
     kind: r.kind,
     payload,
     createdAt: r.created_at,
+    ownerUserId: r.owner_user_id, orgId: r.org_id || null,
     updatedAt: r.updated_at,
   };
 }
@@ -46,13 +47,14 @@ function sanitizeMaterialPayload(kind, payload) {
 }
 async function listMaterials(userId, { limit = 50 } = {}) {
   const rows = await many(
-    `SELECT * FROM materials WHERE owner_user_id=$1 ORDER BY updated_at DESC LIMIT $2`,
+    // Own materials plus the shared library of every organisation the user belongs to.
+    `SELECT * FROM materials WHERE owner_user_id=$1 OR (org_id IS NOT NULL AND org_id IN (SELECT org_id FROM org_members WHERE user_id=$1)) ORDER BY updated_at DESC LIMIT $2`,
     [userId, Math.min(100, Math.max(1, limit))]
   );
   return rows.map(materialOut);
 }
 async function getMaterial(id, userId) {
-  const r = await one(`SELECT * FROM materials WHERE id=$1 AND owner_user_id=$2`, [id, userId]);
+  const r = await one(`SELECT * FROM materials WHERE id=$1 AND (owner_user_id=$2 OR (org_id IS NOT NULL AND org_id IN (SELECT org_id FROM org_members WHERE user_id=$2)))`, [id, userId]);
   return materialOut(r);
 }
 async function createMaterial(userId, { title, kind, payload }) {
@@ -94,7 +96,7 @@ async function setEventMaterials(eventId, userId, materialIds) {
   const ids = (Array.isArray(materialIds) ? materialIds : []).map(Number).filter(Boolean).slice(0, 40);
   await q(`DELETE FROM event_materials WHERE event_id=$1`, [eventId]);
   for (let i = 0; i < ids.length; i++) {
-    const m = await one(`SELECT id FROM materials WHERE id=$1 AND owner_user_id=$2`, [ids[i], userId]);
+    const m = await one(`SELECT id FROM materials WHERE id=$1 AND (owner_user_id=$2 OR (org_id IS NOT NULL AND org_id IN (SELECT org_id FROM org_members WHERE user_id=$2)))`, [ids[i], userId]);
     if (m) await q(`INSERT INTO event_materials (event_id, material_id, sort_order) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, [eventId, ids[i], i]);
   }
   return listEventMaterials(eventId);

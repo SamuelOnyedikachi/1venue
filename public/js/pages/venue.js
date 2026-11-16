@@ -27,18 +27,19 @@ function venueIcon(name) {
 }
 const venueMark = (name, size = 20) => h('span', { class: 'venue-mark', 'data-group': 'media', html: icon(venueIcon(name), { size }) });
 
-/* Custom venue links. Plans: free → 5+ chars + "-venue"; premium → 5+, no suffix; slug3 → 3+; slug2 → 2+. */
-const PLAN_LABEL = { free: 'Free', premium: 'Premium', slug3: '3-char package', slug2: '2-char package' };
-const RANK = { free: 0, premium: 1, slug3: 2, slug2: 3 };
+/* Custom venue links. Free → 5+ chars + "-venue"; Premium/Organisation → 5+, no suffix; a venue's slug3 add-on → 3+; slug2 → 2+. */
+const PLAN_LABEL = { free: 'Free', premium: 'Premium', organisation: 'Organisation', slug3: '3-char add-on', slug2: '2-char add-on' };
+const RANK = { free: 0, premium: 1, organisation: 1, slug3: 2, slug2: 3 };
+const rightsKey = (plan, tier) => (!plan || plan === 'free' ? 'free' : tier === 'slug3' || tier === 'slug2' ? tier : plan);
 const slugBase = (v) => String(v || '').toLowerCase().replace(/-venue$/, '').replace(/[^a-z0-9]/g, '').slice(0, 16);
 function previewSlug(base, plan) {
   if (!base) return { slug: '', err: '' };
   const r = RANK[plan] || 0;
   if (r === 0) return base.length >= 5 ? { slug: `${base}-venue` } : { slug: `${base.padEnd(5, '•')}-venue`, err: 'At least 5 letters/numbers on Free' };
   if (base.length < 2) return { slug: base, err: 'Too short' };
-  if (base.length === 4 && r < 2) return { slug: base, err: 'Premium needs at least 5 characters (4 needs the slug3 package)' };
-  if (base.length === 2 && r < 3) return { slug: base, err: '2-character links need the slug2 package' };
-  if (base.length === 3 && r < 2) return { slug: base, err: '3-character links need the slug3 package' };
+  if (base.length === 4 && r < 2) return { slug: base, err: 'Clean links need at least 5 characters (4 needs the slug3 add-on)' };
+  if (base.length === 2 && r < 3) return { slug: base, err: '2-character links need the slug2 add-on (Billing)' };
+  if (base.length === 3 && r < 2) return { slug: base, err: '3-character links need the slug3 add-on (Billing)' };
   if (base.length < 2) return { slug: base, err: 'Too short' };
   return { slug: base };
 }
@@ -99,7 +100,7 @@ async function list(view) {
     const create = h('button', { class: 'btn primary', html: icon('plus', { size: 16 }) + 'New venue', onclick: async () => {
       const r = await venueDlg({ title: 'New venue', plan: myPlan(), ok: 'Create' });
       if (!r) return;
-      try { await api('/api/venues', { method: 'POST', body: r }); paint(); } catch (e) { toastErr(e); }
+      try { await api('/api/venues', { method: 'POST', body: r }); paint(); } catch (e) { toastErr(e); if (/Upgrade/.test(e.message || '')) navigate('/upgrade'); }
     } });
     wrap.replaceChildren(
       h('div', { class: 'venues-head' },
@@ -107,7 +108,7 @@ async function list(view) {
         create),
       venues.length ? h('div', { class: 'col', style: { gap: '8px' } }, ...venues.map((v) => h('div', { class: 'card pad row wrap venue-row', style: { gap: '10px' } },
         venueMark(v.name, 20),
-        h('div', { class: 'grow' }, h('div', null, h('strong', null, v.name), v.live ? h('span', { class: 'chip tiny', style: { marginLeft: '6px' } }, '● Open') : null),
+        h('div', { class: 'grow' }, h('div', null, h('strong', null, v.name), v.live ? h('span', { class: 'chip tiny', style: { marginLeft: '6px' } }, '● Open') : null, v.archived ? h('a', { class: 'chip tiny', href: '/upgrade', 'data-link': '', style: { marginLeft: '6px' } }, 'Archived · upgrade to reopen') : null),
           h('div', { class: 'tiny muted' }, `/v/${v.slug} · ${v.meetings || 0} meetings${v.lastHeld ? ' · last ' + timeAgo(v.lastHeld) : ''}`)),
         h('button', { class: 'btn sm ghost', 'data-tip': 'Copy link', html: icon('link', { size: 15 }), onclick: () => copy(vlink(v.slug), 'Venue link copied') }),
         h('a', { class: 'btn sm', href: `/v/${v.slug}`, 'data-link': '' }, 'Manage'),
@@ -231,11 +232,17 @@ async function ownerView(wrap, v) {
         h('span', { class: 'venue-mark', html: icon(ic, { size: 18 }) }),
         h('h3', null, title)),
       body));
+  // Paid-plan branding (Free venues render plain: the server sends brand = null).
+  const brand = v.brand || null;
+  if (brand && brand.accent) { wrap.style.setProperty('--accent', brand.accent); if (brand.accent2) wrap.style.setProperty('--accent-2', brand.accent2); }
   wrap.append(
+    brand && brand.coverUrl ? h('div', { class: 'venue-cover', style: { borderRadius: '16px', overflow: 'hidden', aspectRatio: '4 / 1', background: `linear-gradient(135deg, ${brand.accent || 'var(--accent)'}, ${brand.accent2 || 'var(--accent-2)'})` } },
+      h('img', { src: brand.coverUrl, alt: '', style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } })) : null,
     h('div', { class: 'row between wrap', style: { gap: '10px' } },
       h('div', { class: 'row', style: { gap: '.6rem', alignItems: 'center' } },
-        venueMark(v.name, 26),
-        h('h1', { style: { margin: 0 } }, v.name)),
+        brand && brand.logoUrl ? h('img', { src: brand.logoUrl, alt: '', width: 40, height: 40, style: { borderRadius: '10px', objectFit: 'cover' } }) : venueMark(v.name, 26),
+        h('h1', { style: { margin: 0 } }, v.name),
+        v.verified ? h('span', { class: 'chip tiny verified-badge', title: 'Verified host', html: icon('check', { size: 12 }) + 'Verified' }) : null),
       h('div', { class: 'row', style: { gap: '6px' } },
         h('button', { class: 'btn sm ghost', html: icon('link', { size: 15 }) + 'Copy link', onclick: () => copy(vlink(v.slug), 'Venue link copied') }),
         h('button', { class: 'btn sm ghost', html: icon('pencil', { size: 15 }) + 'Rename', onclick: async () => {
@@ -244,11 +251,13 @@ async function ownerView(wrap, v) {
           try { await api(`/api/venues/${v.slug}`, { method: 'PATCH', body: { name: n } }); toast('Renamed'); navigate(`/v/${v.slug}`, { replace: true }); } catch (e) { toastErr(e); }
         } }),
         h('button', { class: 'btn sm ghost', html: icon('link', { size: 15 }) + 'Custom URL', onclick: async () => {
-          const r = await venueDlg({ title: 'Custom venue URL', plan: v.plan || myPlan(), withName: false, slugRequired: true, ok: 'Save link' });
+          const r = await venueDlg({ title: 'Custom venue URL', plan: rightsKey(v.plan || myPlan(), v.slugTier), withName: false, slugRequired: true, ok: 'Save link' });
           if (!r || !r.customSlug) return;
           try { const nv = await api(`/api/venues/${v.slug}`, { method: 'PATCH', body: { customSlug: r.customSlug } }); toast('Link updated'); navigate(`/v/${nv.slug}`, { replace: true }); } catch (e) { toastErr(e); }
         } }))),
-    planNote(v.plan || myPlan()),
+    brand && brand.about ? h('div', { class: 'card pad small', style: { whiteSpace: 'pre-line' } }, brand.about) : null,
+    v.canManage ? h('p', { class: 'tiny muted' }, h('a', { href: '/host?tab=branding', 'data-link': '' }, 'Branding, analytics and more host tools →')) : null,
+    planNote(rightsKey(v.plan || myPlan(), v.slugTier)),
     v.live
       ? h('div', { class: 'card pad row wrap', style: { gap: '10px' } }, h('div', { class: 'grow' }, h('strong', null, 'Open now: '), v.live.meetingName || v.name), h('button', { class: 'btn primary', onclick: () => navigate('/' + fmtCode(v.code)) }, 'Rejoin'))
       : h('div', { class: 'card pad col', style: { gap: '10px' } },

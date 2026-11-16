@@ -45,11 +45,15 @@ function precheck({ mime, declaredSize, rateKey, contentBatch = false }) {
   return max;
 }
 
+/** Per-user storage quota from the user's plan (falls back to UPLOAD_USER_QUOTA_MB if plans are unavailable). */
+async function userQuotaBytes(userId) {
+  try { return (await require('../lib/plans').entitlements(userId)).limits.uploadBytes; } catch (_) { return U.userQuotaBytes; }
+}
 /** Quota checks once the size is known. data = venue data module. */
 async function quota(data, { size, userId, ownerKey, roomCode }) {
   const used = await data.fileUsage({ userId, ownerKey });
-  const cap = userId ? U.userQuotaBytes : U.guestQuotaBytes;
-  if (cap && used + size > cap) throw err(413, `Storage quota reached (${fmtMB(used)} of ${fmtMB(cap)} used). Delete old uploads or ask the admin for more.`);
+  const cap = userId ? await userQuotaBytes(userId) : U.guestQuotaBytes;
+  if (cap && used + size > cap) throw err(413, `Storage quota reached (${fmtMB(used)} of ${fmtMB(cap)} used). Delete old uploads or upgrade your plan for more.`);
   if (roomCode && U.meetingCapBytes) {
     const r = await data.fileUsage({ roomCode });
     if (r + size > U.meetingCapBytes) throw err(413, `This meeting has reached its ${fmtMB(U.meetingCapBytes)} upload cap`);
@@ -63,4 +67,4 @@ function publicLimits() {
   };
 }
 
-module.exports = { PURPOSES, normalizePurpose, kindOf, limitFor, precheck, quota, publicLimits, fmtMB };
+module.exports = { userQuotaBytes, PURPOSES, normalizePurpose, kindOf, limitFor, precheck, quota, publicLimits, fmtMB };

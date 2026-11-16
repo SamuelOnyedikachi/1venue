@@ -26,9 +26,17 @@ function settings() {
   return { secretKey, webhookSecret, mode, callback, enabled, base: url.origin, sandbox };
 }
 function enabled() { try { return settings().enabled; } catch (_) { return false; } }
-async function call(path, body) {
+async function call(path, body, { raw = false } = {}) {
   const s = settings();
   if (!s.enabled) throw fail(503, 'Credit purchases are not available yet');
+  if (raw) {
+    // Returns the gateway reply even when it declines (status:false), so callers can record the reason.
+    try {
+      const r = await fetch(s.base + path, { method: 'POST', headers: { Authorization: `Bearer ${s.secretKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+      let json = null; try { json = await r.json(); } catch (_) {}
+      return { httpStatus: r.status, ok: r.ok && json && json.status === true && !!json.data, data: json && json.data, message: json && typeof json.message === 'string' ? json.message.slice(0, 200) : null };
+    } catch (_) { return { httpStatus: 0, ok: false, data: null, message: 'network' }; }
+  }
   try {
     const r = await fetch(s.base + path, { method: body ? 'POST' : 'GET', headers: { Authorization: `Bearer ${s.secretKey}`, 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(10000) });
     const json = await r.json();
@@ -97,4 +105,4 @@ function verifyWebhook(raw, headers, { secretKey, webhookSecret, now = Date.now(
   if (!secretKey) return false;
   return equalHex(crypto.createHmac('sha512', secretKey).update(raw).digest(), headers['x-paystack-signature']);
 }
-module.exports = { settings, enabled, initialize, confirm, verifyWebhook };
+module.exports = { settings, enabled, initialize, confirm, verifyWebhook, call, checkoutUrl, metadata };

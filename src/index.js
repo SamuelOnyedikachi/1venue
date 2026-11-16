@@ -53,6 +53,11 @@ async function start() {
     setInterval(syncViewerCounts, 15000),
     setInterval(pruneLeftParticipants, 60_000),
   ];
+  const billingTimer = require('./features/billing/service').startWorker();
+  if (billingTimer) timers.push(billingTimer);
+  for (const w of ['./features/recurring/reminders', './features/replays/service']) {
+    try { const t = require(w).startWorker(); if (t) timers.push(t); } catch (e) { console.error('[worker]', w, e.message); }
+  }
   const metricsLog = metrics.startLogger();
   if (metricsLog) timers.push(metricsLog);
   timers.forEach((t) => t.unref());

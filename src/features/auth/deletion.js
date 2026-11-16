@@ -67,6 +67,7 @@ async function deleteAccount(userId) {
     const user = (await c.query('SELECT id, email, username, display_name FROM users WHERE id = $1 FOR UPDATE', [id])).rows[0];
     if (!user) return null;
     await require('../wallet/data').assertCanDelete(c, id);
+    await require('../billing/service').assertCanDelete(c, id);
     const counts = {};
     const run = async (name, sql, p) => { counts[name] = (await c.query(sql, p)).rowCount; };
     const files = (await c.query('SELECT id, driver, object_key FROM files WHERE owner_user_id = $1', [id])).rows;
