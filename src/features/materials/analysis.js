@@ -4,6 +4,7 @@
  * Spreadsheet numbers (columns, row count, min / max / mean) are computed locally; the model only comments.
  * AI_MOCK=true or no REPLICATE_API_TOKEN: a local heuristic result, same shape, marked mock: true.
  */
+const { cleanText, cleanList } = require('../../lib/safe-text');
 const crypto = require('node:crypto');
 const config = require('../../config');
 const log = require('../../lib/log');
@@ -73,12 +74,12 @@ function parseJson(text) {
   const t = String(text || '');
   const a = t.indexOf('{'), b = t.lastIndexOf('}');
   if (a >= 0 && b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch { /* fall through */ } }
-  return { summary: t.trim().slice(0, 1500), keyPoints: [] };
+  return { summary: cleanText(t, { max: 1500 }), keyPoints: [] };
 }
 const clean = (o, sheet) => ({
-  summary: String(o.summary || '').trim().slice(0, 2000),
-  keyPoints: (Array.isArray(o.keyPoints) ? o.keyPoints : []).map((p) => String(p).trim()).filter(Boolean).slice(0, 8).map((p) => p.slice(0, 300)),
-  ...(sheet ? { dataCommentary: String(o.dataCommentary || '').trim().slice(0, 2000) } : {}),
+  summary: cleanText(o.summary, { max: 2000 }),
+  keyPoints: cleanList(o.keyPoints, { max: 300, limit: 8 }),
+  ...(sheet ? { dataCommentary: cleanText(o.dataCommentary, { max: 2000 }) } : {}),
 });
 
 function mockResult(m, x) {
@@ -180,7 +181,7 @@ async function ask(m, { userId, question, takeAi }) {
       model = config.MATERIALS.model;
     }
   } catch (e) { await t.refund(); throw e; }
-  answer = String(answer || '').slice(0, 4000) || 'No answer came back. Try rephrasing.';
+  answer = cleanText(answer, { max: 4000 }) || 'No answer came back. Try rephrasing.';
   const row = await one('INSERT INTO material_queries (material_id, user_id, question, answer, model, cost) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *', [m.id, userId, qText, answer, model, t.cost]);
   log.info('materials', 'question', { id: m.id, user: userId, model, cost: t.cost });
   return queryOut(row);

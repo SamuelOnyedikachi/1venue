@@ -60,6 +60,7 @@ function parseLegacy(body) {
 function slim(a) {
   if (!a || typeof a !== 'object') return null;
   if (a.kind === 'passage') return a;
+  if (a.kind === 'board') return { kind: 'board', name: a.name || 'Whiteboard.mwb', mime: 'application/x-mwb', size: Number(a.size) || 0, url: a.url || null, preview: a.preview || null, pages: Number(a.pages) || 1 };
   return { kind: a.kind || 'file', name: a.name || 'file', mime: a.mime || '', size: Number(a.size) || 0, url: a.url || null, dataUrl: a.url ? null : (a.dataUrl || null) };
 }
 function msgOut(row, c, me = null) {
@@ -77,7 +78,7 @@ function msgOut(row, c, me = null) {
 function preview({ text, attachment, kind, payload }) {
   if (kind === 'card' && payload) return ({ meeting: 'Meeting: ', schedule: 'Scheduled: ', venue: 'Venue: ' }[payload.type] || '') + (payload.title || '');
   if (text) return String(text).slice(0, 140);
-  if (attachment) return attachment.kind === 'voice' ? 'Voice note' : attachment.kind === 'image' ? 'Photo' : attachment.kind === 'passage' ? attachment.reference : `File: ${attachment.name || 'file'}`;
+  if (attachment) return attachment.kind === 'voice' ? 'Voice note' : attachment.kind === 'image' ? 'Photo' : attachment.kind === 'passage' ? attachment.reference : attachment.kind === 'board' ? `Whiteboard: ${String(attachment.name || 'board').replace(/\.mwb$/i, '')}` : `File: ${attachment.name || 'file'}`;
   return '';
 }
 

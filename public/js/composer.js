@@ -6,7 +6,10 @@ import { icon } from './icons.js';
 import { emojiPopover, searchEmoji, emojiName, pushRecent } from './emoji.js';
 
 const fmtMB = (b) => (b / 1048576 >= 10 ? Math.round(b / 1048576) : Math.round(b / 104857.6) / 10) + ' MB';
-const kindOf = (m) => (m.startsWith('image/') ? 'image' : m === 'application/pdf' ? 'pdf' : m.startsWith('audio/') ? 'audio' : m.startsWith('video/') ? 'video' : 'other');
+const kindOf = (m) => (m.startsWith('image/') ? 'image' : m === 'application/pdf' ? 'pdf' : m.startsWith('audio/') ? 'audio' : m.startsWith('video/') ? 'video' : m === 'application/x-mwb' ? 'board' : 'other');
+/** 1venue whiteboard export (.mwb, see wbcore.js). Browsers report no MIME type for it. */
+export const isBoardFile = (f) => !!f && (/\.mwb$/i.test(f.name || '') || f.type === 'application/x-mwb' || f.mime === 'application/x-mwb');
+const MWB = 'application/x-mwb';
 
 /** Shrink a photo before upload (webp, longest side 1600). Returns a File. */
 export async function shrinkImage(file, max = 1600, q = 0.82) {
@@ -21,12 +24,21 @@ export async function shrinkImage(file, max = 1600, q = 0.82) {
   } catch { return file; }
 }
 
+/** Page 1 of an .mwb as a small JPEG File (+ page count), for the whiteboard card in chat. */
+export async function boardPreview(file) {
+  const wb = await import('./wbcore.js');
+  const { doc } = await wb.fromMwbBytes(new Uint8Array(await file.arrayBuffer()));
+  const c = await wb.renderPage(doc.pages[doc.activePage || 0] || doc.pages[0], { bg: doc.bg, dark: false, scale: 0.4 });
+  const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.82));
+  return { pages: doc.pages.length, file: new File([blob], 'board-preview.jpg', { type: 'image/jpeg' }) };
+}
+
 /** Client-side copy of the server's upload limits, so people get a clear message before uploading. */
 export function checkLimit(file, limits) {
   if (!limits) return null;
   const k = kindOf(file.type || '');
   const max = limits[k];
-  const label = { image: 'Photos', pdf: 'PDFs', audio: 'Audio', video: 'Videos', other: 'Files' }[k];
+  const label = { image: 'Photos', pdf: 'PDFs', audio: 'Audio', video: 'Videos', board: 'Whiteboard files', other: 'Files' }[k];
   if (max === 0) return k === 'video' ? 'Video uploads are off — share a YouTube link instead.' : `${label} can’t be uploaded here`;
   if (max && file.size > max) return `${label} can be up to ${fmtMB(max)} (this one is ${fmtMB(file.size)})`;
   return null;
@@ -41,7 +53,7 @@ export function checkLimit(file, limits) {
  * @param {object} [o.limits]   /api/config storage.limits
  * @param {object} [o.drafts]   object to persist drafts in; [o.draftKey]
  */
-export function pillComposer({ placeholder = 'Message', onSend, upload, voice = !!upload, limits, drafts, draftKey, disabled = false, maxLength = 2000, suggest, accept = 'image/*,application/pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip,audio/*' } = {}) {
+export function pillComposer({ placeholder = 'Message', onSend, upload, voice = !!upload, limits, drafts, draftKey, disabled = false, maxLength = 2000, suggest, accept = 'image/*,application/pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.tsv,.txt,.zip,audio/*,.mwb,application/x-mwb' } = {}) {
   const ta = h('textarea', { rows: 1, placeholder: disabled ? 'Chat is turned off by the host' : placeholder, disabled: !!disabled, 'data-focus': '', enterkeyhint: 'send', maxlength: maxLength, 'aria-label': placeholder });
   if (drafts && draftKey) ta.value = drafts[draftKey] || '';
   let pending = null, busy = false;
@@ -52,7 +64,7 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
   const paintPrev = () => {
     prev.hidden = !pending;
     if (!pending) return prev.replaceChildren();
-    const thumb = pending.kind === 'image' && pending.preview ? h('img', { src: pending.preview, alt: '' }) : h('span', { class: 'i', html: icon(pending.kind === 'voice' ? 'mic' : 'paperclip', { size: 16 }) });
+    const thumb = (pending.kind === 'image' || pending.kind === 'board') && pending.preview ? h('img', { src: pending.preview, alt: '' }) : h('span', { class: 'i', html: icon(pending.kind === 'voice' ? 'mic' : pending.kind === 'board' ? 'pen' : 'paperclip', { size: 16 }) });
     prev.replaceChildren(thumb, h('span', { class: 'grow ellipsis' }, pending.uploading ? `Uploading ${pending.name}…` : pending.name),
       h('button', { class: 'wa-ib sm', type: 'button', 'aria-label': 'Remove attachment', html: icon('x', { size: 16 }), onclick: () => { pending = null; paintPrev(); paintAct(); } }));
   };
@@ -83,7 +95,7 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
     if (pending && pending.uploading) return toast('Still uploading…', { icon: 'upload' });
     const text = ta.value.trim();
     if (!text && !pending) return;
-    const att = pending ? { kind: pending.kind, name: pending.name, mime: pending.mime, size: pending.size, url: pending.url } : null;
+    const att = pending ? { kind: pending.kind, name: pending.name, mime: pending.mime, size: pending.size, url: pending.url, ...(pending.kind === 'board' ? { preview: /^\/files\//.test(pending.preview || '') ? pending.preview : undefined, pages: pending.pages || 1 } : {}) } : null;
     busy = true;
     try {
       const r = await onSend(text, att);
@@ -97,16 +109,24 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
   const file = h('input', { type: 'file', hidden: true, accept });
   async function attachFile(f, purpose = 'chat') {
     if (!upload) return;
-    const prepared = f.type.startsWith('image/') ? await shrinkImage(f) : f;
+    const board = isBoardFile(f);
+    const prepared = board ? new File([f], /\.mwb$/i.test(f.name) ? f.name : (f.name || 'Whiteboard') + '.mwb', { type: MWB }) : f.type.startsWith('image/') ? await shrinkImage(f) : f;
     const why = checkLimit(prepared, limits);
     if (why) { toast(why, { icon: 'alert', group: 'admin', ms: 5000 }); return; }
-    const kind = prepared.type.startsWith('image/') ? 'image' : purpose === 'voice' ? 'voice' : 'file';
-    pending = { kind, name: f.name || 'file', mime: prepared.type || 'application/octet-stream', size: prepared.size, uploading: true, preview: kind === 'image' ? URL.createObjectURL(prepared) : null };
+    const kind = board ? 'board' : prepared.type.startsWith('image/') ? 'image' : purpose === 'voice' ? 'voice' : 'file';
+    pending = { kind, name: prepared.name || 'file', mime: prepared.type || 'application/octet-stream', size: prepared.size, uploading: true, preview: kind === 'image' ? URL.createObjectURL(prepared) : null };
     const mine = pending; paintPrev(); paintAct();
     try {
+      // Whiteboards: read the board, render page 1 as a small preview and upload it next to the file.
+      const thumb = board ? boardPreview(prepared).catch(() => null) : null;
       const r = await upload(prepared, purpose);
       if (pending !== mine) return;
-      Object.assign(pending, { url: r.url, mime: r.mime || pending.mime, size: r.size || pending.size, uploading: false });
+      Object.assign(pending, { url: r.url, mime: r.mime || pending.mime, size: r.size || pending.size, uploading: !!board });
+      if (board) {
+        const t = await thumb;
+        if (t && pending === mine) { pending.pages = t.pages; try { const pr = await upload(t.file, purpose); if (pending === mine && pr && pr.url) pending.preview = pr.url; } catch { /* the card works without a preview */ } }
+        if (pending === mine) pending.uploading = false;
+      }
     } catch (e) { if (pending === mine) pending = null; toast(e.message || 'Upload failed', { icon: 'alert', group: 'admin', ms: 5000 }); }
     paintPrev(); paintAct();
   }

@@ -130,8 +130,11 @@ async function viewableMaterial(id, userId) {
 }
 function analysisOut(r) {
   if (!r) return null;
-  const result = typeof r.result === 'string' ? JSON.parse(r.result) : r.result;
-  return { ...result, sourceKey: r.source_key, model: r.model, createdAt: r.created_at };
+  let result = {}; try { result = (typeof r.result === 'string' ? JSON.parse(r.result) : r.result) || {}; } catch { /* damaged row */ }
+  const { cleanText, cleanList } = require('../../lib/safe-text');
+  const out = { ...result, summary: cleanText(result.summary, { max: 2000 }), keyPoints: cleanList(result.keyPoints, { max: 300, limit: 8 }) };
+  if (result.dataCommentary !== undefined) out.dataCommentary = cleanText(result.dataCommentary, { max: 2000 });
+  return { ...out, sourceKey: r.source_key, model: r.model, createdAt: r.created_at };
 }
 async function getAnalysis(materialId) {
   return analysisOut(await one(`SELECT * FROM material_analyses WHERE material_id=$1`, [materialId]));

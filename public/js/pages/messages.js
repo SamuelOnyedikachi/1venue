@@ -9,6 +9,7 @@ import { state, navigate } from '../app.js';
 import { barVisible } from '../commands.js';
 import { bus, setActiveConversation, refreshUnread, typing as sendTyping, pushState, enablePush, disablePush } from '../messages/live.js';
 import { toneMuted, setToneMuted, playMessageTone } from '../messages/tones.js';
+import { safeText, safeList, put, add } from '../safe-text.js';
 
 const I = (n, s = 18) => h('span', { class: 'i', html: icon(n, { size: s }) });
 const ib = (ic, label, run, cls = '') => h('button', { class: `icon-btn ${cls}`, type: 'button', 'aria-label': label, 'data-tip': label, onclick: run, html: icon(ic, { size: 20 }) });
@@ -23,6 +24,18 @@ const TYPES = [['all', 'All chats'], ['dm', 'Direct'], ['groups', 'Groups'], ['m
 const LABEL_COLORS = ['#7c5cff', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899', '#64748b'];
 const DOC_EXT = /\.(pdf|docx?|pptx?|csv|tsv|xlsx?)$/i;
 const SHEET_EXT = /\.(csv|tsv|xlsx?)$/i;
+const isBoardFile = (a) => !!a && (a.kind === 'board' || /\.mwb$/i.test(a.name || '') || a.mime === 'application/x-mwb');
+const openBoardFile = (a) => navigate(`/whiteboard?open=${encodeURIComponent(a.url)}&name=${encodeURIComponent(a.name || 'board.mwb')}`);
+/** A shared 1venue whiteboard (.mwb): page-1 preview when the sender's browser made one, opens in the whiteboard. */
+function boardCard(a) {
+  const title = String(a.name || 'Whiteboard').replace(/\.mwb$/i, '');
+  const pages = Math.max(1, Number(a.pages) || 1);
+  return h('button', { class: 'msg-board', type: 'button', 'aria-label': `Open whiteboard ${title}`, onclick: () => openBoardFile(a) },
+    a.preview ? h('img', { class: 'msg-board-img', src: a.preview, alt: '', loading: 'lazy' }) : h('span', { class: 'msg-board-img empty', html: icon('board', { size: 34 }) }),
+    h('span', { class: 'msg-board-meta' }, h('span', { class: 'msg-board-ic', html: icon('board', { size: 16 }) }),
+      h('span', { class: 'msg-board-txt' }, h('b', { class: 'ellipsis' }, title), h('small', null, `Whiteboard · ${pages} page${pages === 1 ? '' : 's'}`)),
+      h('span', { class: 'msg-board-open' }, 'Open')));
+}
 const dur = (sec) => (sec == null ? '—' : sec < 60 ? '<1m' : sec < 3600 ? `${Math.round(sec / 60)}m` : sec < 86400 ? `${Math.round(sec / 360) / 10}h` : `${Math.round(sec / 8640) / 10}d`);
 /** The Messages mark: a theme-accent chat bubble with a small send badge (adapted from the brand reference). */
 export function brandMark(size = 40) {
@@ -53,12 +66,12 @@ export async function mount(view, params) {
   const threadPane = h('section', { class: 'msg-pane-thread', 'aria-label': 'Conversation' });
   const sidePane = h('aside', { class: 'msg-pane-side', 'aria-label': 'Contact details', hidden: true });
   const root = h('div', { class: 'page-messages' }, listPane, threadPane, sidePane);
-  view.append(root);
+  add(view, root);
 
   // ------------------------------------------------------------- list
   function paintChips() {
     const counts = { unread: S.list.filter((c) => c.unread).length };
-    chips.replaceChildren(...TABS.map(([k, l, ic]) => h('button', { class: `msg-tab${S.tab === k ? ' on' : ''}`, type: 'button', role: 'tab', 'aria-selected': String(S.tab === k), onclick: () => { S.tab = k; loadList(); } },
+    put(chips, ...TABS.map(([k, l, ic]) => h('button', { class: `msg-tab${S.tab === k ? ' on' : ''}`, type: 'button', role: 'tab', 'aria-selected': String(S.tab === k), onclick: () => { S.tab = k; loadList(); } },
       h('span', { class: 'i', html: icon(ic, { size: 15 }) }), l, k === 'unread' && S.tab !== 'unread' && counts.unread ? h('em', null, String(counts.unread)) : null)));
   }
   async function loadList() {
@@ -93,7 +106,7 @@ export async function mount(view, params) {
         h('span', { class: 'msg-hit-top' }, h('b', { class: 'ellipsis' }, r.title), h('time', null, timeAgo(r.message.createdAt))),
         h('span', { class: 'msg-hit-txt', html: hilite(r.message.text || (r.message.attachment ? `📎 ${r.message.attachment.name || r.message.attachment.kind}` : ''), S.q) })));
     }
-    listEl.replaceChildren(...out);
+    put(listEl, ...out);
   }
 
   // ------------------------------------------------------------- thread
@@ -102,7 +115,7 @@ export async function mount(view, params) {
   let composer = null;
   function empty() {
     sidePane.hidden = true; root.classList.remove('has-side');
-    threadPane.replaceChildren(h('div', { class: 'msg-empty' }, h('div', { class: 'msg-empty-art' }, brandMark(96)), h('h2', null, 'Your messages'),
+    put(threadPane, h('div', { class: 'msg-empty' }, h('div', { class: 'msg-empty-art' }, brandMark(96)), h('h2', null, 'Your messages'),
       h('p', { class: 'muted' }, 'Pick a chat, or start one with anyone on 1venue by username or email.'),
       h('button', { class: 'btn primary', type: 'button', onclick: newChat }, I('plus', 16), 'Start a chat')));
   }
@@ -145,7 +158,7 @@ export async function mount(view, params) {
     paintThread(); paintList(); markRead(); paintSide();
     const jump = Number(new URLSearchParams(location.search).get('m')); if (jump) jumpTo(jump);
     const callId = new URLSearchParams(location.search).get('call');
-    if (callId) api('/api/messages/calls/current').then((r) => { const c2 = r.calls.find((x) => x.id === callId && x.state === 'ringing' && x.myState === 'invited'); if (c2) import('../messages/call.js').then((cm) => cm.incoming({ ...c2, title: S.conv.title })); }).catch(() => {});
+    if (callId) api('/api/messages/calls/current').then((r) => { const c2 = r.calls.find((x) => x.id === callId && x.state === 'ringing' && x.myState === 'invited'); if (c2) import('../messages/call.js').then((cm) => { const call = { ...c2, title: S.conv.title }; cm.incoming(call); if (new URLSearchParams(location.search).get('answer') === '1') cm.answerCall(call); }); }).catch(() => {});
   }
   function presenceText(c) {
     if (c.type !== 'dm') return c.type === 'meeting' ? (c.live ? 'Meeting chat · live' : 'Meeting chat · ended') : `${c.memberCount} members`;
@@ -170,7 +183,7 @@ export async function mount(view, params) {
       ib('info', 'Contact details', () => toggleSide(), 'msg-info-btn'),
       ib('moreV', 'More', (e) => moreMenu(e.currentTarget)));
     const foot = c.canSend ? h('div', { class: 'msg-foot' }, replyBar, composerEl()) : h('div', { class: 'msg-readonly' }, I(c.readOnly ? 'lock' : 'info', 16), h('span', null, c.reason || 'You can’t send messages here'));
-    threadPane.replaceChildren(head, pinBar, msgsEl, typingEl, foot);
+    put(threadPane, head, pinBar, msgsEl, typingEl, foot);
     paintPins(); paintReply();
     paintMsgs(true);
   }
@@ -187,7 +200,7 @@ export async function mount(view, params) {
         } });
       // Extra composer tools: quick replies and send-later, tucked into the pill.
       const pill = composer.el.querySelector('.wa-pill');
-      if (pill) pill.append(h('button', { class: 'wa-ib msg-quick-btn', type: 'button', 'aria-label': 'Quick replies', 'data-tip': 'Quick replies (type /)', html: icon('quick', { size: 19 }), onclick: (e) => quickMenu(e.currentTarget) }),
+      if (pill) add(pill, h('button', { class: 'wa-ib msg-quick-btn', type: 'button', 'aria-label': 'Quick replies', 'data-tip': 'Quick replies (type /)', html: icon('quick', { size: 19 }), onclick: (e) => quickMenu(e.currentTarget) }),
         h('button', { class: 'wa-ib', type: 'button', 'aria-label': 'Send later', 'data-tip': 'Send later', html: icon('clock', { size: 19 }), onclick: () => sendLaterSheet() }));
       let last = 0;
       composer.ta.addEventListener('input', () => { if (Date.now() - last > 2500 && composer.ta.value) { last = Date.now(); sendTyping(S.conv.id); } });
@@ -200,6 +213,7 @@ export async function mount(view, params) {
     paintMsgs(scroll);
   }
   const transcripts = new Map();
+  const analyses = new Map(); // message id -> one-line summary, shown under the file once analysed
   function attEl(a, m) {
     if (!a) return null;
     if (a.kind === 'passage') return passageCard(a, { compact: true });
@@ -209,15 +223,15 @@ export async function mount(view, params) {
     if (audio) {
       const out = h('div', { class: 'msg-voice-wrap' }, h('audio', { class: 'msg-voice', controls: true, src, preload: 'metadata' }));
       const tx = transcripts.get(m && m.id);
-      if (tx) out.append(h('div', { class: 'msg-transcript' }, I('fileText', 14), h('span', null, tx)));
-      else if (m && a.url) out.append(h('button', { class: 'msg-act-chip', type: 'button', onclick: (e) => transcribe(m, e.currentTarget) }, I('captions', 14), 'Transcribe'));
+      if (tx) add(out, h('div', { class: 'msg-transcript' }, I('fileText', 14), h('span', null, tx)));
       return out;
     }
+    if (isBoardFile(a)) return boardCard(a);
     const card = h('a', { class: 'msg-file', href: src, target: '_blank', rel: 'noopener', download: a.name || 'file', html: icon(SHEET_EXT.test(a.name || '') ? 'grid' : 'file', { size: 18 }) + `<span>${esc(a.name || 'file')}</span>` });
-    if (!m || !a.url || !DOC_EXT.test(a.name || '')) return card;
-    return h('div', { class: 'msg-file-wrap' }, card, h('div', { class: 'msg-file-acts' },
-      h('button', { class: 'msg-act-chip', type: 'button', onclick: () => analyseFile(m) }, I('sparkles', 14), 'Analyse'),
-      SHEET_EXT.test(a.name || '') ? h('button', { class: 'msg-act-chip', type: 'button', onclick: () => chartFile(m) }, I('chart', 14), 'Chart') : null));
+    const done = m && analyses.get(m.id);
+    if (!done) return card;
+    // An analysis that was run from the ⋯ menu stays visible under the file (tap to open it again).
+    return h('div', { class: 'msg-file-wrap' }, card, h('button', { class: 'msg-transcript msg-ai-inline', type: 'button', onclick: () => analyseFile(m) }, I('sparkles', 14), h('span', null, done)));
   }
   function cardEl(p) {
     if (!p) return null;
@@ -281,7 +295,7 @@ export async function mount(view, params) {
       if (!prev || dayKey(prev.createdAt) !== dayKey(m.createdAt)) { out.push(h('div', { class: 'msg-day' }, h('span', null, dayLabel(m.createdAt)))); prev = null; }
       out.push(msgEl(m, prev)); prev = m;
     }
-    msgsEl.replaceChildren(...out);
+    put(msgsEl, ...out);
     if (stick) msgsEl.scrollTop = msgsEl.scrollHeight;
   }
   async function older() {
@@ -312,20 +326,22 @@ export async function mount(view, params) {
     const canEdit = m.mine && c.editable && m.kind === 'text' && m.text && Date.now() - new Date(m.createdAt) < EDIT_MS;
     const pinned = S.pins.some((p) => p.id === m.id);
     const a = m.attachment;
-    const mm = menu(anchor, [
+    const quick = c.canSend ? h('div', { class: 'msg-quick' }, QUICK.slice(0, 6).map((e) => h('button', { type: 'button', 'aria-label': `React ${e}`, onclick: () => { mm.remove(); react(m, e); } }, e))) : null;
+    let mm = null;
+    mm = menu(anchor, [
       c.canSend ? { label: 'Reply', icon: 'reply', run: () => startReply(m) } : null,
       c.canSend ? { label: 'React', icon: 'smile', run: () => emojiPopover(anchor, (e) => react(m, e)) } : null,
       c.canSend && c.editable && m.kind === 'text' ? { label: pinned ? 'Unpin' : 'Pin', icon: 'pin', run: () => togglePin(m, pinned) } : null,
       m.kind === 'text' ? { label: 'Forward', icon: 'forward', run: () => forwardSheet(m) } : null,
-      a && a.url && DOC_EXT.test(a.name || '') ? { label: 'Analyse file', icon: 'sparkles', run: () => analyseFile(m) } : null,
-      a && a.url && SHEET_EXT.test(a.name || '') ? { label: 'Make a chart', icon: 'chart', run: () => chartFile(m) } : null,
-      a && a.url && (a.kind === 'voice' || /^audio\//.test(a.mime || '')) && !transcripts.has(m.id) ? { label: 'Transcribe', icon: 'captions', run: () => transcribe(m) } : null,
+      a && a.url && DOC_EXT.test(a.name || '') ? { label: analyses.has(m.id) ? 'Show analysis' : 'Analyse with AI', icon: 'sparkles', group: 'ai', run: () => analyseFile(m) } : null,
+      a && a.url && SHEET_EXT.test(a.name || '') ? { label: 'Make a chart', icon: 'chart', group: 'ai', run: () => chartFile(m) } : null,
+      a && a.url && isBoardFile(a) ? { label: 'Open in whiteboard', icon: 'pen', group: 'content', run: () => openBoardFile(a) } : null,
+      a && a.url && (a.kind === 'voice' || /^audio\//.test(a.mime || '')) && !transcripts.has(m.id) ? { label: 'Transcribe', icon: 'captions', group: 'ai', run: () => transcribe(m) } : null,
       m.text ? { label: 'Copy text', icon: 'copy', run: () => copy(m.text) } : null,
       canEdit && c.canSend ? { label: 'Edit', icon: 'pen', run: () => { S.editing = m.id; composer.setText(m.text); composer.focus(); toast('Editing — press Enter to save', { icon: 'pen' }); } } : null,
       m.mine && c.editable ? { label: 'Delete', icon: 'trash', group: 'admin', run: async () => { if (await confirmDlg('Delete this message for everyone?', { ok: 'Delete', danger: true })) api(`/api/messages/conversations/${c.id}/messages/${m.id}`, { method: 'DELETE' }).then(() => upsert({ id: m.id, deleted: true, text: '', attachment: null, payload: null })).catch(toastErr); } } : null,
       !m.mine && m.fromUserId ? { label: 'Report', icon: 'alert', group: 'admin', run: () => report(m) } : null,
-    ]);
-    if (c.canSend) mm.prepend(h('div', { class: 'msg-quick' }, QUICK.slice(0, 6).map((e) => h('button', { type: 'button', 'aria-label': `React ${e}`, onclick: () => { mm.remove(); react(m, e); } }, e))));
+    ], { header: quick });
   }
   async function report(m) {
     const reason = await promptDlg('Report this message', { placeholder: 'What’s wrong? (optional)', ok: 'Report', multiline: true });
@@ -361,15 +377,15 @@ export async function mount(view, params) {
       } catch (e) { go.disabled = false; if (e.data && e.data.upgrade) toast(e.message, { icon: 'zap', action: { label: 'Upgrade', run: () => navigate('/upgrade') } }); else toastErr(e); }
     } }, 'Schedule and post');
     const f = (l, el) => h('label', { class: 'field' }, h('span', { class: 'lbl' }, l), el);
-    s.body.append(h('div', { class: 'stack' }, f('Title', title), f('Starts', when), f('Length', dur), f('Repeat', rep),
+    add(s.body, h('div', { class: 'stack' }, f('Title', title), f('Starts', when), f('Length', dur), f('Repeat', rep),
       h('p', { class: 'tiny muted' }, 'Members get the invite at the email on their account. Repeating meetings need Premium or Organisation.'), go));
   }
   async function venueSheet() {
     const s = sheet({ title: 'Share a venue', icon: 'door' });
     let vs = [];
     try { vs = (await api('/api/venues')).venues.filter((v) => !v.archived); } catch (e) { toastErr(e); }
-    if (!vs.length) { s.body.append(h('p', { class: 'muted' }, 'You don’t have a venue yet. '), h('a', { class: 'btn', href: '/venues', 'data-link': '', onclick: () => s.close() }, 'Create a venue')); return; }
-    s.body.append(h('div', { class: 'msg-pick' }, vs.map((v) => h('button', { class: 'msg-pick-row', type: 'button', onclick: async () => {
+    if (!vs.length) { add(s.body, h('p', { class: 'muted' }, 'You don’t have a venue yet. '), h('a', { class: 'btn', href: '/venues', 'data-link': '', onclick: () => s.close() }, 'Create a venue')); return; }
+    add(s.body, h('div', { class: 'msg-pick' }, vs.map((v) => h('button', { class: 'msg-pick-row', type: 'button', onclick: async () => {
       try { const r = await api(`/api/messages/conversations/${S.conv.id}/cards`, { method: 'POST', body: { type: 'venue', venueId: v.id } }); s.close(); upsert(r.message, true); } catch (e) { toastErr(e); }
     } }, I('door', 18), h('span', { class: 'grow ellipsis' }, v.name), h('span', { class: 'tiny muted' }, `/v/${v.slug}`)))));
   }
@@ -420,12 +436,12 @@ export async function mount(view, params) {
   async function membersSheet() {
     const c = S.conv; const s = sheet({ title: `${c.title} · members`, icon: 'users' });
     const admin = c.role === 'admin' || c.role === 'owner';
-    s.body.append(h('div', { class: 'msg-pick' }, (c.members || []).map((u) => h('div', { class: 'msg-pick-row' }, avatar(u.name, u.avatarUrl, 'sm'), h('span', { class: 'grow ellipsis' }, u.name), u.role !== 'member' ? h('span', { class: 'tiny muted' }, u.role) : null,
+    add(s.body, h('div', { class: 'msg-pick' }, (c.members || []).map((u) => h('div', { class: 'msg-pick-row' }, avatar(u.name, u.avatarUrl, 'sm'), h('span', { class: 'grow ellipsis' }, u.name), u.role !== 'member' ? h('span', { class: 'tiny muted' }, u.role) : null,
       admin && c.editable && u.id !== state.user.id && !c.subtype?.startsWith('org') ? h('button', { class: 'btn sm ghost', type: 'button', onclick: async () => { try { await api(`/api/messages/conversations/${c.id}/members/${u.id}`, { method: 'DELETE' }); s.close(); open(c.id); } catch (e) { toastErr(e); } } }, 'Remove') : null))));
     if (admin && c.editable && !c.subtype?.startsWith('org')) {
       const picked = new Set();
       const ppl = await peopleICanAdd(new Set((c.members || []).map((u) => u.id)));
-      s.body.append(h('h4', { class: 'msg-sub' }, 'Add people'), pickList(ppl, picked), ppl.length ? h('button', { class: 'btn primary', type: 'button', onclick: async () => {
+      add(s.body, h('h4', { class: 'msg-sub' }, 'Add people'), pickList(ppl, picked), ppl.length ? h('button', { class: 'btn primary', type: 'button', onclick: async () => {
         try { for (const id of picked) await api(`/api/messages/conversations/${c.id}/members`, { method: 'POST', body: { userId: id } }); s.close(); open(c.id); } catch (e) { if (e.data && e.data.upgrade) toast(e.message, { icon: 'zap', action: { label: 'Upgrade', run: () => navigate('/upgrade') } }); else toastErr(e); }
       } }, 'Add') : null);
     }
@@ -434,7 +450,7 @@ export async function mount(view, params) {
     const s = sheet({ title: 'New group', icon: 'users' });
     const title = h('input', { class: 'input', placeholder: 'Group name', maxlength: 80 });
     const picked = new Set();
-    s.body.append(h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Name'), title), h('h4', { class: 'msg-sub' }, 'Members'), pickList(await peopleICanAdd(new Set()), picked),
+    add(s.body, h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Name'), title), h('h4', { class: 'msg-sub' }, 'Members'), pickList(await peopleICanAdd(new Set()), picked),
       h('button', { class: 'btn primary', type: 'button', onclick: async () => {
         try { const r = await api('/api/messages/groups', { method: 'POST', body: { title: title.value, memberIds: [...picked] } }); s.close(); navigate(`/messages/${r.conversation.id}`); }
         catch (e) { if (e.data && e.data.upgrade) toast(e.message, { icon: 'zap', action: { label: 'Upgrade', run: () => navigate('/upgrade') } }); else toastErr(e); }
@@ -448,7 +464,7 @@ export async function mount(view, params) {
       [['everyone', 'Anyone on 1venue (by username or email)'], ['contacts', 'Only people I share a meeting, group or organisation with, or follow back'], ['nobody', 'Nobody new']].map(([v, l]) => h('option', { value: v, selected: cfg.dmPolicy === v }, l)));
     const sw = (on, run) => { const i = h('input', { type: 'checkbox', checked: !!on, onchange: () => run(i.checked) }); return h('label', { class: 'switch' }, i, h('span')); };
     const pushRow = h('div', { class: 'msg-set-row' }, h('div', { class: 'grow' }, h('b', null, 'Notifications on this device'), h('p', { class: 'tiny muted' }, 'Checking…')));
-    s.body.append(h('div', { class: 'stack' },
+    add(s.body, h('div', { class: 'stack' },
       h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Who can start a new chat with me'), pol),
       h('div', { class: 'msg-set-row' }, h('div', { class: 'grow' }, h('b', null, 'Hide when I’m online'), h('p', { class: 'tiny muted' }, 'You won’t see others’ status either.')), sw(cfg.hidePresence, (v) => save({ hidePresence: v }))),
       pushRow,
@@ -463,15 +479,15 @@ export async function mount(view, params) {
       // No server push keys: the browser still shows notifications while 1venue is open in a tab.
       const perm = Notification.permission;
       p.textContent = perm === 'granted' ? 'On while 1venue is open in a tab.' : perm === 'denied' ? 'Blocked in browser settings.' : 'Get alerts for new messages and calls.';
-      if (perm === 'default') pushRow.append(h('button', { class: 'btn sm primary', type: 'button', onclick: async (e) => { const n = await import('../messages/notify.js'); const r = await n.askNow(); p.textContent = r === 'granted' ? 'On while 1venue is open in a tab.' : 'Not allowed'; e.target.remove(); } }, 'Turn on'));
+      if (perm === 'default') add(pushRow, h('button', { class: 'btn sm primary', type: 'button', onclick: async (e) => { const n = await import('../messages/notify.js'); const r = await n.askNow(); p.textContent = r === 'granted' ? 'On while 1venue is open in a tab.' : 'Not allowed'; e.target.remove(); } }, 'Turn on'));
     }
-    else { p.textContent = st.on ? 'On for messages and calls.' : st.permission === 'denied' ? 'Blocked in browser settings.' : 'Get alerts when you’re away.'; pushRow.append(sw(st.on, async (v) => { try { v ? await enablePush() : await disablePush(); p.textContent = v ? 'On for messages and calls.' : 'Off'; } catch (e) { toastErr(e); } })); }
+    else { p.textContent = st.on ? 'On for messages and calls.' : st.permission === 'denied' ? 'Blocked in browser settings.' : 'Get alerts when you’re away.'; add(pushRow, sw(st.on, async (v) => { try { v ? await enablePush() : await disablePush(); p.textContent = v ? 'On for messages and calls.' : 'Off'; } catch (e) { toastErr(e); } })); }
   }
   function blockedList() {
     const box = h('div', { class: 'msg-pick' }, h('p', { class: 'tiny muted' }, 'Loading…'));
     api('/api/messages/blocks').then((r) => {
-      if (!r.blocked.length) return box.replaceChildren(h('p', { class: 'tiny muted' }, 'Nobody.'));
-      box.replaceChildren(...r.blocked.map((u) => h('div', { class: 'msg-pick-row' }, avatar(u.name, u.avatarUrl, 'sm'), h('span', { class: 'grow ellipsis' }, u.name),
+      if (!r.blocked.length) return put(box, h('p', { class: 'tiny muted' }, 'Nobody.'));
+      put(box, ...r.blocked.map((u) => h('div', { class: 'msg-pick-row' }, avatar(u.name, u.avatarUrl, 'sm'), h('span', { class: 'grow ellipsis' }, u.name),
         h('button', { class: 'btn sm ghost', type: 'button', onclick: async (e) => { await api(`/api/messages/blocks/${u.id}`, { method: 'DELETE' }).catch(toastErr); e.target.closest('.msg-pick-row').remove(); loadList(); } }, 'Unblock'))));
     }).catch(() => {});
     return box;
@@ -481,8 +497,8 @@ export async function mount(view, params) {
   const replyBar = h('div', { class: 'msg-replybar', hidden: true });
   function paintReply() {
     const r = S.replyTo; replyBar.hidden = !r;
-    if (!r) return replyBar.replaceChildren();
-    replyBar.replaceChildren(h('div', { class: 'msg-quote in-bar' }, h('b', null, r.mine ? 'You' : r.fromName), h('span', { class: 'ellipsis' }, r.text || (r.attachment ? `📎 ${r.attachment.name || r.attachment.kind}` : ''))),
+    if (!r) return put(replyBar);
+    put(replyBar, h('div', { class: 'msg-quote in-bar' }, h('b', null, r.mine ? 'You' : r.fromName), h('span', { class: 'ellipsis' }, r.text || (r.attachment ? `📎 ${r.attachment.name || r.attachment.kind}` : ''))),
       h('button', { class: 'icon-btn sm', type: 'button', 'aria-label': 'Cancel reply', html: icon('x', { size: 16 }), onclick: () => { S.replyTo = null; paintReply(); } }));
   }
   function startReply(m) { S.replyTo = m; paintReply(); composer && composer.focus(); }
@@ -506,11 +522,11 @@ export async function mount(view, params) {
   function paintPins() {
     clearInterval(pinTimer);
     const n = S.pins.length; pinBar.hidden = !n;
-    if (!n) return pinBar.replaceChildren();
+    if (!n) return put(pinBar);
     S.pinIdx = S.pinIdx % n;
     const p = S.pins[S.pinIdx];
     const dots = h('span', { class: 'msg-pin-dots', 'aria-hidden': 'true' }, S.pins.slice(0, 6).map((_, i) => h('i', { class: i === S.pinIdx % 6 ? 'on' : '' })));
-    pinBar.replaceChildren(dots,
+    put(pinBar, dots,
       h('button', { class: 'msg-pin-main', type: 'button', 'aria-label': `Pinned message ${S.pinIdx + 1} of ${n}. Show it`, onclick: () => { jumpTo(p.id); S.pinIdx = (S.pinIdx + 1) % n; paintPins(); } },
         I('pin', 15), h('span', { class: 'msg-pin-txt' }, h('b', null, n > 1 ? `Pinned ${S.pinIdx + 1} of ${n}` : 'Pinned message'), h('span', { class: 'ellipsis' }, p.text || (p.attachmentKind ? `📎 ${p.attachmentKind}` : '')))),
       n > 1 ? h('button', { class: 'icon-btn sm', type: 'button', 'aria-label': 'All pinned messages', 'data-tip': 'All pins', html: icon('listChecks', { size: 16 }), onclick: allPins }) : null,
@@ -519,7 +535,7 @@ export async function mount(view, params) {
   }
   function allPins() {
     const s = sheet({ title: `Pinned messages (${S.pins.length})`, icon: 'pin' });
-    s.body.append(h('div', { class: 'msg-pick' }, S.pins.map((p) => h('div', { class: 'msg-pick-row' }, I('pin', 16),
+    add(s.body, h('div', { class: 'msg-pick' }, S.pins.map((p) => h('div', { class: 'msg-pick-row' }, I('pin', 16),
       h('button', { class: 'grow msg-pin-row', type: 'button', onclick: () => { s.close(); jumpTo(p.id); } }, h('b', { class: 'tiny' }, p.fromName), h('span', { class: 'ellipsis' }, p.text || `📎 ${p.attachmentKind || 'file'}`)),
       S.conv.canSend ? h('button', { class: 'btn sm ghost', type: 'button', onclick: async (e) => { await togglePin(p, true); e.target.closest('.msg-pick-row').remove(); } }, 'Unpin') : null))));
   }
@@ -529,23 +545,26 @@ export async function mount(view, params) {
 
   // ------------------------------------------------------------- AI on files and voice notes
   async function transcribe(m, btn) {
+    if (!btn) toast('Transcribing the voice note…', { icon: 'captions' });
     if (btn) { btn.disabled = true; btn.lastChild.textContent = 'Transcribing…'; }
-    try { const r = await api(`/api/messages/conversations/${S.conv.id}/messages/${m.id}/transcribe`, { method: 'POST' }); transcripts.set(m.id, r.text); paintMsgs(false); if (r.cost) toast(`Transcribed · ${r.cost} AI point${r.cost === 1 ? '' : 's'}`, { icon: 'captions' }); }
+    try { const r = await api(`/api/messages/conversations/${S.conv.id}/messages/${m.id}/transcribe`, { method: 'POST' }); transcripts.set(m.id, safeText(r.text) || '(No speech detected)'); paintMsgs(false); if (r.cost) toast(`Transcribed · ${r.cost} AI point${r.cost === 1 ? '' : 's'}`, { icon: 'captions' }); }
     catch (e) { if (btn) { btn.disabled = false; btn.lastChild.textContent = 'Transcribe'; } upgradeOrErr(e); }
   }
   const upgradeOrErr = (e) => (e.data && e.data.upgrade ? toast(e.message, { icon: 'zap', action: { label: 'Upgrade', run: () => navigate('/upgrade') } }) : toastErr(e));
   async function analyseFile(m, force = false) {
     const s = sheet({ title: m.attachment.name || 'File', icon: 'sparkles', wide: true });
     const box = h('div', { class: 'msg-ai' }, h('div', { class: 'msg-ai-loading' }, h('span', { class: 'spinner' }), 'Reading the file…'));
-    s.body.append(box);
+    add(s.body, box);
     try {
       const { analysis: a } = await api(`/api/messages/conversations/${S.conv.id}/messages/${m.id}/analyse`, { method: 'POST', body: { force } });
-      box.replaceChildren(h('p', { class: 'msg-ai-sum' }, a.summary),
-        a.keyPoints && a.keyPoints.length ? h('ul', { class: 'msg-ai-pts' }, a.keyPoints.map((k) => h('li', null, k))) : null,
-        a.dataCommentary ? h('p', { class: 'small muted' }, a.dataCommentary) : null,
+      const sum = safeText(a.summary), pts = safeList(a.keyPoints), note = safeText(a.dataCommentary);
+      if (sum && analyses.get(m.id) !== sum) { analyses.set(m.id, sum); paintMsgs(false); }
+      put(box, sum ? h('p', { class: 'msg-ai-sum' }, sum) : h('p', { class: 'muted' }, 'No summary came back for this file.'),
+        pts.length ? h('ul', { class: 'msg-ai-pts' }, pts.map((k) => h('li', null, k))) : null,
+        note ? h('p', { class: 'small muted' }, note) : null,
         h('div', { class: 'row gap msg-ai-foot' }, h('span', { class: 'tiny muted grow' }, a.cached ? 'Saved analysis · no points used' : `${a.cost || 0} AI point${a.cost === 1 ? '' : 's'}${a.mock ? ' · preview mode' : ''}`),
           a.chartable ? h('button', { class: 'btn sm', type: 'button', onclick: () => { s.close(); chartFile(m); } }, I('chart', 14), 'Chart it') : null,
-          h('button', { class: 'btn sm primary', type: 'button', onclick: () => { s.close(); S.replyTo = m; paintReply(); composer && composer.setText(`Summary of ${m.attachment.name}: ${a.summary}`); composer && composer.focus(); } }, 'Share summary')));
+          h('button', { class: 'btn sm primary', type: 'button', onclick: () => { s.close(); S.replyTo = m; paintReply(); composer && composer.setText(`Summary of ${safeText(m.attachment.name) || 'the file'}: ${sum}`); composer && composer.focus(); } }, 'Share summary')));
     } catch (e) { s.close(); upgradeOrErr(e); }
   }
   async function chartFile(m) {
@@ -555,12 +574,13 @@ export async function mount(view, params) {
   async function summarise() {
     const s = sheet({ title: `Summary · ${S.conv.title}`, icon: 'sparkles' });
     const box = h('div', { class: 'msg-ai' }, h('div', { class: 'msg-ai-loading' }, h('span', { class: 'spinner' }), 'Catching up on the chat…'));
-    s.body.append(box);
+    add(s.body, box);
     try {
       const r = await api(`/api/messages/conversations/${S.conv.id}/summary`, { method: 'POST' });
-      box.replaceChildren(h('p', { class: 'msg-ai-sum' }, r.summary),
-        r.keyPoints && r.keyPoints.length ? h('div', null, h('h4', { class: 'msg-sub' }, 'Key points'), h('ul', { class: 'msg-ai-pts' }, r.keyPoints.map((k) => h('li', null, k)))) : null,
-        r.actionItems && r.actionItems.length ? h('div', null, h('h4', { class: 'msg-sub' }, 'Action items'), h('ul', { class: 'msg-ai-pts todo' }, r.actionItems.map((k) => h('li', null, k)))) : null,
+      const kp = safeList(r.keyPoints), ai = safeList(r.actionItems);
+      put(box, h('p', { class: 'msg-ai-sum' }, safeText(r.summary) || 'Nothing to summarise yet.'),
+        kp.length ? h('div', null, h('h4', { class: 'msg-sub' }, 'Key points'), h('ul', { class: 'msg-ai-pts' }, kp.map((k) => h('li', null, k)))) : null,
+        ai.length ? h('div', null, h('h4', { class: 'msg-sub' }, 'Action items'), h('ul', { class: 'msg-ai-pts todo' }, ai.map((k) => h('li', null, k)))) : null,
         h('p', { class: 'tiny muted' }, `Last ${r.count} messages · ${r.cached ? 'no new points used' : `${r.cost || 0} AI point${r.cost === 1 ? '' : 's'}`}${r.mock ? ' · preview mode' : ''}`));
     } catch (e) { s.close(); upgradeOrErr(e); }
   }
@@ -575,7 +595,7 @@ export async function mount(view, params) {
     const row = (c) => h('button', { class: 'msg-pick-row', type: 'button', onclick: async () => {
       try { await api(`/api/messages/conversations/${S.conv.id}/messages/${m.id}/forward`, { method: 'POST', body: { conversationId: c.id } }); s.close(); toast(`Forwarded to ${c.title}`, { icon: 'forward', action: { label: 'Open', run: () => navigate(`/messages/${c.id}`) } }); } catch (e) { toastErr(e); }
     } }, c.type === 'dm' ? avatar(c.title, c.avatarUrl, 'sm') : h('span', { class: `av sm msg-av-ic ${c.type}`, html: icon(c.type === 'meeting' ? 'video' : 'users', { size: 16 }) }), h('span', { class: 'grow ellipsis' }, c.title), c.live ? h('span', { class: 'msg-live' }, 'Live') : null);
-    s.body.append(live.length ? h('h4', { class: 'msg-sub' }, 'Live meetings') : null, live.length ? h('div', { class: 'msg-pick' }, live.map(row)) : null,
+    add(s.body, live.length ? h('h4', { class: 'msg-sub' }, 'Live meetings') : null, live.length ? h('div', { class: 'msg-pick' }, live.map(row)) : null,
       h('h4', { class: 'msg-sub' }, 'Chats'), rest.length ? h('div', { class: 'msg-pick' }, rest.map(row)) : h('p', { class: 'muted small' }, 'No other chats yet.'));
   }
   function snoozeMenu(anchor) {
@@ -596,14 +616,14 @@ export async function mount(view, params) {
     const known = [...new Map(S.list.flatMap((c) => c.labels || []).map((l) => [l.name.toLowerCase(), l])).values()];
     const cur = h('div', { class: 'msg-label-edit' });
     const save = () => patch({ labels }).then(() => { S.conv.labels = labels; paintCur(); paintSide(); });
-    const paintCur = () => cur.replaceChildren(...(labels.length ? labels.map((l) => h('span', { class: 'msg-label lg', style: { '--lc': l.color } }, l.name, h('button', { type: 'button', 'aria-label': `Remove ${l.name}`, html: icon('x', { size: 12 }), onclick: () => { labels = labels.filter((x) => x !== l); save(); } }))) : [h('span', { class: 'tiny muted' }, 'No labels on this chat yet.')]));
+    const paintCur = () => put(cur, ...(labels.length ? labels.map((l) => h('span', { class: 'msg-label lg', style: { '--lc': l.color } }, l.name, h('button', { type: 'button', 'aria-label': `Remove ${l.name}`, html: icon('x', { size: 12 }), onclick: () => { labels = labels.filter((x) => x !== l); save(); } }))) : [h('span', { class: 'tiny muted' }, 'No labels on this chat yet.')]));
     const name = h('input', { class: 'input', placeholder: 'New label, e.g. Lead or VIP', maxlength: 24 });
     const sw = h('div', { class: 'msg-swatches' }, LABEL_COLORS.map((c) => h('button', { type: 'button', class: `msg-swatch${c === color ? ' on' : ''}`, style: { '--lc': c }, 'aria-label': `Colour ${c}`, onclick: (e) => { color = c; sw.querySelectorAll('.msg-swatch').forEach((b) => b.classList.toggle('on', b === e.currentTarget)); } })));
-    const add = (l) => { if (!l.name || labels.some((x) => x.name.toLowerCase() === l.name.toLowerCase())) return; if (labels.length >= 8) return toast('Up to 8 labels per chat', { icon: 'alert' }); labels = [...labels, l]; save(); };
-    s.body.append(h('div', { class: 'stack' }, cur,
-      known.length ? h('div', null, h('span', { class: 'lbl' }, 'Your labels'), h('div', { class: 'msg-label-edit' }, known.map((l) => h('button', { type: 'button', class: 'msg-label lg pick', style: { '--lc': l.color }, onclick: () => add(l) }, '+ ', l.name)))) : null,
+    const addLabel = (l) => { if (!l.name || labels.some((x) => x.name.toLowerCase() === l.name.toLowerCase())) return; if (labels.length >= 8) return toast('Up to 8 labels per chat', { icon: 'alert' }); labels = [...labels, l]; save(); };
+    add(s.body, h('div', { class: 'stack' }, cur,
+      known.length ? h('div', null, h('span', { class: 'lbl' }, 'Your labels'), h('div', { class: 'msg-label-edit' }, known.map((l) => h('button', { type: 'button', class: 'msg-label lg pick', style: { '--lc': l.color }, onclick: () => addLabel(l) }, '+ ', l.name)))) : null,
       h('div', { class: 'field' }, h('span', { class: 'lbl' }, 'New label'), name, sw),
-      h('button', { class: 'btn primary', type: 'button', onclick: () => { add({ name: name.value.trim(), color }); name.value = ''; } }, 'Add label')));
+      h('button', { class: 'btn primary', type: 'button', onclick: () => { addLabel({ name: name.value.trim(), color }); name.value = ''; } }, 'Add label')));
     paintCur();
   }
 
@@ -620,18 +640,18 @@ export async function mount(view, params) {
       try { await api(`/api/messages/conversations/${S.conv.id}/scheduled`, { method: 'POST', body: { text: text.value, sendAt: new Date(when.value).toISOString(), replyToId: S.replyTo ? S.replyTo.id : undefined } }); s.close(); composer && composer.clear(); S.replyTo = null; paintReply(); toast(`Scheduled for ${fmtDate(new Date(when.value))}`, { icon: 'clock', action: { label: 'View', run: scheduledSheet } }); }
       catch (e) { go.disabled = false; toastErr(e); }
     } }, 'Schedule');
-    s.body.append(h('div', { class: 'stack' }, text, presets, h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Send at'), when), go));
+    add(s.body, h('div', { class: 'stack' }, text, presets, h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Send at'), when), go));
   }
   async function scheduledSheet() {
     const s = sheet({ title: 'Scheduled messages', icon: 'calendar' });
     const box = h('div', { class: 'msg-pick' }, h('p', { class: 'tiny muted' }, 'Loading…'));
-    s.body.append(box, h('button', { class: 'btn', type: 'button', onclick: () => { s.close(); sendLaterSheet(); } }, I('plus', 16), 'Schedule a message'));
+    add(s.body, box, h('button', { class: 'btn', type: 'button', onclick: () => { s.close(); sendLaterSheet(); } }, I('plus', 16), 'Schedule a message'));
     try {
       const r = await api(`/api/messages/conversations/${S.conv.id}/scheduled`);
-      if (!r.scheduled.length) return box.replaceChildren(h('p', { class: 'muted small' }, 'Nothing scheduled in this chat.'));
-      box.replaceChildren(...r.scheduled.map((x) => h('div', { class: 'msg-pick-row' }, I('clock', 16), h('div', { class: 'grow' }, h('b', { class: 'tiny' }, fmtDate(x.sendAt)), h('div', { class: 'ellipsis small' }, x.text || '📎 Attachment')),
+      if (!r.scheduled.length) return put(box, h('p', { class: 'muted small' }, 'Nothing scheduled in this chat.'));
+      put(box, ...r.scheduled.map((x) => h('div', { class: 'msg-pick-row' }, I('clock', 16), h('div', { class: 'grow' }, h('b', { class: 'tiny' }, fmtDate(x.sendAt)), h('div', { class: 'ellipsis small' }, x.text || '📎 Attachment')),
         h('button', { class: 'btn sm ghost', type: 'button', onclick: async (e) => { try { await api(`/api/messages/scheduled/${x.id}`, { method: 'DELETE' }); e.target.closest('.msg-pick-row').remove(); } catch (er) { toastErr(er); } } }, 'Cancel'))));
-    } catch (e) { box.replaceChildren(h('p', { class: 'muted small' }, e.message)); }
+    } catch (e) { put(box, h('p', { class: 'muted small' }, e.message)); }
   }
 
   // ------------------------------------------------------------- quick replies
@@ -652,7 +672,7 @@ export async function mount(view, params) {
     const paint = (list) => {
       const sc = h('input', { class: 'input sm', placeholder: 'shortcut', maxlength: 24 });
       const body = h('input', { class: 'input sm grow', placeholder: 'Text to insert', maxlength: 1000 });
-      box.replaceChildren(h('div', { class: 'msg-pick' }, list.length ? list.map((r) => h('div', { class: 'msg-pick-row' }, h('code', null, `/${r.shortcut}`), h('span', { class: 'grow ellipsis small' }, r.body),
+      put(box, h('div', { class: 'msg-pick' }, list.length ? list.map((r) => h('div', { class: 'msg-pick-row' }, h('code', null, `/${r.shortcut}`), h('span', { class: 'grow ellipsis small' }, r.body),
         h('button', { class: 'icon-btn sm', type: 'button', 'aria-label': 'Delete', html: icon('trash', { size: 14 }), onclick: async () => { try { const x = await api(`/api/messages/quick-replies/${r.id}`, { method: 'DELETE' }); S.quick = x.replies; paint(x.replies); } catch (e) { toastErr(e); } } }))) : h('p', { class: 'tiny muted' }, 'Save answers you send often, then type / in a chat.')),
       h('div', { class: 'row gap msg-quick-add' }, sc, body, h('button', { class: 'btn sm', type: 'button', onclick: async () => { try { const x = await api('/api/messages/quick-replies', { method: 'POST', body: { shortcut: sc.value, body: body.value } }); S.quick = x.replies; paint(x.replies); } catch (e) { toastErr(e); } } }, 'Save')));
     };
@@ -675,14 +695,14 @@ export async function mount(view, params) {
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
     input.addEventListener('input', debounce(async () => {
       const q = input.value.trim().replace(/^@/, '');
-      if (q.length < 2 || q.includes('@')) return sugg.replaceChildren();
+      if (q.length < 2 || q.includes('@')) return put(sugg);
       try {
         const r = await api(`/api/users/search?q=${encodeURIComponent(q)}`);
         const users = (r.users || r.results || []).filter((u) => u.id !== state.user.id).slice(0, 6);
-        sugg.replaceChildren(...users.map((u) => h('button', { class: 'msg-pick-row', type: 'button', onclick: () => go(u.username) }, avatar(u.displayName || u.display_name || u.username, u.avatarUrl || u.avatar_url, 'sm'), h('span', { class: 'grow ellipsis' }, u.displayName || u.display_name || u.username), h('span', { class: 'tiny muted' }, `@${u.username}`))));
-      } catch { sugg.replaceChildren(); }
+        put(sugg, ...users.map((u) => h('button', { class: 'msg-pick-row', type: 'button', onclick: () => go(u.username) }, avatar(u.displayName || u.display_name || u.username, u.avatarUrl || u.avatar_url, 'sm'), h('span', { class: 'grow ellipsis' }, u.displayName || u.display_name || u.username), h('span', { class: 'tiny muted' }, `@${u.username}`))));
+      } catch { put(sugg); }
     }, 220));
-    s.body.append(h('div', { class: 'stack' }, h('p', { class: 'small muted' }, 'Message anyone on 1venue, even if you haven’t met in a meeting. People can limit this in their Message settings.'), input, sugg, btn));
+    add(s.body, h('div', { class: 'stack' }, h('p', { class: 'small muted' }, 'Message anyone on 1venue, even if you haven’t met in a meeting. People can limit this in their Message settings.'), input, sugg, btn));
   }
 
   // ------------------------------------------------------------- contact side panel (Cooby-style)
@@ -699,21 +719,21 @@ export async function mount(view, params) {
     if (!c || sidePane.hidden) return;
     const close = h('button', { class: 'icon-btn sm msg-side-close', type: 'button', 'aria-label': 'Close details', html: icon('x', { size: 18 }), onclick: () => toggleSide(false) });
     if (c.type !== 'dm') {
-      sidePane.replaceChildren(close, h('div', { class: 'msg-side-hero' }, h('span', { class: `av xl msg-av-ic ${c.type}`, html: icon(c.type === 'meeting' ? 'video' : 'users', { size: 32 }) }), h('h3', null, c.title), h('span', { class: 'muted small' }, presenceText(c))),
+      put(sidePane, close, h('div', { class: 'msg-side-hero' }, h('span', { class: `av xl msg-av-ic ${c.type}`, html: icon(c.type === 'meeting' ? 'video' : 'users', { size: 32 }) }), h('h3', null, c.title), h('span', { class: 'muted small' }, presenceText(c))),
         labelsBlock(c),
         c.members && c.members.length ? h('section', { class: 'msg-side-sec' }, h('h4', null, `Members · ${c.members.length}`), h('div', { class: 'msg-side-list' }, c.members.slice(0, 30).map((u) => h('a', { class: 'msg-side-item', href: `/u/${u.username}`, 'data-link': '' }, avatar(u.name, u.avatarUrl, 'sm'), h('span', { class: 'grow ellipsis' }, u.name), u.role !== 'member' ? h('span', { class: 'tiny muted' }, u.role) : null)))) : null);
       return;
     }
-    sidePane.replaceChildren(close, h('div', { class: 'msg-side-loading' }, h('span', { class: 'spinner' })));
+    put(sidePane, close, h('div', { class: 'msg-side-loading' }, h('span', { class: 'spinner' })));
     let d;
-    try { d = await api(`/api/messages/conversations/${c.id}/contact`); } catch (e) { sidePane.replaceChildren(close, h('p', { class: 'muted small pad' }, e.message)); return; }
+    try { d = await api(`/api/messages/conversations/${c.id}/contact`); } catch (e) { put(sidePane, close, h('p', { class: 'muted small pad' }, e.message)); return; }
     if (S.conv !== c) return;
     const u = d.user; const st = d.stats;
     const note = h('textarea', { class: 'input msg-note', rows: 4, maxlength: 4000, placeholder: 'Private notes about this contact. Only you can see them.' }); note.value = d.note.body || '';
     const noteSt = h('span', { class: 'tiny muted' }, d.note.updatedAt ? `Saved ${timeAgo(d.note.updatedAt)}` : 'Only visible to you');
     note.addEventListener('input', () => { clearTimeout(noteT); noteSt.textContent = 'Saving…'; noteT = setTimeout(() => api(`/api/messages/conversations/${c.id}/note`, { method: 'PUT', body: { body: note.value } }).then(() => { noteSt.textContent = 'Saved'; }).catch(() => { noteSt.textContent = 'Not saved'; }), 600); });
     const stat = (v, l) => h('div', { class: 'msg-stat' }, h('b', null, v), h('span', null, l));
-    sidePane.replaceChildren(close,
+    put(sidePane, close,
       h('div', { class: 'msg-side-hero' }, avatar(u.name, u.avatarUrl, 'xl'), h('h3', null, u.name), h('a', { class: 'muted small', href: `/u/${u.username}`, 'data-link': '' }, `@${u.username}`), u.bio ? h('p', { class: 'small msg-side-bio' }, u.bio) : null,
         h('div', { class: 'msg-side-acts' }, c.canSend ? h('button', { class: 'btn sm', type: 'button', onclick: () => call('audio') }, I('phone', 14), 'Call') : null, h('a', { class: 'btn sm ghost', href: `/u/${u.username}`, 'data-link': '' }, 'Profile'))),
       h('section', { class: 'msg-side-sec' }, h('h4', null, 'Activity'), h('div', { class: 'msg-stats' },

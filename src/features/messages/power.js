@@ -10,6 +10,7 @@
  *   AI               analyse a shared file, table data for charts, voice-note transcription (cached),
  *                    and a summary of a long chat. AI points are spent like everywhere else (takeAi).
  */
+const { cleanText, cleanList } = require('../../lib/safe-text');
 const crypto = require('node:crypto');
 const config = require('../../config');
 const log = require('../../lib/log');
@@ -303,10 +304,12 @@ async function extractedFile(a) {
   tableCache.set(key, x); if (tableCache.size > 20) tableCache.delete(tableCache.keys().next().value);
   return x;
 }
+/** Old cached rows may hold raw model output: clean them on the way out too. */
+const cleanAnalysis = (r = {}) => ({ ...r, summary: cleanText(r.summary, { max: 2000 }), keyPoints: cleanList(r.keyPoints, { max: 300, limit: 8 }), dataCommentary: cleanText(r.dataCommentary, { max: 2000 }) || undefined });
 async function analyseFile(user, convId, mid, { force = false } = {}) {
   const { a } = await fileOf(user, convId, mid);
   const key = urlKey('analysis', a.url);
-  if (!force) { const hit = await one('SELECT result, model, created_at FROM message_file_analyses WHERE url_key=$1', [key]); if (hit) return { analysis: { ...json(hit.result), model: hit.model, createdAt: hit.created_at, cached: true } }; }
+  if (!force) { const hit = await one('SELECT result, model, created_at FROM message_file_analyses WHERE url_key=$1', [key]); if (hit) return { analysis: { ...cleanAnalysis(json(hit.result)), model: hit.model, createdAt: hit.created_at, cached: true } }; }
   if (!rateLimit('msg-analyse:' + user.id, 6)) throw fail(429, 'Please wait a minute before analysing again');
   const x = await extractedFile(a);
   if (!String(x.text || '').trim()) throw fail(422, 'No readable text was found in this file');
@@ -314,7 +317,7 @@ async function analyseFile(user, convId, mid, { force = false } = {}) {
   const analysis = require('../materials/analysis');
   let r;
   try { r = await analysis.callModel({ title: a.name || 'file' }, x); } catch (e) { await t.refund(); throw e; }
-  const result = { summary: String(r.result.summary || '').slice(0, 2000), keyPoints: (r.result.keyPoints || []).slice(0, 8).map((p) => String(p).slice(0, 300)), dataCommentary: r.result.dataCommentary ? String(r.result.dataCommentary).slice(0, 2000) : undefined, type: x.type, chartable: !!x.rows, mock: r.mock, cost: t.cost };
+  const result = { summary: cleanText(r.result.summary, { max: 2000 }), keyPoints: cleanList(r.result.keyPoints, { max: 300, limit: 8 }), dataCommentary: cleanText(r.result.dataCommentary, { max: 2000 }) || undefined, type: x.type, chartable: !!x.rows, mock: r.mock, cost: t.cost };
   await q(`INSERT INTO message_file_analyses (url_key, result, model, created_by) VALUES ($1,$2,$3,$4)
     ON CONFLICT (url_key) DO UPDATE SET result=EXCLUDED.result, model=EXCLUDED.model, created_at=NOW()`, [key, JSON.stringify(result), r.model, user.id]);
   return { analysis: { ...result, model: r.model, cached: false } };
@@ -356,7 +359,7 @@ async function transcribe(user, convId, mid) {
       text = stt.clean(stt.replicateText(r.output));
     }
   } catch (e) { await t.refund(); throw e; }
-  text = String(text || '').trim().slice(0, 20000) || '(No speech detected)';
+  text = cleanText(text, { max: 20000 }) || '(No speech detected)';
   await q('INSERT INTO audio_transcripts (url_key, text, model, created_by) VALUES ($1,$2,$3,$4) ON CONFLICT (url_key) DO NOTHING', [key, text, llmOn() ? model : 'mock', user.id]);
   return { text, model: llmOn() ? model : 'mock', cached: false, cost: t.cost };
 }
@@ -380,7 +383,7 @@ async function summarize(user, convId) {
     } else {
       const text = await llm(`Summarise this chat for someone catching up. Reply with JSON only: {"summary":"2-3 sentences","keyPoints":["up to 5"],"actionItems":["who does what, up to 5"]}\n\nChat:\n"""\n${transcript}\n"""`, { maxTokens: 700, tag: 'messages-summary' });
       const p = require('../materials/analysis').parseJson(text);
-      out = { summary: String(p.summary || '').slice(0, 1500), keyPoints: (p.keyPoints || []).slice(0, 6).map((x) => String(x).slice(0, 240)), actionItems: (Array.isArray(p.actionItems) ? p.actionItems : []).slice(0, 6).map((x) => String(x).slice(0, 240)), mock: false };
+      out = { summary: cleanText(p.summary, { max: 1500 }) || 'No summary came back. Try again.', keyPoints: cleanList(p.keyPoints, { max: 240, limit: 6 }), actionItems: cleanList(p.actionItems, { max: 240, limit: 6 }), mock: false };
     }
   } catch (e) { await t.refund(); throw e; }
   out.cost = t.cost; out.count = real.length;
@@ -391,5 +394,5 @@ async function summarize(user, convId) {
 module.exports = {
   listPins, pin, unpin, openByHandle, search, contact, saveNote, replyStats,
   schedule, listScheduled, cancelScheduled, runDue, startWorker,
-  listQuick, addQuick, delQuick, forward, analyseFile, tableData, transcribe, summarize, urlKey,
+  listQuick, addQuick, delQuick, forward, analyseFile, tableData, transcribe, summarize, urlKey, cleanAnalysis,
 };

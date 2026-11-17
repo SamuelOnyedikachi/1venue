@@ -70,7 +70,9 @@ async function start(user, convId, kind = 'audio') {
   const title = c.type === 'dm' ? from.name : `${from.name} · ${c.title || 'Group'}`;
   for (const uid of members) {
     socket.sendToUser(uid, { type: 'call-ring', call: callOut(call, { from, title: c.type === 'dm' ? from.name : c.title || 'Group call', group: c.type !== 'dm' }) });
-    if (!socket.isOnline(uid)) push.notify(uid, { kind: 'call', title: `Incoming ${kind} call`, body: title, url: `/messages/${c.id}?call=${id}`, tag: `call-${id}` }).catch(() => {});
+    // Always (not only when offline): a background tab can't show anything itself, and the service worker
+    // skips it when a 1venue tab is in view. Same tag as the in-page notification, so never two.
+    push.notify(uid, { kind: 'call', title: `Incoming ${kind} call`, body: `${title} is calling you on 1venue`, url: `/messages/${c.id}?call=${id}`, tag: `call-${id}`, callId: id, conversationId: c.id, icon: from.avatarUrl || undefined }).catch(() => {});
   }
   socket.sendToUser(user.id, { type: 'call-started', call: callOut(call) });
   timers.set(id, setTimeout(() => { ringTimeout(id).catch((err) => console.warn('[calls] ring timeout', err.message)); }, ringMs()).unref());
@@ -158,6 +160,7 @@ async function end(call, reason = 'completed') {
   const r = await q("UPDATE calls SET state='ended', end_reason=$2, ended_at=NOW() WHERE id=$1 AND state <> 'ended'", [call.id, reason]);
   clearTimeout(timers.get(call.id)); timers.delete(call.id);
   if (!r.rowCount) return false; // someone else ended it
+  const unanswered = await many("SELECT user_id FROM call_participants WHERE call_id=$1 AND state='invited'", [call.id]).then((x) => x.map((y) => Number(y.user_id))).catch(() => []);
   await q("UPDATE call_participants SET state=CASE WHEN state='joined' THEN 'left' ELSE state END, left_at=COALESCE(left_at, NOW()) WHERE call_id=$1", [call.id]);
   try {
     const client = require('../../livekit/cleanup').roomClient();
@@ -174,6 +177,11 @@ async function end(call, reason = 'completed') {
     const starter = fresh.started_by ? await one('SELECT id, username, display_name FROM users WHERE id=$1', [fresh.started_by]) : null;
     await service.postSystem(c, { senderUserId: starter ? Number(starter.id) : null, senderName: starter ? nameOf(starter) : '1venue', text, kind: 'call', payload: { callId: fresh.id, kind: fresh.kind, durationSec: secs, missed: !answered, reason }, notify: !answered && reason === 'missed' }).catch((e) => console.warn('[calls] log', e.message));
     await notifyMembers(c.id, { type: 'call-ended', callId: fresh.id, reason, conversationId: c.id });
+    // Take the "Incoming call" notification down on phones / closed tabs (it is requireInteraction).
+    if (!answered && push.enabled()) {
+      const who = starter ? nameOf(starter) : 'Someone';
+      for (const uid of unanswered) push.notify(uid, { kind: 'call-end', title: reason === 'declined' ? 'Call declined' : `Missed ${label.toLowerCase()}`, body: `From ${who}`, url: `/messages/${c.id}`, tag: `call-${fresh.id}`, replaceTag: `conv-${c.id}`, callId: fresh.id }).catch(() => {});
+    }
   }
   return true;
 }

@@ -7,6 +7,7 @@ import { createBoard, boardToolbar } from '../pages/whiteboard.js';
 import { SpeechRec } from './captions.js';
 import { SOUNDS, playSound, soundsMuted, setSoundsMuted } from './sounds.js';
 import { ytId } from './youtube.js';
+import { add } from '../safe-text.js';
 
 const btn = (ic, label, run, { group = '', cls = '', disabled } = {}) => h('button', { class: `btn ${cls}`, 'data-group': group, type: 'button', disabled: !!disabled, onclick: run, html: icon(ic, { size: 16 }) + (label ? `<span>${esc(label)}</span>` : '') });
 
@@ -455,7 +456,7 @@ export function buildTools(R) {
     sounds() {
       const box = h('div', { class: 'stack' });
       const off = R.security.sounds === false && !R.isMod();
-      box.append(h('div', { class: 'sound-grid' }, SOUNDS.map((sd) => h('div', { class: 'sound-card' },
+      add(box, h('div', { class: 'sound-grid' }, SOUNDS.map((sd) => h('div', { class: 'sound-card' },
         h('button', { class: 'sound-play', type: 'button', disabled: off, 'aria-label': `Play ${sd.label} for everyone`, onclick: () => R.playRoomSound(sd.id) }, h('span', { class: 'em' }, sd.emoji), h('b', null, sd.label)),
         h('button', { class: 'icon-btn sm', type: 'button', 'data-tip': 'Preview just for me', 'aria-label': `Preview ${sd.label}`, onclick: () => playSound(sd.id, { force: true }), html: icon('headphones', { size: 14 }) })))),
         row(soundsMuted() ? 'volumeX' : 'volume', 'Mute sounds for me', 'Others still hear them', sw(soundsMuted(), (v) => { setSoundsMuted(v); R.panel.render(); })),

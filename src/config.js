@@ -146,6 +146,12 @@ const COVERS = {
   timeoutMs: int('AI_COVER_TIMEOUT_MS', 60_000),
 };
 
+// Whiteboard "Refine page" (visual AI on Replicate). Costs AI_WEIGHT_WHITEBOARD_AI points (default 3).
+const WHITEBOARD_AI = {
+  model: env('WHITEBOARD_AI_MODEL', 'black-forest-labs/flux-kontext-pro'),
+  timeoutMs: int('WHITEBOARD_AI_TIMEOUT_MS', 120_000),
+};
+
 // Material analysis (/materials/:id → Analyse): Llama 3 70B Instruct on Replicate. Mock when AI_MOCK=true or no token.
 const MATERIALS = {
   model: env('REPLICATE_MODEL', 'meta/meta-llama-3-70b-instruct'),
@@ -186,6 +192,7 @@ const UPLOADS = {
   maxAudioBytes: mb('UPLOAD_MAX_AUDIO_MB', 10),
   maxVideoBytes: mb('UPLOAD_MAX_VIDEO_MB', 0), // video uploads are off: they would stream through the app server
   maxOtherBytes: mb('UPLOAD_MAX_OTHER_MB', 10),
+  maxBoardBytes: mb('UPLOAD_MAX_BOARD_MB', 25), // .mwb whiteboard files (images inline)
   userQuotaBytes: mb('UPLOAD_USER_QUOTA_MB', 250),
   guestQuotaBytes: mb('UPLOAD_GUEST_QUOTA_MB', 30),
   meetingCapBytes: mb('UPLOAD_MEETING_CAP_MB', 150),
@@ -261,5 +268,5 @@ module.exports = {
   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
   AUTH, ALLOW_LOCAL_SIGNUP, ADMIN_EMAILS, CANONICAL_HOST,
   MEETING_INACTIVITY_MS, MEETING_CLEANUP_INTERVAL_MS, MAX_PARTICIPANTS, MAX_AUDIENCE, DEFAULT_SPEAKER_SEATS,
-  MEDIA, AI, STT, COVERS, MATERIALS, MESSAGES, STORAGE, UPLOADS, BIBLE, MEMORY, RESTART, RATE_LIMIT_PER_MIN, TRUST_PROXY, MIME,
+  MEDIA, AI, STT, COVERS, WHITEBOARD_AI, MATERIALS, MESSAGES, STORAGE, UPLOADS, BIBLE, MEMORY, RESTART, RATE_LIMIT_PER_MIN, TRUST_PROXY, MIME,
 };

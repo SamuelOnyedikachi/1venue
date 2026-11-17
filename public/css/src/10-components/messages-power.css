@@ -64,3 +64,21 @@
 .msg-quick-add .input:first-child { width: 110px; flex: none; }
 .spinner { display: inline-block; width: 20px; height: 20px; border-radius: 50%; border: 2.5px solid color-mix(in srgb, var(--accent) 25%, transparent); border-top-color: var(--accent); animation: spinner-rot .8s linear infinite; flex: none; }
 @keyframes spinner-rot { to { transform: rotate(360deg); } }
+.menu .msg-quick { justify-content: space-between; }
+.menu .msg-quick button { width: auto; flex: 1; height: 40px; padding: 0; justify-content: center; font-size: 1.3rem; }
+.menu.menu-sheet .msg-quick button { height: 48px; font-size: 1.5rem; }
+
+/* A 1venue whiteboard (.mwb) shared in chat */
+:where(.msg-board) { border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.msg-board { display: flex; flex-direction: column; width: min(300px, 100%); margin-top: 4px; border-radius: 14px; overflow: hidden; background: var(--s1); color: var(--text); border: 1px solid var(--line); box-shadow: var(--shadow-1); transition: transform .15s, box-shadow .15s; }
+.msg-board:hover { transform: translateY(-1px); box-shadow: var(--shadow-2); }
+.msg-board-img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: #fff; border-bottom: 1px solid var(--line); }
+.msg-board-img.empty { display: grid; place-items: center; color: var(--accent); background: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--text) 12%, transparent) 1px, transparent 0) 0 0 / 14px 14px, color-mix(in srgb, var(--accent) 6%, var(--s1)); }
+.msg-board-meta { display: flex; align-items: center; gap: .55rem; padding: .55rem .65rem; min-width: 0; }
+.msg-board-ic { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; flex: none; color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
+.msg-board-txt { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.25; }
+.msg-board-txt small { color: var(--muted); font-size: .72rem; }
+.msg-board-open { flex: none; font-size: .78rem; font-weight: 700; color: var(--accent); padding: .3rem .65rem; border-radius: var(--r-pill); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+:where(.msg-ai-inline) { border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.page-messages .msg-ai-inline { margin-top: .1rem; }
+.page-messages .msg-ai-inline span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }

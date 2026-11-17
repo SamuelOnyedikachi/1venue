@@ -4,6 +4,7 @@
 import { h, api, toastErr, avatar } from '../ui.js';
 import { icon } from '../icons.js';
 import { bus } from './live.js';
+import { safeText, safeList, put, add } from '../safe-text.js';
 
 let cur = null; // { convId, win, root, off }
 const hhmm = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -13,8 +14,8 @@ export const isMiniOpen = () => !!cur;
 function copyStyles(doc) {
   for (const sheet of [...document.styleSheets]) {
     try {
-      if (sheet.href) { const l = doc.createElement('link'); l.rel = 'stylesheet'; l.href = sheet.href; doc.head.append(l); }
-      else { const st = doc.createElement('style'); st.textContent = [...sheet.cssRules].map((r) => r.cssText).join('\n'); doc.head.append(st); }
+      if (sheet.href) { const l = doc.createElement('link'); l.rel = 'stylesheet'; l.href = sheet.href; add(doc.head, l); }
+      else { const st = doc.createElement('style'); st.textContent = [...sheet.cssRules].map((r) => r.cssText).join('\n'); add(doc.head, st); }
     } catch { /* cross-origin sheet */ }
   }
   for (const a of document.documentElement.attributes) if (a.name !== 'class') doc.documentElement.setAttribute(a.name, a.value);
@@ -39,15 +40,15 @@ function render(convId, { onClose, onExpand, pip }) {
       m.replyTo ? h('div', { class: 'mini-quote' }, h('b', null, m.replyTo.fromName || ''), ' ', (m.replyTo.text || (m.replyTo.attachmentKind ? `[${m.replyTo.attachmentKind}]` : '')).slice(0, 80)) : null,
       m.deleted ? h('i', null, 'Message deleted') : (m.text || (m.attachment ? `📎 ${m.attachment.name || m.attachment.kind}` : '')),
       h('span', { class: 'mini-time' }, hhmm(m.createdAt))));
-  const paint = () => { list.replaceChildren(...(msgs.length ? msgs.slice(-60).map(bubble) : [h('div', { class: 'mini-empty' }, 'No messages yet')])); list.scrollTop = list.scrollHeight; };
+  const paint = () => { put(list, ...(msgs.length ? msgs.slice(-60).map(bubble) : [h('div', { class: 'mini-empty' }, 'No messages yet')])); list.scrollTop = list.scrollHeight; };
   async function load() {
     try {
       const [c, m] = await Promise.all([api(`/api/messages/conversations/${convId}`), api(`/api/messages/conversations/${convId}/messages?limit=40`)]);
-      title.textContent = c.conversation.title; av.replaceChildren(avatar(c.conversation.title, c.conversation.avatarUrl, 'sm'));
+      title.textContent = c.conversation.title; put(av, avatar(c.conversation.title, c.conversation.avatarUrl, 'sm'));
       msgs = m.messages; paint();
       if (!c.conversation.canSend) { ta.disabled = true; ta.placeholder = c.conversation.reason || 'Read only'; send.disabled = true; }
       if (msgs.length) api(`/api/messages/conversations/${convId}/read`, { method: 'POST', body: { messageId: msgs[msgs.length - 1].id } }).catch(() => {});
-    } catch (e) { list.replaceChildren(h('div', { class: 'mini-empty' }, e.message || 'Could not load this chat')); }
+    } catch (e) { put(list, h('div', { class: 'mini-empty' }, e.message || 'Could not load this chat')); }
   }
   async function doSend() {
     const text = ta.value.trim(); if (!text) return;
@@ -80,7 +81,7 @@ export async function openMini(convId, { preferPip = true } = {}) {
       const win = await window.documentPictureInPicture.requestWindow({ width: 360, height: 540 });
       copyStyles(win.document);
       const r = render(convId, { pip: true, onClose: () => closeMini(), onExpand: expand });
-      win.document.body.append(r.root);
+      add(win.document.body, r.root);
       cur = { convId, win, root: r.root, off: r.off };
       win.addEventListener('pagehide', () => { if (cur && cur.win === win) { cur.off(); cur = null; } });
       setTimeout(r.focus, 50);
@@ -94,7 +95,7 @@ export async function openMini(convId, { preferPip = true } = {}) {
   head.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) return; drag = true; sx = e.clientX; sy = e.clientY; const b = wrap.getBoundingClientRect(); ox = b.left; oy = b.top; head.setPointerCapture(e.pointerId); });
   head.addEventListener('pointermove', (e) => { if (!drag) return; const x = Math.max(4, Math.min(innerWidth - wrap.offsetWidth - 4, ox + e.clientX - sx)); const y = Math.max(4, Math.min(innerHeight - 80, oy + e.clientY - sy)); Object.assign(wrap.style, { left: x + 'px', top: y + 'px', right: 'auto', bottom: 'auto' }); });
   head.addEventListener('pointerup', () => { drag = false; });
-  document.body.append(wrap);
+  add(document.body, wrap);
   cur = { convId, win: null, root: wrap, off: r.off };
   setTimeout(r.focus, 50);
   return 'inline';

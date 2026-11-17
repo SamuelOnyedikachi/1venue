@@ -115,6 +115,62 @@
   border-top: 1px solid var(--line);
   margin: 4px 0;
 }
+/* Viewport-aware: positioned by menu-pos.js; scrolls inside when taller than the space it was given. */
+.menu {
+  max-height: calc(100dvh - 16px);
+  max-width: calc(100vw - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.menu[data-flip-y="1"] {
+  transform-origin: bottom right;
+}
+/* Phones: the same menu as a bottom sheet. */
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 89;
+  background: rgba(2, 6, 23, 0.4);
+  animation: fadeIn 0.15s ease both;
+}
+.menu.menu-sheet {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  max-height: min(78dvh, 640px);
+  padding: 0.4rem 0.6rem calc(0.6rem + env(safe-area-inset-bottom, 0px));
+  border-radius: 22px 22px 0 0;
+  border-bottom: 0;
+  animation: menuSheetUp 0.24s var(--spring) both;
+}
+.menu.menu-sheet::before {
+  content: "";
+  display: block;
+  width: 40px;
+  height: 4px;
+  margin: 0.2rem auto 0.5rem;
+  border-radius: 4px;
+  background: var(--line-2);
+}
+.menu.menu-sheet button {
+  padding: 0.8rem 0.75rem;
+  font-size: 1rem;
+}
+@keyframes menuSheetUp {
+  from {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+}
 
 /* toasts */
 #toasts {

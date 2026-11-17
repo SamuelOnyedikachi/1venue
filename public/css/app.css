@@ -2866,6 +2866,24 @@ button.list-item:hover {
 .msg-quick-add .input:first-child { width: 110px; flex: none; }
 .spinner { display: inline-block; width: 20px; height: 20px; border-radius: 50%; border: 2.5px solid color-mix(in srgb, var(--accent) 25%, transparent); border-top-color: var(--accent); animation: spinner-rot .8s linear infinite; flex: none; }
 @keyframes spinner-rot { to { transform: rotate(360deg); } }
+.menu .msg-quick { justify-content: space-between; }
+.menu .msg-quick button { width: auto; flex: 1; height: 40px; padding: 0; justify-content: center; font-size: 1.3rem; }
+.menu.menu-sheet .msg-quick button { height: 48px; font-size: 1.5rem; }
+
+/* A 1venue whiteboard (.mwb) shared in chat */
+:where(.msg-board) { border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.msg-board { display: flex; flex-direction: column; width: min(300px, 100%); margin-top: 4px; border-radius: 14px; overflow: hidden; background: var(--s1); color: var(--text); border: 1px solid var(--line); box-shadow: var(--shadow-1); transition: transform .15s, box-shadow .15s; }
+.msg-board:hover { transform: translateY(-1px); box-shadow: var(--shadow-2); }
+.msg-board-img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: #fff; border-bottom: 1px solid var(--line); }
+.msg-board-img.empty { display: grid; place-items: center; color: var(--accent); background: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--text) 12%, transparent) 1px, transparent 0) 0 0 / 14px 14px, color-mix(in srgb, var(--accent) 6%, var(--s1)); }
+.msg-board-meta { display: flex; align-items: center; gap: .55rem; padding: .55rem .65rem; min-width: 0; }
+.msg-board-ic { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; flex: none; color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
+.msg-board-txt { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.25; }
+.msg-board-txt small { color: var(--muted); font-size: .72rem; }
+.msg-board-open { flex: none; font-size: .78rem; font-weight: 700; color: var(--accent); padding: .3rem .65rem; border-radius: var(--r-pill); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+:where(.msg-ai-inline) { border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.page-messages .msg-ai-inline { margin-top: .1rem; }
+.page-messages .msg-ai-inline span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 /* --- src/10-components/messages-ui.css --- */
 /* Messages pieces that live outside the page: nav unread badge, sheets and the quick-react row. */
 .nav-badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; margin-left: .3rem; border-radius: var(--r-pill); background: var(--g-admin); color: #fff; font-size: .66rem; font-weight: 700; line-height: 1; }
@@ -2997,6 +3015,62 @@ button.list-item:hover {
   border: 0;
   border-top: 1px solid var(--line);
   margin: 4px 0;
+}
+/* Viewport-aware: positioned by menu-pos.js; scrolls inside when taller than the space it was given. */
+.menu {
+  max-height: calc(100dvh - 16px);
+  max-width: calc(100vw - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.menu[data-flip-y="1"] {
+  transform-origin: bottom right;
+}
+/* Phones: the same menu as a bottom sheet. */
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 89;
+  background: rgba(2, 6, 23, 0.4);
+  animation: fadeIn 0.15s ease both;
+}
+.menu.menu-sheet {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  max-height: min(78dvh, 640px);
+  padding: 0.4rem 0.6rem calc(0.6rem + env(safe-area-inset-bottom, 0px));
+  border-radius: 22px 22px 0 0;
+  border-bottom: 0;
+  animation: menuSheetUp 0.24s var(--spring) both;
+}
+.menu.menu-sheet::before {
+  content: "";
+  display: block;
+  width: 40px;
+  height: 4px;
+  margin: 0.2rem auto 0.5rem;
+  border-radius: 4px;
+  background: var(--line-2);
+}
+.menu.menu-sheet button {
+  padding: 0.8rem 0.75rem;
+  font-size: 1rem;
+}
+@keyframes menuSheetUp {
+  from {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
 }
 
 /* toasts */
@@ -8066,4 +8140,30 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
   .wb-tools .wb-size {
     width: 76px;
   }
+}
+
+/* Viewing a shared .mwb file (from Messages) */
+.wb-banner { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; padding: .5rem .75rem; margin: 0 0 .5rem; border-radius: var(--r-md); font-size: .86rem; background: color-mix(in srgb, var(--accent) 9%, var(--s1)); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); }
+.wb-banner[hidden] { display: none; }
+.wb-banner > span { display: inline-flex; align-items: center; gap: .4rem; min-width: 0; }
+
+/* AI "Refine page" sheet */
+.wb-ai-compare { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+.wb-ai-compare figure { margin: 0; display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
+.wb-ai-compare figcaption { text-align: center; }
+.wb-ai-img { aspect-ratio: 16 / 10; border-radius: 12px; overflow: hidden; background: #fff; border: 1px solid var(--line); display: grid; place-items: center; }
+.wb-ai-img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.wb-ai-img.empty, .wb-ai-img.busy { background: color-mix(in srgb, var(--accent) 5%, var(--s1)); border-style: dashed; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: .5rem; padding: .5rem; text-align: center; }
+.wb-ai-form { display: flex; flex-direction: column; gap: .5rem; margin-top: .8rem; }
+.wb-ai-presets { display: flex; flex-wrap: wrap; gap: .35rem; }
+.wb-ai-hint { margin: 0; }
+.wb-ai-prompt { width: 100%; resize: vertical; min-height: 2.6rem; font-size: 16px; }
+.wb-ai-keep { display: flex; align-items: center; gap: .5rem; font-size: .88rem; cursor: pointer; }
+.wb-ai-keep[hidden] { display: none; }
+.wb-ai-swatches { display: inline-flex; gap: 3px; margin-left: auto; }
+.wb-ai-swatches i { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--line-2); }
+.wb-ai-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; margin-top: .9rem; }
+@media (max-width: 560px) {
+  .wb-ai-compare { grid-template-columns: 1fr; }
+  .wb-ai-actions .btn { flex: 1 1 auto; }
 }
