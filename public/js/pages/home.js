@@ -4,8 +4,8 @@ import { state, navigate, CATS, joinPrompt, parseCode } from '../app.js';
 import { eventCard, skeletonCards, sectionHead, empty, catOf } from '../components.js';
 
 /** Homepage hero visual — lightweight preview cards around the join-first hero. */
-function heroVisual() {
-  return h('div', { class: 'hero-visual', 'aria-label': 'Preview of a 1venue room' },
+function previewCards() {
+  return [
     h('div', { class: 'hero-preview preview-poll' },
       h('div', { class: 'preview-kicker' }, 'POLL · 24 VOTES'),
       h('strong', null, 'What should we take first?'),
@@ -16,7 +16,27 @@ function heroVisual() {
     h('div', { class: 'hero-preview preview-live' },
       h('div', { class: 'live-thumb' }, h('span', { class: 'live-badge' }, '● LIVE'), h('img', { src: '/img/hero/meeting.png', alt: '' })),
       h('div', { class: 'preview-row' }, h('span', null, '128 viewers'), h('b', null, '16:45'))),
-  );
+  ];
+}
+
+function mobileImageCards() {
+  const images = [
+    '/img/hero/collage.webp',
+    '/img/hero/meeting.png',
+    '/img/hero/speaker.webp',
+    '/img/hero/collage-sm.webp',
+  ];
+  return images.map((src) => h('article', { class: 'mobile-image-card' },
+    h('img', { src, alt: '', loading: 'lazy' })));
+}
+
+function heroVisual(extraClass = '') {
+  const cards = previewCards();
+  const children = extraClass
+    ? [h('div', { class: 'hero-carousel-track' }, ...mobileImageCards(), ...mobileImageCards())]
+    : cards;
+  return h('div', { class: `hero-visual ${extraClass}`.trim(), 'aria-label': 'Preview of a 1venue room' },
+    ...children);
 }
 
 function band(cls, ...kids) {
@@ -40,7 +60,8 @@ export async function mount(view) {
         h('div', { class: 'row wrap hero-ctas' },
           h('a', { class: 'btn primary lg', href: '/create', 'data-link': '', html: icon('radio', { size: 20 }) + 'Go live' }),
           h('a', { class: 'btn lg hero-cta-icon', href: '/create?instant=1', 'data-link': '', 'data-group': 'media', 'data-tip': 'Instant meeting', 'aria-label': 'Instant meeting', html: icon('zap', { size: 20 }) + '<span class="lbl">Instant meeting</span>' }),
-          h('a', { class: 'btn lg hero-cta-icon', href: '/venues', 'data-link': '', 'data-group': 'media', 'data-tip': 'Venue', 'aria-label': 'Venue', html: icon('door', { size: 20 }) + '<span class="lbl">Venue</span>' })))));
+          h('a', { class: 'btn lg hero-cta-icon', href: '/venues', 'data-link': '', 'data-group': 'media', 'data-tip': 'Venue', 'aria-label': 'Venue', html: icon('door', { size: 20 }) + '<span class="lbl">Venue</span>' })),
+        heroVisual('hero-mobile-carousel'))));
 
   const liveWrap = h('div', null, skeletonCards(3));
   const upWrap = h('div', null, skeletonCards(3));
