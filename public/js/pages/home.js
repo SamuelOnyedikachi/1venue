@@ -26,13 +26,15 @@ function mobileImageCards() {
     '/img/hero/people-follow.png',
   ];
   return images.map((src) => h('article', { class: 'mobile-image-card' },
-    h('img', { src, alt: '', loading: 'lazy' })));
+    h('img', { src, alt: '', loading: 'eager', decoding: 'async', draggable: 'false' })));
 }
 
 function heroVisual(extraClass = '') {
   const cards = previewCards();
   const children = extraClass
-    ? [h('div', { class: 'hero-carousel-track' }, ...mobileImageCards(), ...mobileImageCards())]
+    ? [h('div', { class: 'hero-carousel-track', 'aria-hidden': 'true' },
+      h('div', { class: 'hero-carousel-group' }, ...mobileImageCards()),
+      h('div', { class: 'hero-carousel-group', 'aria-hidden': 'true' }, ...mobileImageCards()))]
     : cards;
   return h('div', { class: `hero-visual ${extraClass}`.trim(), 'aria-label': 'Preview of a 1venue room' },
     ...children);

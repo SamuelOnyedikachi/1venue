@@ -109,7 +109,7 @@ class Room {
       !state.user ? h('p', { class: 'tiny muted' }, 'Joining as a guest. ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); requireLogin('Sign in to keep your history'); } }, 'Sign in'), ' to save transcripts and history.') : null,
       (creating && this.intent?.meetingAccessMode === 'paid_entry') || (this.meetingInfo?.paidEntry?.enabled) || (ev?.meetingAccessMode === 'paid_entry')
         ? h('p', { class: 'small muted' }, `Paid entry: ${this.intent?.meetingEntryPriceCredits || this.meetingInfo?.paidEntry?.entryCredits || ev?.meetingEntryPriceCredits} credits for ${this.intent?.meetingDurationMin || this.meetingInfo?.paidEntry?.durationMin || ev?.meetingDurationMin} minutes. Sign in; credits are charged when the host accepts you. Your payment covers rejoining this meeting.`)
-        : ((creating && !this.intent?.venue) || (ev?.isHost && !ev.live) ? h('p',{class:'small muted'},'The first 15 minutes are free. Sign in and use credits to continue after that. ',h('a',{href:'/wallet',target:'_blank',rel:'noopener'},'Open wallet')) : null),
+        : null,
       joinB,
       h('div', { class: 'row gap-s tiny muted center' }, h('span', { html: icon('lock', { size: 12 }) }), 'Recordings stay on your device. Captions are processed privately.'));
     this.view.replaceChildren(h('div', { class: 'prejoin' }, h('div', { class: 'pj-art', 'aria-hidden': 'true' }), pv, form));

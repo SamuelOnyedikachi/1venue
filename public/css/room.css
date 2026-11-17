@@ -193,9 +193,14 @@ body.in-room .cmdbar {
   .prejoin {
     grid-template-columns: 1fr;
     align-content: start;
-    padding: 0.8rem 0.8rem calc(var(--cmd-h) + 28px);
+    padding: 0.8rem 0.8rem calc(var(--nav-h, 0px) + var(--cmd-h, 0px) + var(--safe-b, 0px) + 1rem);
     gap: 1rem;
     min-height: auto;
+    max-height: calc(100vh - var(--top-h, 64px) - var(--safe-t, 0px));
+    max-height: calc(100dvh - var(--top-h, 64px) - var(--safe-t, 0px));
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
   }
   .pj-preview {
     aspect-ratio: 4/3.4;
