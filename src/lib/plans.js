@@ -17,7 +17,7 @@ const INTERVALS = ['month', 'year'];
 const SLUG_TIERS = ['none', 'slug3', 'slug2'];
 const LIMIT_KEYS = ['venues', 'audience', 'meeting', 'speakerSeats', 'aiDaily', 'uploadMB'];
 const PRICE_KEYS = ['priceMonthKobo', 'priceYearKobo'];
-const AI_KINDS = ['ask', 'catchup', 'translate', 'title', 'summary', 'finetune', 'scripture', 'analysis'];
+const AI_KINDS = ['ask', 'catchup', 'translate', 'title', 'summary', 'finetune', 'scripture', 'analysis', 'transcribe'];
 // Phase 2/3 feature switches per plan (0 = off, 1 = on), editable from /admin like the limits.
 const FEATURE_KEYS = ['branding', 'recurring', 'reminders', 'whatsapp', 'exports', 'analytics', 'badge', 'selfPromo', 'ticketing', 'replays', 'callVideo'];
 // Numeric Phase 3 limits per plan: organisation members (0 = cannot create an organisation), replay storage.
@@ -46,7 +46,7 @@ const DEFAULTS = Object.freeze({
     premium: { venues: 3, audience: 300, meeting: 50, speakerSeats: 4, aiDaily: 200, uploadMB: 2048, priceMonthKobo: 500000, priceYearKobo: 5000000 },
     organisation: { venues: 20, audience: 1000, meeting: 50, speakerSeats: 10, aiDaily: 1000, uploadMB: 10240, priceMonthKobo: 2500000, priceYearKobo: 25000000 },
   },
-  aiWeights: { ask: 1, translate: 1, title: 1, scripture: 1, summary: 2, catchup: 2, finetune: 2, analysis: 2 },
+  aiWeights: { ask: 1, translate: 1, title: 1, scripture: 1, summary: 2, catchup: 2, finetune: 2, analysis: 2, transcribe: 2 },
   slugAddons: { slug3: 1000000, slug2: 2500000 }, // kobo, one-off, per venue, paid plans only
   graceDays: 5,
   aiGuestPerIpDaily: 30, // points one guest IP may spend from a host's pool per day

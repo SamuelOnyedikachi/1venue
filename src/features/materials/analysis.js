@@ -140,4 +140,55 @@ async function analyse(m, { userId, force = false, data, takeAi }) {
   try { return await job; } finally { inflight.delete(m.id); }
 }
 
-module.exports = { analyse, preview, sourceKey, readStored, mockResult, parseJson, _lru: lru };
+// ---------------------------------------------------------------- follow-up questions (owner only)
+/** Plain-text answer from the excerpt when there is no model: the sentences that share the most words. */
+function mockAnswer(question, text) {
+  const words = String(question).toLowerCase().match(/[a-z\u00c0-\u024f0-9]{4,}/g) || [];
+  const sentences = String(text || '').replace(/\s+/g, ' ').split(/(?<=[.!?])\s+/).filter((x) => x.length > 15);
+  const scored = sentences.map((x) => ({ x, n: words.filter((w) => x.toLowerCase().includes(w)).length })).filter((s) => s.n > 0).sort((a, b) => b.n - a.n).slice(0, 3);
+  return scored.length ? scored.map((s) => s.x.slice(0, 300)).join(' ') : 'I couldn’t find that in the file. Try asking about something it mentions.';
+}
+/**
+ * ask(material, { userId, question, takeAi }) -> stored { id, question, answer, ... }.
+ * Uses the extracted text, the saved summary and the last few questions as context. Charged like analysis.
+ */
+async function ask(m, { userId, question, takeAi }) {
+  const { one, many } = require('../../core/db');
+  const qText = String(question || '').trim().slice(0, 500);
+  if (qText.length < 3) throw fail(400, 'Type a question about this file');
+  if (!sourceKey(m)) throw fail(422, 'This material has no original file to read. Upload it again to ask about it.');
+  const x = await extracted(m);
+  if (!String(x.text || '').trim()) throw fail(422, 'No readable text was found in this file');
+  const t = await takeAi({ kind: 'analysis', ownerId: userId });
+  if (!t.ok) throw fail(429, `Not enough AI points left today (${t.left} of ${t.limit}). Upgrade your plan for more.`);
+  let answer, model;
+  try {
+    const token = config.STT.replicate.token;
+    if (config.AI.mock || !token) { answer = mockAnswer(qText, x.text); model = 'mock'; }
+    else {
+      const prev = (await many('SELECT question, answer FROM material_queries WHERE material_id=$1 ORDER BY id DESC LIMIT 4', [m.id])).reverse();
+      const a = await one('SELECT result FROM material_analyses WHERE material_id=$1', [m.id]).catch(() => null);
+      let summary = ''; try { summary = a ? (typeof a.result === 'string' ? JSON.parse(a.result) : a.result).summary || '' : ''; } catch { /* none */ }
+      const stats = x.stats ? `\nColumn stats (exact): ${JSON.stringify(x.stats.columns.slice(0, 25))}\nRows: ${x.stats.rowCount}` : '';
+      const history = prev.map((p) => `Q: ${p.question}\nA: ${p.answer}`).join('\n\n');
+      const fence = '"""';
+      const prompt = `File: "${m.title}"${summary ? `\nSummary: ${summary}` : ''}${stats}\nContent excerpt:\n${fence}\n${x.text.slice(0, Math.max(1000, config.MATERIALS.maxChars))}\n${fence}\n${history ? `\nEarlier questions:\n${history}\n` : ''}\nAnswer the question using only the file. If the file does not say, say so briefly. Plain text, under 180 words.\nQuestion: ${qText}`;
+      const { run } = require('../../lib/replicate');
+      const out = await run({ token, apiBase: config.STT.replicate.apiBase, model: config.MATERIALS.model, tag: 'materials-ask', timeoutMs: config.MATERIALS.timeoutMs, wait: 60,
+        input: { prompt, system_prompt: 'You answer questions about one document for its owner. Be accurate and concise.', max_tokens: 500, temperature: 0.2 } });
+      answer = (Array.isArray(out.output) ? out.output.join('') : String(out.output || '')).trim();
+      model = config.MATERIALS.model;
+    }
+  } catch (e) { await t.refund(); throw e; }
+  answer = String(answer || '').slice(0, 4000) || 'No answer came back. Try rephrasing.';
+  const row = await one('INSERT INTO material_queries (material_id, user_id, question, answer, model, cost) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *', [m.id, userId, qText, answer, model, t.cost]);
+  log.info('materials', 'question', { id: m.id, user: userId, model, cost: t.cost });
+  return queryOut(row);
+}
+const queryOut = (r) => ({ id: Number(r.id), question: r.question, answer: r.answer, model: r.model, mock: r.model === 'mock', cost: Number(r.cost) || 0, createdAt: r.created_at });
+async function listQueries(materialId) {
+  const { many } = require('../../core/db');
+  return (await many('SELECT * FROM material_queries WHERE material_id=$1 ORDER BY id LIMIT 100', [materialId])).map(queryOut);
+}
+
+module.exports = { analyse, preview, sourceKey, readStored, mockResult, parseJson, callModel, ask, listQueries, mockAnswer, _lru: lru };

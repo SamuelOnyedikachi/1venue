@@ -253,6 +253,7 @@ export async function deckKind(f) {
   if (t.includes('presentationml') || n.endsWith('.pptx') || n.endsWith('.ppsx')) return 'pptx';
   if (t.startsWith('image/') && !t.includes('svg')) return 'image';
   if (n.endsWith('.ppt') || t === 'application/vnd.ms-powerpoint') return 'ppt';
+  if (/\.(docx?|csv|tsv|xlsx?)$/.test(n) || t.includes('wordprocessingml') || t.includes('spreadsheetml') || t === 'application/msword' || t === 'text/csv' || t === 'application/vnd.ms-excel') return 'doc';
   if (n.endsWith('.key') || t.includes('keynote')) return 'keynote';
   try {
     const b = new Uint8Array(await f.slice(0, 8).arrayBuffer());

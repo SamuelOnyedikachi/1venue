@@ -1,6 +1,6 @@
 // /materials/:id: one material on its own page. Preview (images, slide pages, a document's text or a
 // spreadsheet's first rows), download the original, and an AI analysis (summary, key points and, for
-// spreadsheets, a data overview) that is computed once and stored.
+// spreadsheets, a data overview) that is computed once and stored. Owners can then ask follow-up questions.
 import { icon } from '../icons.js';
 import { h, api, esc, toast, toastErr } from '../ui.js';
 import { state } from '../app.js';
@@ -91,4 +91,37 @@ export async function mount(view, { id }) {
   };
   paint(null);
   api(`/api/materials/${m.id}/analysis`).then((r) => { if (r.analysis) paint(r.analysis); }).catch(() => {});
+  if (m.canEdit && p.sourceUrl) askBox(m, view);
+}
+
+// ---- follow-up questions (owner / organisation): a small thread under the analysis
+function askBox(m, view) {
+  const thread = h('div', { class: 'mat-qa-thread', 'aria-live': 'polite' });
+  const input = h('textarea', { class: 'mat-qa-input', rows: 1, maxlength: 500, placeholder: `Ask anything about “${m.title}”…`, 'aria-label': 'Ask about this file', enterkeyhint: 'send' });
+  const send = h('button', { class: 'mat-qa-send', type: 'button', 'aria-label': 'Ask', html: icon('send', { size: 18 }) });
+  const cost = (state.config && state.config.aiWeights && state.config.aiWeights.analysis) || 2;
+  const ideas = m.kind === 'sheet' ? ['Which rows stand out?', 'What is the total of each numeric column?', 'Any data quality problems?'] : ['What are the action items?', 'Explain the main argument simply', 'What dates or deadlines are mentioned?'];
+  const chips = h('div', { class: 'mat-qa-ideas' }, ideas.map((t) => h('button', { class: 'chip', type: 'button', onclick: () => { input.value = t; ask(); } }, t)));
+  const bubble = (q) => h('div', { class: 'mat-qa-item' },
+    h('div', { class: 'mat-qa-q' }, h('span', null, q.question)),
+    h('div', { class: 'mat-qa-a' }, h('span', { class: 'mat-qa-ai', html: icon('sparkles', { size: 14 }) }), h('div', null, ...String(q.answer || '').split(/\n{2,}/).map((para) => h('p', null, para)),
+      h('span', { class: 'tiny faint' }, q.pending ? 'Thinking…' : `${q.mock ? 'Offline preview' : 'AI'} · ${q.cost || 0} point${q.cost === 1 ? '' : 's'}`))));
+  let items = [];
+  const paint = () => { thread.replaceChildren(...items.map(bubble)); chips.hidden = items.length > 0; thread.scrollTop = thread.scrollHeight; };
+  async function ask() {
+    const question = input.value.trim(); if (question.length < 3 || send.disabled) return;
+    send.disabled = true; input.value = '';
+    const temp = { question, answer: '', pending: true }; items.push(temp); paint();
+    try { const r = await api(`/api/materials/${m.id}/questions`, { method: 'POST', body: { question } }); items[items.indexOf(temp)] = r.question; paint(); }
+    catch (e) { items = items.filter((x) => x !== temp); paint(); input.value = question; toastErr(e); }
+    finally { send.disabled = false; input.focus(); }
+  }
+  send.onclick = ask;
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); ask(); } });
+  input.addEventListener('input', () => { input.style.height = 'auto'; input.style.height = Math.min(140, input.scrollHeight) + 'px'; });
+  const box = h('section', { class: 'card pad layer mat-qa', 'aria-label': 'Ask about this file' },
+    h('div', { class: 'row between wrap', style: { gap: '.5rem', alignItems: 'center' } }, h('h2', { class: 'mat-h2', html: icon('chat', { size: 18 }) + ' Ask this file' }), h('span', { class: 'tiny muted' }, `${cost} AI point${cost === 1 ? '' : 's'} a question · saved with this file`)),
+    thread, chips, h('div', { class: 'mat-qa-compose' }, input, send));
+  view.append(box);
+  api(`/api/materials/${m.id}/questions`).then((r) => { items = r.questions || []; paint(); }).catch(() => paint());
 }

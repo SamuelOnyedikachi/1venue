@@ -8,6 +8,7 @@ import { passageCard } from '../passage.js';
 import { state, navigate } from '../app.js';
 import { barVisible } from '../commands.js';
 import { bus, setActiveConversation, refreshUnread, typing as sendTyping, pushState, enablePush, disablePush } from '../messages/live.js';
+import { toneMuted, setToneMuted, playMessageTone } from '../messages/tones.js';
 
 const I = (n, s = 18) => h('span', { class: 'i', html: icon(n, { size: s }) });
 const ib = (ic, label, run, cls = '') => h('button', { class: `icon-btn ${cls}`, type: 'button', 'aria-label': label, 'data-tip': label, onclick: run, html: icon(ic, { size: 20 }) });
@@ -16,7 +17,17 @@ const hhmm = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute
 const dayKey = (t) => new Date(t).toDateString();
 const dayLabel = (t) => { const d = new Date(t), now = new Date(); if (d.toDateString() === now.toDateString()) return 'Today'; const y = new Date(now); y.setDate(now.getDate() - 1); if (d.toDateString() === y.toDateString()) return 'Yesterday'; return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }); };
 const EDIT_MS = 15 * 60000;
-const FILTERS = [['all', 'All'], ['dm', 'Direct'], ['groups', 'Groups'], ['meetings', 'Meetings'], ['archived', 'Archived']];
+// Cooby-style inbox tabs, plus a type filter (All / Direct / Groups / Meetings).
+const TABS = [['inbox', 'Inbox', 'inbox'], ['unread', 'Unread', 'mail'], ['starred', 'Starred', 'star'], ['followup', 'Follow up', 'flag'], ['snoozed', 'Snoozed', 'clock'], ['closed', 'Closed', 'checkCircle'], ['archived', 'Archived', 'archive']];
+const TYPES = [['all', 'All chats'], ['dm', 'Direct'], ['groups', 'Groups'], ['meetings', 'Meetings']];
+const LABEL_COLORS = ['#7c5cff', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899', '#64748b'];
+const DOC_EXT = /\.(pdf|docx?|pptx?|csv|tsv|xlsx?)$/i;
+const SHEET_EXT = /\.(csv|tsv|xlsx?)$/i;
+const dur = (sec) => (sec == null ? '—' : sec < 60 ? '<1m' : sec < 3600 ? `${Math.round(sec / 60)}m` : sec < 86400 ? `${Math.round(sec / 360) / 10}h` : `${Math.round(sec / 8640) / 10}d`);
+/** The Messages mark: a theme-accent chat bubble with a small send badge (adapted from the brand reference). */
+export function brandMark(size = 40) {
+  return h('span', { class: 'msg-brand', style: { width: size + 'px', height: size + 'px' }, html: `<svg viewBox="0 0 48 48" width="${size}" height="${size}" aria-hidden="true"><defs><linearGradient id="mbg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--accent)"/><stop offset="1" stop-color="color-mix(in srgb, var(--accent) 70%, #000)"/></linearGradient></defs><path d="M24 5c10.5 0 19 7.4 19 16.6S34.5 38.2 24 38.2c-2.2 0-4.3-.3-6.3-.9L9 41.5l2.4-7.4C7.4 31 5 26.6 5 21.6 5 12.4 13.5 5 24 5Z" fill="url(#mbg)"/><rect x="14" y="16.5" width="20" height="3.2" rx="1.6" fill="#fff"/><rect x="14" y="23" width="13" height="3.2" rx="1.6" fill="#fff" opacity=".85"/><circle cx="38" cy="36" r="8.5" fill="var(--s1, #fff)"/><path d="m34.2 36.3 7.3-3.4-2.4 7.5-1.6-2.8z" fill="var(--accent)"/></svg>` });
+}
 
 export async function mount(view, params) {
   if (!state.user) { const e = new Error('Sign in'); e.status = 401; throw e; }
@@ -27,27 +38,34 @@ export async function mount(view, params) {
     catch (e) { toastErr(e); navigate('/messages', { replace: true }); }
     return { unmount: () => { barVisible(true); } };
   }
-  const S = { filter: 'all', q: '', list: [], conv: null, msgs: [], hasMore: false, loadingOlder: false, typing: new Map(), editing: null };
+  const S = { tab: 'inbox', type: 'all', q: '', list: [], conv: null, msgs: [], hasMore: false, loadingOlder: false, typing: new Map(), editing: null,
+    replyTo: null, pins: [], pinIdx: 0, panel: !isMobile() && localStorage.getItem('venue.msg.panel') !== '0', quick: null, found: null, sFrom: '', sHas: '' };
   const listEl = h('div', { class: 'msg-items', role: 'list' });
-  const search = h('input', { class: 'input msg-search', type: 'search', placeholder: 'Search chats', 'aria-label': 'Search chats', oninput: debounce(() => { S.q = search.value.trim().toLowerCase(); paintList(); }, 120) });
-  const chips = h('div', { class: 'chips msg-filters' });
+  const search = h('input', { class: 'msg-search-in', type: 'search', placeholder: 'Search chats and messages', 'aria-label': 'Search chats and messages', oninput: debounce(() => { S.q = search.value.trim().toLowerCase(); paintList(); searchMessages(); }, 220) });
+  const filterBtn = h('button', { class: 'msg-search-filter', type: 'button', 'aria-label': 'Search filters', 'data-tip': 'Search filters', html: icon('sliders', { size: 18 }), onclick: (e) => searchFilters(e.currentTarget) });
+  const searchBox = h('label', { class: 'msg-search' }, h('span', { class: 'i', html: icon('search', { size: 18 }) }), search, filterBtn);
+  const chips = h('div', { class: 'msg-tabs', role: 'tablist', 'aria-label': 'Inbox' });
+  const typeSel = h('select', { class: 'msg-type', 'aria-label': 'Chat type', onchange: () => { S.type = typeSel.value; loadList(); } }, TYPES.map(([v, l]) => h('option', { value: v }, l)));
   const listPane = h('section', { class: 'msg-pane-list', 'aria-label': 'Chats' },
-    h('header', { class: 'msg-list-head' }, h('h1', null, 'Messages'), h('div', { class: 'grow' }),
-      ib('users', 'New group', newGroup), ib('settings', 'Message settings', settings)),
-    search, chips, listEl);
+    h('header', { class: 'msg-list-head' }, brandMark(34), h('h1', null, 'Messages'), h('div', { class: 'grow' }),
+      ib('plus', 'New chat', newChat, 'msg-new'), ib('users', 'New group', newGroup), ib('settings', 'Message settings', settings)),
+    searchBox, h('div', { class: 'msg-tabs-row' }, chips, typeSel), listEl);
   const threadPane = h('section', { class: 'msg-pane-thread', 'aria-label': 'Conversation' });
-  const root = h('div', { class: 'page-messages' }, listPane, threadPane);
+  const sidePane = h('aside', { class: 'msg-pane-side', 'aria-label': 'Contact details', hidden: true });
+  const root = h('div', { class: 'page-messages' }, listPane, threadPane, sidePane);
   view.append(root);
 
   // ------------------------------------------------------------- list
   function paintChips() {
-    chips.replaceChildren(...FILTERS.map(([k, l]) => h('button', { class: `chip${S.filter === k ? ' on' : ''}`, type: 'button', onclick: () => { S.filter = k; loadList(); } }, l)));
+    const counts = { unread: S.list.filter((c) => c.unread).length };
+    chips.replaceChildren(...TABS.map(([k, l, ic]) => h('button', { class: `msg-tab${S.tab === k ? ' on' : ''}`, type: 'button', role: 'tab', 'aria-selected': String(S.tab === k), onclick: () => { S.tab = k; loadList(); } },
+      h('span', { class: 'i', html: icon(ic, { size: 15 }) }), l, k === 'unread' && S.tab !== 'unread' && counts.unread ? h('em', null, String(counts.unread)) : null)));
   }
   async function loadList() {
     paintChips();
-    const qs = S.filter === 'archived' ? 'filter=all&archived=1' : `filter=${S.filter}`;
+    const qs = S.tab === 'archived' ? `filter=all&archived=1&type=${S.type}` : `filter=${S.tab}&type=${S.type}`;
     try { S.list = (await api(`/api/messages/conversations?${qs}`)).conversations; } catch (e) { toastErr(e); }
-    paintList();
+    paintList(); paintChips();
   }
   function rowEl(c) {
     const sub = c.type === 'meeting' ? (c.live ? 'Live now' : 'Meeting') : c.type === 'group' ? `${c.memberCount} members` : '';
@@ -56,13 +74,26 @@ export async function mount(view, params) {
     return h('a', { class: `msg-item${S.conv && S.conv.id === c.id ? ' on' : ''}${c.unread ? ' unread' : ''}`, href: `/messages/${c.id}`, 'data-link': '', role: 'listitem' },
       av,
       h('span', { class: 'msg-item-main' },
-        h('span', { class: 'msg-item-top' }, h('b', { class: 'ellipsis' }, c.title), c.pinned ? I('pin', 14) : null, c.muted ? I('volumeX', 14) : null, h('time', null, timeAgo(c.lastMessageAt))),
-        h('span', { class: 'msg-item-bot' }, h('span', { class: 'ellipsis' }, c.lastPreview || sub || 'No messages yet'), c.unread ? h('em', { class: 'msg-count' }, c.unread > 99 ? '99+' : String(c.unread)) : null)));
+        h('span', { class: 'msg-item-top' }, c.starred ? h('span', { class: 'msg-star', html: icon('star', { size: 13 }) }) : null, h('b', { class: 'ellipsis' }, c.title),
+          c.labels && c.labels.length ? h('span', { class: 'msg-labels' }, c.labels.slice(0, 2).map((l) => h('span', { class: 'msg-label', style: { '--lc': l.color } }, l.name)), c.labels.length > 2 ? h('span', { class: 'msg-label more' }, `+${c.labels.length - 2}`) : null) : null,
+          c.pinned ? I('pin', 14) : null, c.muted ? I('volumeX', 14) : null, h('time', null, timeAgo(c.lastMessageAt))),
+        h('span', { class: 'msg-item-bot' }, c.followUp ? h('span', { class: 'msg-flag', 'data-tip': 'Follow up', html: icon('flag', { size: 12 }) }) : null,
+          c.snoozedUntil ? h('span', { class: 'msg-snz' }, I('clock', 12), fmtDate(c.snoozedUntil)) : null,
+          h('span', { class: 'ellipsis' }, c.lastPreview || sub || 'No messages yet'), c.unread ? h('em', { class: 'msg-count' }, c.unread > 99 ? '99+' : String(c.unread)) : null)));
   }
   function paintList() {
     const rows = S.list.filter((c) => !S.q || c.title.toLowerCase().includes(S.q) || (c.lastPreview || '').toLowerCase().includes(S.q));
-    if (!rows.length) listEl.replaceChildren(h('div', { class: 'empty sm' }, I('chats', 28), h('p', null, S.q ? 'No chats match.' : S.filter === 'archived' ? 'Nothing archived.' : 'No chats yet. Message someone from their profile, or chat in a meeting.')));
-    else listEl.replaceChildren(...rows.map(rowEl));
+    const out = [];
+    if (!rows.length && !(S.found && S.found.length)) out.push(listEmpty());
+    else out.push(...rows.map(rowEl));
+    if (S.q.length >= 2 && S.found) {
+      out.push(h('div', { class: 'msg-sec' }, `Messages${S.sFrom || S.sHas ? ' · filtered' : ''}`));
+      if (!S.found.length) out.push(h('p', { class: 'tiny muted msg-sec-empty' }, 'No messages match.'));
+      for (const r of S.found.slice(0, 30)) out.push(h('a', { class: 'msg-hit', href: `/messages/${r.conversationId}?m=${r.message.id}`, 'data-link': '' },
+        h('span', { class: 'msg-hit-top' }, h('b', { class: 'ellipsis' }, r.title), h('time', null, timeAgo(r.message.createdAt))),
+        h('span', { class: 'msg-hit-txt', html: hilite(r.message.text || (r.message.attachment ? `📎 ${r.message.attachment.name || r.message.attachment.kind}` : ''), S.q) })));
+    }
+    listEl.replaceChildren(...out);
   }
 
   // ------------------------------------------------------------- thread
@@ -70,7 +101,35 @@ export async function mount(view, params) {
   const typingEl = h('div', { class: 'msg-typing', hidden: true });
   let composer = null;
   function empty() {
-    threadPane.replaceChildren(h('div', { class: 'msg-empty' }, I('chats', 40), h('h2', null, 'Your messages'), h('p', { class: 'muted' }, 'Pick a chat, or start one from someone’s profile.')));
+    sidePane.hidden = true; root.classList.remove('has-side');
+    threadPane.replaceChildren(h('div', { class: 'msg-empty' }, h('div', { class: 'msg-empty-art' }, brandMark(96)), h('h2', null, 'Your messages'),
+      h('p', { class: 'muted' }, 'Pick a chat, or start one with anyone on 1venue by username or email.'),
+      h('button', { class: 'btn primary', type: 'button', onclick: newChat }, I('plus', 16), 'Start a chat')));
+  }
+  function listEmpty() {
+    const txt = S.q ? 'No chats match.' : { archived: 'Nothing archived.', starred: 'Star a chat to keep it here.', unread: 'You’re all caught up.', followup: 'Chats you mark “Follow up” show here.', snoozed: 'Snoozed chats wait here until their time.', closed: 'Closed chats show here. A new message reopens them.' }[S.tab];
+    if (txt) return h('div', { class: 'msg-list-empty sm' }, I(TABS.find((t) => t[0] === S.tab)?.[2] || 'search', 26), h('p', null, txt));
+    return h('div', { class: 'msg-list-empty' }, h('div', { class: 'msg-empty-art sm' }, brandMark(64)), h('b', null, 'No chats yet'), h('p', { class: 'muted small' }, 'Message someone by username or email, or chat in a meeting.'),
+      h('button', { class: 'btn primary sm', type: 'button', onclick: newChat }, I('plus', 16), 'Start a chat'));
+  }
+  const hilite = (t, q) => { const e = esc(t || ''); if (!q) return e; const i = e.toLowerCase().indexOf(esc(q).toLowerCase()); return i < 0 ? e : `${e.slice(0, i)}<mark>${e.slice(i, i + esc(q).length)}</mark>${e.slice(i + esc(q).length)}`; };
+  async function searchMessages() {
+    if (S.q.length < 2) { S.found = null; return paintList(); }
+    try { const r = await api(`/api/messages/search?q=${encodeURIComponent(S.q)}&from=${S.sFrom}&has=${S.sHas}`); S.found = r.results; } catch { S.found = []; }
+    paintList();
+  }
+  function searchFilters(anchor) {
+    const pick = (k, v) => { S[k] = S[k] === v ? '' : v; filterBtn.classList.toggle('on', !!(S.sFrom || S.sHas)); searchMessages(); };
+    menu(anchor, [
+      { label: `${S.sFrom === 'me' ? '✓ ' : ''}From me`, icon: 'user', run: () => pick('sFrom', 'me') },
+      { label: `${S.sFrom === 'them' ? '✓ ' : ''}From others`, icon: 'users', run: () => pick('sFrom', 'them') },
+      '-',
+      { label: `${S.sHas === 'file' ? '✓ ' : ''}Has a file`, icon: 'file', run: () => pick('sHas', 'file') },
+      { label: `${S.sHas === 'image' ? '✓ ' : ''}Has a photo`, icon: 'image', run: () => pick('sHas', 'image') },
+      { label: `${S.sHas === 'voice' ? '✓ ' : ''}Has a voice note`, icon: 'mic', run: () => pick('sHas', 'voice') },
+      { label: `${S.sHas === 'link' ? '✓ ' : ''}Has a link`, icon: 'link', run: () => pick('sHas', 'link') },
+    ]);
+    if (S.q.length < 2) toast('Type at least 2 characters to search messages', { icon: 'search' });
   }
   async function open(id) {
     root.classList.toggle('is-thread', !!id);
@@ -79,10 +138,12 @@ export async function mount(view, params) {
     try {
       const [c, m] = await Promise.all([api(`/api/messages/conversations/${id}`), api(`/api/messages/conversations/${id}/messages?limit=50`)]);
       S.conv = c.conversation; S.msgs = m.messages; S.hasMore = m.hasMore; S.hidden = m.hiddenBefore; S.typing.clear(); S.editing = null;
+      S.replyTo = null; S.pins = c.conversation.pins || []; S.pinIdx = 0;
     } catch (e) { toastErr(e); navigate('/messages', { replace: true }); return; }
     setActiveConversation(S.conv.id);
     composer = null;
-    paintThread(); paintList(); markRead();
+    paintThread(); paintList(); markRead(); paintSide();
+    const jump = Number(new URLSearchParams(location.search).get('m')); if (jump) jumpTo(jump);
     const callId = new URLSearchParams(location.search).get('call');
     if (callId) api('/api/messages/calls/current').then((r) => { const c2 = r.calls.find((x) => x.id === callId && x.state === 'ringing' && x.myState === 'invited'); if (c2) import('../messages/call.js').then((cm) => cm.incoming({ ...c2, title: S.conv.title })); }).catch(() => {});
   }
@@ -98,26 +159,36 @@ export async function mount(view, params) {
     const av = c.type === 'dm' ? avatar(c.title, c.avatarUrl, 'md') : h('span', { class: `av md msg-av-ic ${c.type}`, html: icon(c.type === 'meeting' ? 'video' : 'users', { size: 20 }) });
     const titleEl = c.type === 'dm' && c.peer && c.peer.username ? h('a', { href: `/u/${c.peer.username}`, 'data-link': '', class: 'ellipsis' }, c.title) : h('span', { class: 'ellipsis' }, c.title);
     const canCall = c.canSend && c.type !== 'meeting';
-    const head = h('header', { class: 'msg-thread-head' }, back, av,
-      h('div', { class: 'msg-thread-title' }, h('b', null, titleEl), h('span', { class: 'muted tiny msg-presence' }, presenceText(c))),
+    const head = h('header', { class: 'msg-thread-head' }, back, h('button', { class: 'msg-head-who', type: 'button', 'aria-label': 'Contact details', onclick: () => toggleSide() }, av,
+      h('div', { class: 'msg-thread-title' }, h('b', null, titleEl), h('span', { class: 'muted tiny msg-presence' }, presenceText(c)))),
+      ib('star', c.starred ? 'Unstar' : 'Star', () => patch({ starred: !c.starred }, c.starred ? 'Unstarred' : 'Starred').then(paintThread), `msg-star-btn${c.starred ? ' on' : ''}`),
+      ib('pip', 'Float this chat', () => import('../messages/mini.js').then((m) => m.openMini(c.id)), 'msg-pip-btn'),
       canCall ? ib('phone', 'Audio call', () => call('audio')) : null,
       canCall && c.type === 'dm' ? ib('video', 'Video call', () => call('video')) : null,
       c.canSend && c.editable ? ib('calendarPlus', 'Meet', (e) => meetMenu(e.currentTarget), 'msg-meet') : null,
       c.type === 'meeting' && c.live && c.meetingCode ? h('a', { class: 'btn sm primary', href: `/${c.meetingCode}`, 'data-link': '' }, 'Rejoin') : null,
+      ib('info', 'Contact details', () => toggleSide(), 'msg-info-btn'),
       ib('moreV', 'More', (e) => moreMenu(e.currentTarget)));
-    const foot = c.canSend ? composerEl() : h('div', { class: 'msg-readonly' }, I(c.readOnly ? 'lock' : 'info', 16), h('span', null, c.reason || 'You can’t send messages here'));
-    threadPane.replaceChildren(head, msgsEl, typingEl, foot);
+    const foot = c.canSend ? h('div', { class: 'msg-foot' }, replyBar, composerEl()) : h('div', { class: 'msg-readonly' }, I(c.readOnly ? 'lock' : 'info', 16), h('span', null, c.reason || 'You can’t send messages here'));
+    threadPane.replaceChildren(head, pinBar, msgsEl, typingEl, foot);
+    paintPins(); paintReply();
     paintMsgs(true);
   }
   function composerEl() {
     if (!composer) {
-      composer = pillComposer({ placeholder: S.conv.type === 'dm' ? `Message ${S.conv.title}` : 'Message', maxLength: 4000,
+      composer = pillComposer({ placeholder: S.conv.type === 'dm' && !isMobile() ? `Message ${S.conv.title}` : 'Message', maxLength: 4000,
         upload: (f, purpose) => uploadFile(f, { purpose: purpose === 'voice' ? 'voice' : 'chat' }),
+        suggest: quickSuggest,
         onSend: async (text, att) => {
           if (S.editing) { const id = S.editing; S.editing = null; await api(`/api/messages/conversations/${S.conv.id}/messages/${id}`, { method: 'PATCH', body: { text } }).then((r) => upsert(r.message)); return; }
-          const r = await api(`/api/messages/conversations/${S.conv.id}/messages`, { method: 'POST', body: { text, attachment: att || undefined } });
+          const r = await api(`/api/messages/conversations/${S.conv.id}/messages`, { method: 'POST', body: { text, attachment: att || undefined, replyToId: S.replyTo ? S.replyTo.id : undefined } });
+          S.replyTo = null; paintReply();
           upsert(r.message, true);
         } });
+      // Extra composer tools: quick replies and send-later, tucked into the pill.
+      const pill = composer.el.querySelector('.wa-pill');
+      if (pill) pill.append(h('button', { class: 'wa-ib msg-quick-btn', type: 'button', 'aria-label': 'Quick replies', 'data-tip': 'Quick replies (type /)', html: icon('quick', { size: 19 }), onclick: (e) => quickMenu(e.currentTarget) }),
+        h('button', { class: 'wa-ib', type: 'button', 'aria-label': 'Send later', 'data-tip': 'Send later', html: icon('clock', { size: 19 }), onclick: () => sendLaterSheet() }));
       let last = 0;
       composer.ta.addEventListener('input', () => { if (Date.now() - last > 2500 && composer.ta.value) { last = Date.now(); sendTyping(S.conv.id); } });
     }
@@ -128,13 +199,25 @@ export async function mount(view, params) {
     if (i >= 0) S.msgs[i] = { ...S.msgs[i], ...m }; else S.msgs.push(m);
     paintMsgs(scroll);
   }
-  function attEl(a) {
+  const transcripts = new Map();
+  function attEl(a, m) {
     if (!a) return null;
     if (a.kind === 'passage') return passageCard(a, { compact: true });
     const src = a.url || a.dataUrl; if (!src) return null;
     if (a.kind === 'image') return h('img', { class: 'msg-img', src, alt: a.name || 'image', loading: 'lazy', tabindex: '0' });
-    if (a.kind === 'voice') return h('audio', { class: 'msg-voice', controls: true, src, preload: 'metadata' });
-    return h('a', { class: 'msg-file', href: src, target: '_blank', rel: 'noopener', download: a.name || 'file', html: icon('file', { size: 18 }) + `<span>${esc(a.name || 'file')}</span>` });
+    const audio = a.kind === 'voice' || /^audio\//.test(a.mime || '');
+    if (audio) {
+      const out = h('div', { class: 'msg-voice-wrap' }, h('audio', { class: 'msg-voice', controls: true, src, preload: 'metadata' }));
+      const tx = transcripts.get(m && m.id);
+      if (tx) out.append(h('div', { class: 'msg-transcript' }, I('fileText', 14), h('span', null, tx)));
+      else if (m && a.url) out.append(h('button', { class: 'msg-act-chip', type: 'button', onclick: (e) => transcribe(m, e.currentTarget) }, I('captions', 14), 'Transcribe'));
+      return out;
+    }
+    const card = h('a', { class: 'msg-file', href: src, target: '_blank', rel: 'noopener', download: a.name || 'file', html: icon(SHEET_EXT.test(a.name || '') ? 'grid' : 'file', { size: 18 }) + `<span>${esc(a.name || 'file')}</span>` });
+    if (!m || !a.url || !DOC_EXT.test(a.name || '')) return card;
+    return h('div', { class: 'msg-file-wrap' }, card, h('div', { class: 'msg-file-acts' },
+      h('button', { class: 'msg-act-chip', type: 'button', onclick: () => analyseFile(m) }, I('sparkles', 14), 'Analyse'),
+      SHEET_EXT.test(a.name || '') ? h('button', { class: 'msg-act-chip', type: 'button', onclick: () => chartFile(m) }, I('chart', 14), 'Chart') : null));
   }
   function cardEl(p) {
     if (!p) return null;
@@ -151,18 +234,39 @@ export async function mount(view, params) {
     const grouped = prev && prev.fromUserId === m.fromUserId && prev.kind !== 'system' && prev.kind !== 'call' && new Date(m.createdAt) - new Date(prev.createdAt) < 5 * 60000;
     const showName = !mine && c.type !== 'dm' && !grouped;
     const body = m.deleted ? h('div', { class: 'msg-txt deleted' }, I('trash', 14), 'Message deleted')
-      : h('div', null, m.text ? h('div', { class: 'msg-txt', html: linkify(m.text) }) : null, attEl(m.attachment), m.kind === 'card' ? cardEl(m.payload) : null);
+      : h('div', null, m.payload && m.payload.forwarded ? h('span', { class: 'msg-fwd' }, I('forward', 12), 'Forwarded') : null,
+        m.replyTo ? quoteEl(m.replyTo) : null,
+        m.text ? h('div', { class: 'msg-txt', html: linkify(m.text) }) : null, attEl(m.attachment, m), m.kind === 'card' ? cardEl(m.payload) : null);
     const reacts = m.reactions && m.reactions.length ? h('div', { class: 'msg-reacts' }, m.reactions.map((r) => h('button', { type: 'button', class: `msg-react${r.mine ? ' on' : ''}`, 'aria-label': `${r.emoji} ${r.count}`, onclick: () => react(m, r.emoji), disabled: !c.canSend }, `${r.emoji} ${r.count}`))) : null;
-    const seen = mine && c.type === 'dm' && c.peerReadId >= m.id && m.id === lastMineId() ? h('span', { class: 'msg-seen' }, 'Seen') : null;
+    // Ticks: delivered (grey) until the other person has replied in this chat AND read it (accent).
+    const read = mine && c.type === 'dm' && c.peerReplied && c.peerReadId >= m.id;
+    const ticks = mine && !m.deleted ? h('span', { class: `msg-ticks${read ? ' read' : ''}`, 'aria-label': read ? 'Read' : c.type === 'dm' ? 'Delivered' : 'Sent', html: icon(c.type === 'dm' ? 'checkCheck' : 'check', { size: 15 }) }) : null;
+    const seen = null;
+    const pinned = S.pins.some((p) => p.id === m.id);
     const bubble = h('div', { class: 'msg-bubble' }, showName ? h('b', { class: 'msg-who' }, m.fromName) : null, body,
-      h('span', { class: 'msg-meta' }, m.editedAt && !m.deleted ? 'edited · ' : '', hhmm(m.createdAt)));
+      h('span', { class: 'msg-meta' }, pinned ? I('pin', 11) : null, m.payload && m.payload.scheduled ? I('clock', 11) : null, m.editedAt && !m.deleted ? 'edited · ' : '', hhmm(m.createdAt), ticks));
     const row = h('div', { class: `msg-row${mine ? ' mine' : ''}${grouped ? ' grouped' : ''}`, 'data-id': m.id },
       !mine && c.type !== 'dm' ? (grouped ? h('span', { class: 'msg-av-gap' }) : avatar(m.fromName, null, 'sm')) : null,
       h('div', { class: 'msg-col' }, bubble, reacts, seen),
-      m.deleted ? null : h('button', { class: 'icon-btn msg-more', type: 'button', 'aria-label': 'Message actions', html: icon('moreHorizontal', { size: 16 }), onclick: (e) => msgMenu(e.currentTarget, m) }));
-    let pressT = null;
-    row.addEventListener('touchstart', () => { pressT = setTimeout(() => !m.deleted && msgMenu(row.querySelector('.msg-bubble'), m), 450); }, { passive: true });
-    row.addEventListener('touchend', () => clearTimeout(pressT)); row.addEventListener('touchmove', () => clearTimeout(pressT), { passive: true });
+      m.deleted ? null : h('div', { class: 'msg-hover' },
+        c.canSend ? h('button', { class: 'icon-btn msg-hb', type: 'button', 'aria-label': 'Reply', 'data-tip': 'Reply', html: icon('reply', { size: 16 }), onclick: () => startReply(m) }) : null,
+        c.canSend ? h('button', { class: 'icon-btn msg-hb', type: 'button', 'aria-label': 'React', 'data-tip': 'React', html: icon('smile', { size: 16 }), onclick: (e) => emojiPopover(e.currentTarget, (x) => react(m, x)) }) : null,
+        h('button', { class: 'icon-btn msg-hb msg-more', type: 'button', 'aria-label': 'Message actions', 'data-tip': 'More', html: icon('moreHorizontal', { size: 16 }), onclick: (e) => msgMenu(e.currentTarget, m) })));
+    // Phone: long-press for the menu, swipe right to reply (WhatsApp).
+    let pressT = null, sx = 0, sy = 0, dx = 0, swiping = false;
+    const bub = () => row.querySelector('.msg-col');
+    row.addEventListener('touchstart', (e) => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; dx = 0; swiping = false; pressT = setTimeout(() => !m.deleted && msgMenu(row.querySelector('.msg-bubble'), m), 450); }, { passive: true });
+    row.addEventListener('touchmove', (e) => {
+      clearTimeout(pressT);
+      const x = e.touches[0].clientX - sx, y = e.touches[0].clientY - sy;
+      if (!swiping && Math.abs(x) > 12 && Math.abs(x) > Math.abs(y) * 1.5 && x > 0 && c.canSend && !m.deleted) swiping = true;
+      if (swiping) { dx = Math.min(80, Math.max(0, x)); bub().style.transform = `translateX(${dx}px)`; row.classList.toggle('swipe-ready', dx > 56); }
+    }, { passive: true });
+    row.addEventListener('touchend', () => {
+      clearTimeout(pressT);
+      if (swiping) { bub().style.transition = 'transform .18s'; bub().style.transform = ''; setTimeout(() => { if (bub()) bub().style.transition = ''; }, 200); row.classList.remove('swipe-ready'); if (dx > 56) { try { navigator.vibrate && navigator.vibrate(15); } catch { /* ignore */ } startReply(m); } }
+      swiping = false;
+    });
     return row;
   }
   const lastMineId = () => { for (let i = S.msgs.length - 1; i >= 0; i--) if (S.msgs[i].mine) return S.msgs[i].id; return 0; };
@@ -206,8 +310,16 @@ export async function mount(view, params) {
   function msgMenu(anchor, m) {
     const c = S.conv;
     const canEdit = m.mine && c.editable && m.kind === 'text' && m.text && Date.now() - new Date(m.createdAt) < EDIT_MS;
+    const pinned = S.pins.some((p) => p.id === m.id);
+    const a = m.attachment;
     const mm = menu(anchor, [
+      c.canSend ? { label: 'Reply', icon: 'reply', run: () => startReply(m) } : null,
       c.canSend ? { label: 'React', icon: 'smile', run: () => emojiPopover(anchor, (e) => react(m, e)) } : null,
+      c.canSend && c.editable && m.kind === 'text' ? { label: pinned ? 'Unpin' : 'Pin', icon: 'pin', run: () => togglePin(m, pinned) } : null,
+      m.kind === 'text' ? { label: 'Forward', icon: 'forward', run: () => forwardSheet(m) } : null,
+      a && a.url && DOC_EXT.test(a.name || '') ? { label: 'Analyse file', icon: 'sparkles', run: () => analyseFile(m) } : null,
+      a && a.url && SHEET_EXT.test(a.name || '') ? { label: 'Make a chart', icon: 'chart', run: () => chartFile(m) } : null,
+      a && a.url && (a.kind === 'voice' || /^audio\//.test(a.mime || '')) && !transcripts.has(m.id) ? { label: 'Transcribe', icon: 'captions', run: () => transcribe(m) } : null,
       m.text ? { label: 'Copy text', icon: 'copy', run: () => copy(m.text) } : null,
       canEdit && c.canSend ? { label: 'Edit', icon: 'pen', run: () => { S.editing = m.id; composer.setText(m.text); composer.focus(); toast('Editing — press Enter to save', { icon: 'pen' }); } } : null,
       m.mine && c.editable ? { label: 'Delete', icon: 'trash', group: 'admin', run: async () => { if (await confirmDlg('Delete this message for everyone?', { ok: 'Delete', danger: true })) api(`/api/messages/conversations/${c.id}/messages/${m.id}`, { method: 'DELETE' }).then(() => upsert({ id: m.id, deleted: true, text: '', attachment: null, payload: null })).catch(toastErr); } } : null,
@@ -262,7 +374,7 @@ export async function mount(view, params) {
     } }, I('door', 18), h('span', { class: 'grow ellipsis' }, v.name), h('span', { class: 'tiny muted' }, `/v/${v.slug}`)))));
   }
   async function patch(body, msg) {
-    try { await api(`/api/messages/conversations/${S.conv.id}`, { method: 'PATCH', body }); Object.assign(S.conv, body); if (msg) toast(msg, { icon: 'check' }); loadList(); refreshUnread(); } catch (e) { toastErr(e); }
+    try { const r = await api(`/api/messages/conversations/${S.conv.id}`, { method: 'PATCH', body }); Object.assign(S.conv, body, r && r.conversation ? { starred: r.conversation.starred, followUp: r.conversation.followUp, closed: r.conversation.closed, snoozedUntil: r.conversation.snoozedUntil, labels: r.conversation.labels } : {}); if (msg) toast(msg, { icon: 'check' }); loadList(); refreshUnread(); } catch (e) { toastErr(e); }
   }
   function moreMenu(anchor) {
     const c = S.conv; const group = c.type === 'group'; const admin = c.role === 'admin' || c.role === 'owner';
@@ -270,7 +382,16 @@ export async function mount(view, params) {
       c.canSend && c.editable && isMobile() ? { label: 'Meet', icon: 'calendarPlus', run: () => meetMenu(anchor) } : null,
       group ? { label: 'Members', icon: 'users', run: membersSheet } : null,
       group && admin && c.editable ? { label: 'Rename group', icon: 'pen', run: async () => { const t = await promptDlg('Group name', { value: c.title }); if (t) { await patch({ title: t }); S.conv.title = t; paintThread(); } } } : null,
-      { label: c.pinned ? 'Unpin' : 'Pin to top', icon: 'pin', run: () => patch({ pinned: !c.pinned }) },
+      { label: c.pinned ? 'Unpin chat' : 'Pin chat to top', icon: 'pin', run: () => patch({ pinned: !c.pinned }) },
+      { label: c.followUp ? 'Clear follow up' : 'Follow up', icon: 'flag', run: () => patch({ followUp: !c.followUp }, c.followUp ? 'Follow up cleared' : 'Marked for follow up') },
+      { label: c.snoozedUntil ? 'Unsnooze' : 'Snooze…', icon: 'clock', run: () => (c.snoozedUntil ? patch({ snoozedUntil: null }, 'Back in your inbox') : snoozeMenu(anchor)) },
+      { label: c.closed ? 'Reopen chat' : 'Close chat', icon: 'checkCircle', run: () => patch({ closed: !c.closed }, c.closed ? 'Reopened' : 'Closed. A new message reopens it.') },
+      { label: 'Labels…', icon: 'tag', run: labelSheet },
+      '-',
+      { label: 'Summarise chat', icon: 'sparkles', run: summarise },
+      c.canSend && c.editable ? { label: 'Scheduled messages', icon: 'calendar', run: scheduledSheet } : null,
+      c.type === 'dm' ? { label: 'Contact details', icon: 'info', run: () => toggleSide(true) } : null,
+      '-',
       { label: c.muted ? 'Unmute' : 'Mute notifications', icon: c.muted ? 'bell' : 'volumeX', run: () => patch({ muted: !c.muted }, c.muted ? 'Unmuted' : 'Muted') },
       { label: c.archived ? 'Unarchive' : 'Archive', icon: 'folder', run: () => patch({ archived: !c.archived }, c.archived ? 'Moved back to chats' : 'Archived') },
       { label: 'Clear history for me', icon: 'trash', run: async () => { if (!(await confirmDlg('Clear this chat for you? Others keep their copy.', { ok: 'Clear', danger: true }))) return; await api(`/api/messages/conversations/${c.id}/clear`, { method: 'POST' }).catch(toastErr); S.msgs = []; paintMsgs(true); } },
@@ -324,17 +445,26 @@ export async function mount(view, params) {
     let cfg; try { cfg = await api('/api/messages/settings'); } catch (e) { toastErr(e); return; }
     const save = (b) => api('/api/messages/settings', { method: 'PUT', body: b }).then(() => toast('Saved', { icon: 'check' })).catch(toastErr);
     const pol = h('select', { class: 'input', onchange: () => save({ dmPolicy: pol.value }) },
-      [['everyone', 'Anyone I share a meeting, group or organisation with'], ['contacts', 'People I follow back (and my organisation)'], ['nobody', 'Nobody new']].map(([v, l]) => h('option', { value: v, selected: cfg.dmPolicy === v }, l)));
+      [['everyone', 'Anyone on 1venue (by username or email)'], ['contacts', 'Only people I share a meeting, group or organisation with, or follow back'], ['nobody', 'Nobody new']].map(([v, l]) => h('option', { value: v, selected: cfg.dmPolicy === v }, l)));
     const sw = (on, run) => { const i = h('input', { type: 'checkbox', checked: !!on, onchange: () => run(i.checked) }); return h('label', { class: 'switch' }, i, h('span')); };
     const pushRow = h('div', { class: 'msg-set-row' }, h('div', { class: 'grow' }, h('b', null, 'Notifications on this device'), h('p', { class: 'tiny muted' }, 'Checking…')));
     s.body.append(h('div', { class: 'stack' },
       h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Who can start a new chat with me'), pol),
       h('div', { class: 'msg-set-row' }, h('div', { class: 'grow' }, h('b', null, 'Hide when I’m online'), h('p', { class: 'tiny muted' }, 'You won’t see others’ status either.')), sw(cfg.hidePresence, (v) => save({ hidePresence: v }))),
-      pushRow, h('h4', { class: 'msg-sub' }, 'Blocked people'), blockedList()));
+      pushRow,
+      h('div', { class: 'msg-set-row' }, h('div', { class: 'grow' }, h('b', null, 'Message tone'), h('p', { class: 'tiny muted' }, 'A short chime for new messages.')), h('button', { class: 'btn sm ghost', type: 'button', onclick: () => { const was = toneMuted('message'); setToneMuted('message', false); playMessageTone(); setToneMuted('message', was); } }, 'Play'), sw(!toneMuted('message'), (v) => setToneMuted('message', !v))),
+      h('div', { class: 'msg-set-row' }, h('div', { class: 'grow' }, h('b', null, 'Call ringtone'), h('p', { class: 'tiny muted' }, 'Rings until you answer or decline.')), sw(!toneMuted('ring'), (v) => setToneMuted('ring', !v))),
+      h('h4', { class: 'msg-sub' }, 'Quick replies'), quickEditor(),
+      h('h4', { class: 'msg-sub' }, 'Blocked people'), blockedList()));
     const st = await pushState();
     const p = pushRow.querySelector('p');
     if (!st.supported) p.textContent = 'This browser can’t show notifications.';
-    else if (!st.enabled) p.textContent = 'Not set up on this server yet.';
+    else if (!st.enabled) {
+      // No server push keys: the browser still shows notifications while 1venue is open in a tab.
+      const perm = Notification.permission;
+      p.textContent = perm === 'granted' ? 'On while 1venue is open in a tab.' : perm === 'denied' ? 'Blocked in browser settings.' : 'Get alerts for new messages and calls.';
+      if (perm === 'default') pushRow.append(h('button', { class: 'btn sm primary', type: 'button', onclick: async (e) => { const n = await import('../messages/notify.js'); const r = await n.askNow(); p.textContent = r === 'granted' ? 'On while 1venue is open in a tab.' : 'Not allowed'; e.target.remove(); } }, 'Turn on'));
+    }
     else { p.textContent = st.on ? 'On for messages and calls.' : st.permission === 'denied' ? 'Blocked in browser settings.' : 'Get alerts when you’re away.'; pushRow.append(sw(st.on, async (v) => { try { v ? await enablePush() : await disablePush(); p.textContent = v ? 'On for messages and calls.' : 'Off'; } catch (e) { toastErr(e); } })); }
   }
   function blockedList() {
@@ -347,19 +477,280 @@ export async function mount(view, params) {
     return box;
   }
 
+  // ------------------------------------------------------------- replies (quoted bubbles)
+  const replyBar = h('div', { class: 'msg-replybar', hidden: true });
+  function paintReply() {
+    const r = S.replyTo; replyBar.hidden = !r;
+    if (!r) return replyBar.replaceChildren();
+    replyBar.replaceChildren(h('div', { class: 'msg-quote in-bar' }, h('b', null, r.mine ? 'You' : r.fromName), h('span', { class: 'ellipsis' }, r.text || (r.attachment ? `📎 ${r.attachment.name || r.attachment.kind}` : ''))),
+      h('button', { class: 'icon-btn sm', type: 'button', 'aria-label': 'Cancel reply', html: icon('x', { size: 16 }), onclick: () => { S.replyTo = null; paintReply(); } }));
+  }
+  function startReply(m) { S.replyTo = m; paintReply(); composer && composer.focus(); }
+  function quoteEl(q) {
+    return h('button', { class: `msg-quote${q.fromUserId === state.user.id ? ' me' : ''}`, type: 'button', onclick: (e) => { e.stopPropagation(); if (!q.missing) jumpTo(q.id); } },
+      h('b', null, q.missing ? 'Message' : q.fromUserId === state.user.id ? 'You' : q.fromName),
+      h('span', { class: 'ellipsis' }, q.missing || q.deleted ? 'Message unavailable' : q.text || (q.attachmentKind === 'voice' ? '🎤 Voice note' : q.attachmentKind === 'image' ? '📷 Photo' : q.attachmentKind ? '📎 File' : '')));
+  }
+  /** Scroll to a message (loading older pages if needed) and flash it. */
+  async function jumpTo(id) {
+    for (let i = 0; i < 8 && !S.msgs.some((m) => m.id === id) && S.hasMore; i++) await older();
+    const el = msgsEl.querySelector(`.msg-row[data-id="${id}"]`);
+    if (!el) return toast('That message is no longer here', { icon: 'info' });
+    el.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+  }
+
+  // ------------------------------------------------------------- pinned bar (cycles like WhatsApp)
+  const pinBar = h('div', { class: 'msg-pinbar', hidden: true });
+  let pinTimer = null;
+  function paintPins() {
+    clearInterval(pinTimer);
+    const n = S.pins.length; pinBar.hidden = !n;
+    if (!n) return pinBar.replaceChildren();
+    S.pinIdx = S.pinIdx % n;
+    const p = S.pins[S.pinIdx];
+    const dots = h('span', { class: 'msg-pin-dots', 'aria-hidden': 'true' }, S.pins.slice(0, 6).map((_, i) => h('i', { class: i === S.pinIdx % 6 ? 'on' : '' })));
+    pinBar.replaceChildren(dots,
+      h('button', { class: 'msg-pin-main', type: 'button', 'aria-label': `Pinned message ${S.pinIdx + 1} of ${n}. Show it`, onclick: () => { jumpTo(p.id); S.pinIdx = (S.pinIdx + 1) % n; paintPins(); } },
+        I('pin', 15), h('span', { class: 'msg-pin-txt' }, h('b', null, n > 1 ? `Pinned ${S.pinIdx + 1} of ${n}` : 'Pinned message'), h('span', { class: 'ellipsis' }, p.text || (p.attachmentKind ? `📎 ${p.attachmentKind}` : '')))),
+      n > 1 ? h('button', { class: 'icon-btn sm', type: 'button', 'aria-label': 'All pinned messages', 'data-tip': 'All pins', html: icon('listChecks', { size: 16 }), onclick: allPins }) : null,
+      S.conv.canSend ? h('button', { class: 'icon-btn sm', type: 'button', 'aria-label': 'Unpin', 'data-tip': 'Unpin', html: icon('x', { size: 16 }), onclick: () => togglePin(p, true) }) : null);
+    if (n > 1 && !matchMedia('(prefers-reduced-motion: reduce)').matches) pinTimer = setInterval(() => { if (!pinBar.matches(':hover')) { S.pinIdx = (S.pinIdx + 1) % S.pins.length; paintPins(); } }, 5000);
+  }
+  function allPins() {
+    const s = sheet({ title: `Pinned messages (${S.pins.length})`, icon: 'pin' });
+    s.body.append(h('div', { class: 'msg-pick' }, S.pins.map((p) => h('div', { class: 'msg-pick-row' }, I('pin', 16),
+      h('button', { class: 'grow msg-pin-row', type: 'button', onclick: () => { s.close(); jumpTo(p.id); } }, h('b', { class: 'tiny' }, p.fromName), h('span', { class: 'ellipsis' }, p.text || `📎 ${p.attachmentKind || 'file'}`)),
+      S.conv.canSend ? h('button', { class: 'btn sm ghost', type: 'button', onclick: async (e) => { await togglePin(p, true); e.target.closest('.msg-pick-row').remove(); } }, 'Unpin') : null))));
+  }
+  async function togglePin(m, pinned) {
+    try { const r = await api(`/api/messages/conversations/${S.conv.id}/messages/${m.id}/pin`, { method: pinned ? 'DELETE' : 'POST' }); S.pins = r.pins; if (!pinned) S.pinIdx = 0; paintPins(); paintMsgs(false); toast(pinned ? 'Unpinned' : 'Pinned', { icon: 'pin' }); } catch (e) { toastErr(e); }
+  }
+
+  // ------------------------------------------------------------- AI on files and voice notes
+  async function transcribe(m, btn) {
+    if (btn) { btn.disabled = true; btn.lastChild.textContent = 'Transcribing…'; }
+    try { const r = await api(`/api/messages/conversations/${S.conv.id}/messages/${m.id}/transcribe`, { method: 'POST' }); transcripts.set(m.id, r.text); paintMsgs(false); if (r.cost) toast(`Transcribed · ${r.cost} AI point${r.cost === 1 ? '' : 's'}`, { icon: 'captions' }); }
+    catch (e) { if (btn) { btn.disabled = false; btn.lastChild.textContent = 'Transcribe'; } upgradeOrErr(e); }
+  }
+  const upgradeOrErr = (e) => (e.data && e.data.upgrade ? toast(e.message, { icon: 'zap', action: { label: 'Upgrade', run: () => navigate('/upgrade') } }) : toastErr(e));
+  async function analyseFile(m, force = false) {
+    const s = sheet({ title: m.attachment.name || 'File', icon: 'sparkles', wide: true });
+    const box = h('div', { class: 'msg-ai' }, h('div', { class: 'msg-ai-loading' }, h('span', { class: 'spinner' }), 'Reading the file…'));
+    s.body.append(box);
+    try {
+      const { analysis: a } = await api(`/api/messages/conversations/${S.conv.id}/messages/${m.id}/analyse`, { method: 'POST', body: { force } });
+      box.replaceChildren(h('p', { class: 'msg-ai-sum' }, a.summary),
+        a.keyPoints && a.keyPoints.length ? h('ul', { class: 'msg-ai-pts' }, a.keyPoints.map((k) => h('li', null, k))) : null,
+        a.dataCommentary ? h('p', { class: 'small muted' }, a.dataCommentary) : null,
+        h('div', { class: 'row gap msg-ai-foot' }, h('span', { class: 'tiny muted grow' }, a.cached ? 'Saved analysis · no points used' : `${a.cost || 0} AI point${a.cost === 1 ? '' : 's'}${a.mock ? ' · preview mode' : ''}`),
+          a.chartable ? h('button', { class: 'btn sm', type: 'button', onclick: () => { s.close(); chartFile(m); } }, I('chart', 14), 'Chart it') : null,
+          h('button', { class: 'btn sm primary', type: 'button', onclick: () => { s.close(); S.replyTo = m; paintReply(); composer && composer.setText(`Summary of ${m.attachment.name}: ${a.summary}`); composer && composer.focus(); } }, 'Share summary')));
+    } catch (e) { s.close(); upgradeOrErr(e); }
+  }
+  async function chartFile(m) {
+    try { const data = await api(`/api/messages/conversations/${S.conv.id}/messages/${m.id}/table`); const cm = await import('../messages/chart.js'); cm.chartSheet(data, (m.attachment.name || 'Chart').replace(/\.[^.]+$/, '')); }
+    catch (e) { toastErr(e); }
+  }
+  async function summarise() {
+    const s = sheet({ title: `Summary · ${S.conv.title}`, icon: 'sparkles' });
+    const box = h('div', { class: 'msg-ai' }, h('div', { class: 'msg-ai-loading' }, h('span', { class: 'spinner' }), 'Catching up on the chat…'));
+    s.body.append(box);
+    try {
+      const r = await api(`/api/messages/conversations/${S.conv.id}/summary`, { method: 'POST' });
+      box.replaceChildren(h('p', { class: 'msg-ai-sum' }, r.summary),
+        r.keyPoints && r.keyPoints.length ? h('div', null, h('h4', { class: 'msg-sub' }, 'Key points'), h('ul', { class: 'msg-ai-pts' }, r.keyPoints.map((k) => h('li', null, k)))) : null,
+        r.actionItems && r.actionItems.length ? h('div', null, h('h4', { class: 'msg-sub' }, 'Action items'), h('ul', { class: 'msg-ai-pts todo' }, r.actionItems.map((k) => h('li', null, k)))) : null,
+        h('p', { class: 'tiny muted' }, `Last ${r.count} messages · ${r.cached ? 'no new points used' : `${r.cost || 0} AI point${r.cost === 1 ? '' : 's'}`}${r.mock ? ' · preview mode' : ''}`));
+    } catch (e) { s.close(); upgradeOrErr(e); }
+  }
+
+  // ------------------------------------------------------------- forward, snooze, labels
+  async function forwardSheet(m) {
+    const s = sheet({ title: 'Forward to…', icon: 'forward' });
+    let all = [];
+    try { all = (await api('/api/messages/conversations?filter=all')).conversations.filter((c) => c.canSend && c.id !== S.conv.id); } catch (e) { toastErr(e); }
+    const live = all.filter((c) => c.type === 'meeting' && c.live);
+    const rest = all.filter((c) => !(c.type === 'meeting' && c.live));
+    const row = (c) => h('button', { class: 'msg-pick-row', type: 'button', onclick: async () => {
+      try { await api(`/api/messages/conversations/${S.conv.id}/messages/${m.id}/forward`, { method: 'POST', body: { conversationId: c.id } }); s.close(); toast(`Forwarded to ${c.title}`, { icon: 'forward', action: { label: 'Open', run: () => navigate(`/messages/${c.id}`) } }); } catch (e) { toastErr(e); }
+    } }, c.type === 'dm' ? avatar(c.title, c.avatarUrl, 'sm') : h('span', { class: `av sm msg-av-ic ${c.type}`, html: icon(c.type === 'meeting' ? 'video' : 'users', { size: 16 }) }), h('span', { class: 'grow ellipsis' }, c.title), c.live ? h('span', { class: 'msg-live' }, 'Live') : null);
+    s.body.append(live.length ? h('h4', { class: 'msg-sub' }, 'Live meetings') : null, live.length ? h('div', { class: 'msg-pick' }, live.map(row)) : null,
+      h('h4', { class: 'msg-sub' }, 'Chats'), rest.length ? h('div', { class: 'msg-pick' }, rest.map(row)) : h('p', { class: 'muted small' }, 'No other chats yet.'));
+  }
+  function snoozeMenu(anchor) {
+    const at = (fn) => { const d = new Date(); fn(d); return d.toISOString(); };
+    const go = (iso, label) => patch({ snoozedUntil: iso }, `Snoozed until ${label}`).then(() => { if (S.tab === 'inbox') navigate('/messages'); });
+    menu(anchor, [
+      { label: 'In 1 hour', icon: 'clock', run: () => go(at((d) => d.setHours(d.getHours() + 1)), 'in an hour') },
+      { label: 'In 3 hours', icon: 'clock', run: () => go(at((d) => d.setHours(d.getHours() + 3)), 'in 3 hours') },
+      { label: 'Tomorrow morning', icon: 'sun', run: () => go(at((d) => { d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); }), 'tomorrow 9:00') },
+      { label: 'Next week', icon: 'calendar', run: () => go(at((d) => { d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); d.setHours(9, 0, 0, 0); }), 'Monday 9:00') },
+      { label: 'Pick a time…', icon: 'calendarPlus', run: async () => { const v = await promptDlg('Snooze until', { placeholder: 'YYYY-MM-DD HH:MM', value: new Date(Date.now() + 86400000).toISOString().slice(0, 16).replace('T', ' ') }); if (v) { const d = new Date(v.replace(' ', 'T')); if (Number.isNaN(d.getTime())) return toast('That date didn’t look right', { icon: 'alert' }); go(d.toISOString(), fmtDate(d)); } } },
+    ]);
+  }
+  function labelSheet() {
+    const s = sheet({ title: 'Labels', icon: 'tag' });
+    let labels = [...(S.conv.labels || [])];
+    let color = LABEL_COLORS[0];
+    const known = [...new Map(S.list.flatMap((c) => c.labels || []).map((l) => [l.name.toLowerCase(), l])).values()];
+    const cur = h('div', { class: 'msg-label-edit' });
+    const save = () => patch({ labels }).then(() => { S.conv.labels = labels; paintCur(); paintSide(); });
+    const paintCur = () => cur.replaceChildren(...(labels.length ? labels.map((l) => h('span', { class: 'msg-label lg', style: { '--lc': l.color } }, l.name, h('button', { type: 'button', 'aria-label': `Remove ${l.name}`, html: icon('x', { size: 12 }), onclick: () => { labels = labels.filter((x) => x !== l); save(); } }))) : [h('span', { class: 'tiny muted' }, 'No labels on this chat yet.')]));
+    const name = h('input', { class: 'input', placeholder: 'New label, e.g. Lead or VIP', maxlength: 24 });
+    const sw = h('div', { class: 'msg-swatches' }, LABEL_COLORS.map((c) => h('button', { type: 'button', class: `msg-swatch${c === color ? ' on' : ''}`, style: { '--lc': c }, 'aria-label': `Colour ${c}`, onclick: (e) => { color = c; sw.querySelectorAll('.msg-swatch').forEach((b) => b.classList.toggle('on', b === e.currentTarget)); } })));
+    const add = (l) => { if (!l.name || labels.some((x) => x.name.toLowerCase() === l.name.toLowerCase())) return; if (labels.length >= 8) return toast('Up to 8 labels per chat', { icon: 'alert' }); labels = [...labels, l]; save(); };
+    s.body.append(h('div', { class: 'stack' }, cur,
+      known.length ? h('div', null, h('span', { class: 'lbl' }, 'Your labels'), h('div', { class: 'msg-label-edit' }, known.map((l) => h('button', { type: 'button', class: 'msg-label lg pick', style: { '--lc': l.color }, onclick: () => add(l) }, '+ ', l.name)))) : null,
+      h('div', { class: 'field' }, h('span', { class: 'lbl' }, 'New label'), name, sw),
+      h('button', { class: 'btn primary', type: 'button', onclick: () => { add({ name: name.value.trim(), color }); name.value = ''; } }, 'Add label')));
+    paintCur();
+  }
+
+  // ------------------------------------------------------------- scheduled messages
+  function localInput(d) { return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
+  function sendLaterSheet() {
+    const s = sheet({ title: 'Send later', icon: 'clock' });
+    const text = h('textarea', { class: 'input', rows: 3, maxlength: 4000, placeholder: 'Message' }); text.value = composer ? composer.ta.value : '';
+    const t = new Date(Date.now() + 3600000); t.setMinutes(0, 0, 0);
+    const when = h('input', { class: 'input', type: 'datetime-local', value: localInput(t), min: localInput(new Date()) });
+    const presets = h('div', { class: 'chips' }, [['In 1 hour', 1], ['Tonight 8pm', 'night'], ['Tomorrow 9am', 'am']].map(([l, v]) => h('button', { class: 'chip', type: 'button', onclick: () => { const d = new Date(); if (v === 1) d.setHours(d.getHours() + 1); else if (v === 'night') { d.setHours(20, 0, 0, 0); if (d < new Date()) d.setDate(d.getDate() + 1); } else { d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); } when.value = localInput(d); } }, l)));
+    const go = h('button', { class: 'btn primary', type: 'button', onclick: async () => {
+      go.disabled = true;
+      try { await api(`/api/messages/conversations/${S.conv.id}/scheduled`, { method: 'POST', body: { text: text.value, sendAt: new Date(when.value).toISOString(), replyToId: S.replyTo ? S.replyTo.id : undefined } }); s.close(); composer && composer.clear(); S.replyTo = null; paintReply(); toast(`Scheduled for ${fmtDate(new Date(when.value))}`, { icon: 'clock', action: { label: 'View', run: scheduledSheet } }); }
+      catch (e) { go.disabled = false; toastErr(e); }
+    } }, 'Schedule');
+    s.body.append(h('div', { class: 'stack' }, text, presets, h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Send at'), when), go));
+  }
+  async function scheduledSheet() {
+    const s = sheet({ title: 'Scheduled messages', icon: 'calendar' });
+    const box = h('div', { class: 'msg-pick' }, h('p', { class: 'tiny muted' }, 'Loading…'));
+    s.body.append(box, h('button', { class: 'btn', type: 'button', onclick: () => { s.close(); sendLaterSheet(); } }, I('plus', 16), 'Schedule a message'));
+    try {
+      const r = await api(`/api/messages/conversations/${S.conv.id}/scheduled`);
+      if (!r.scheduled.length) return box.replaceChildren(h('p', { class: 'muted small' }, 'Nothing scheduled in this chat.'));
+      box.replaceChildren(...r.scheduled.map((x) => h('div', { class: 'msg-pick-row' }, I('clock', 16), h('div', { class: 'grow' }, h('b', { class: 'tiny' }, fmtDate(x.sendAt)), h('div', { class: 'ellipsis small' }, x.text || '📎 Attachment')),
+        h('button', { class: 'btn sm ghost', type: 'button', onclick: async (e) => { try { await api(`/api/messages/scheduled/${x.id}`, { method: 'DELETE' }); e.target.closest('.msg-pick-row').remove(); } catch (er) { toastErr(er); } } }, 'Cancel'))));
+    } catch (e) { box.replaceChildren(h('p', { class: 'muted small' }, e.message)); }
+  }
+
+  // ------------------------------------------------------------- quick replies
+  async function loadQuick(force = false) { if (!S.quick || force) { try { S.quick = (await api('/api/messages/quick-replies')).replies; } catch { S.quick = []; } } return S.quick; }
+  loadQuick();
+  function quickSuggest(t) {
+    if (!t.startsWith('/') || !S.quick) return [];
+    const q = t.slice(1).toLowerCase();
+    return S.quick.filter((r) => r.shortcut.toLowerCase().startsWith(q)).slice(0, 6).map((r) => ({ label: `/${r.shortcut}`, tip: r.body.slice(0, 80), run: () => { composer.setText(r.body); composer.focus(); } }));
+  }
+  async function quickMenu(anchor) {
+    const list = await loadQuick();
+    menu(anchor, [...list.slice(0, 12).map((r) => ({ label: `/${r.shortcut} · ${r.body.slice(0, 40)}`, icon: 'quick', run: () => { composer.setText(r.body); composer.focus(); } })),
+      list.length ? '-' : null, { label: 'Manage quick replies', icon: 'settings', run: settings }]);
+  }
+  function quickEditor() {
+    const box = h('div', { class: 'stack' });
+    const paint = (list) => {
+      const sc = h('input', { class: 'input sm', placeholder: 'shortcut', maxlength: 24 });
+      const body = h('input', { class: 'input sm grow', placeholder: 'Text to insert', maxlength: 1000 });
+      box.replaceChildren(h('div', { class: 'msg-pick' }, list.length ? list.map((r) => h('div', { class: 'msg-pick-row' }, h('code', null, `/${r.shortcut}`), h('span', { class: 'grow ellipsis small' }, r.body),
+        h('button', { class: 'icon-btn sm', type: 'button', 'aria-label': 'Delete', html: icon('trash', { size: 14 }), onclick: async () => { try { const x = await api(`/api/messages/quick-replies/${r.id}`, { method: 'DELETE' }); S.quick = x.replies; paint(x.replies); } catch (e) { toastErr(e); } } }))) : h('p', { class: 'tiny muted' }, 'Save answers you send often, then type / in a chat.')),
+      h('div', { class: 'row gap msg-quick-add' }, sc, body, h('button', { class: 'btn sm', type: 'button', onclick: async () => { try { const x = await api('/api/messages/quick-replies', { method: 'POST', body: { shortcut: sc.value, body: body.value } }); S.quick = x.replies; paint(x.replies); } catch (e) { toastErr(e); } } }, 'Save')));
+    };
+    loadQuick(true).then(paint);
+    return box;
+  }
+
+  // ------------------------------------------------------------- new chat by username or email
+  function newChat() {
+    const s = sheet({ title: 'New chat', icon: 'messages' });
+    const input = h('input', { class: 'input', placeholder: 'Username or email', autocomplete: 'off', autocapitalize: 'none', spellcheck: 'false', 'aria-label': 'Username or email' });
+    const sugg = h('div', { class: 'msg-pick' });
+    const go = async (handle) => {
+      const v = String(handle || input.value).trim(); if (!v) return;
+      btn.disabled = true;
+      try { const r = await api('/api/messages/new', { method: 'POST', body: { handle: v } }); s.close(); navigate(`/messages/${r.conversation.id}`); }
+      catch (e) { btn.disabled = false; toastErr(e); }
+    };
+    const btn = h('button', { class: 'btn primary', type: 'button', onclick: () => go() }, 'Start chat');
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+    input.addEventListener('input', debounce(async () => {
+      const q = input.value.trim().replace(/^@/, '');
+      if (q.length < 2 || q.includes('@')) return sugg.replaceChildren();
+      try {
+        const r = await api(`/api/users/search?q=${encodeURIComponent(q)}`);
+        const users = (r.users || r.results || []).filter((u) => u.id !== state.user.id).slice(0, 6);
+        sugg.replaceChildren(...users.map((u) => h('button', { class: 'msg-pick-row', type: 'button', onclick: () => go(u.username) }, avatar(u.displayName || u.display_name || u.username, u.avatarUrl || u.avatar_url, 'sm'), h('span', { class: 'grow ellipsis' }, u.displayName || u.display_name || u.username), h('span', { class: 'tiny muted' }, `@${u.username}`))));
+      } catch { sugg.replaceChildren(); }
+    }, 220));
+    s.body.append(h('div', { class: 'stack' }, h('p', { class: 'small muted' }, 'Message anyone on 1venue, even if you haven’t met in a meeting. People can limit this in their Message settings.'), input, sugg, btn));
+  }
+
+  // ------------------------------------------------------------- contact side panel (Cooby-style)
+  function toggleSide(force) {
+    S.panel = force === undefined ? !(S.panel && !sidePane.hidden) : !!force;
+    localStorage.setItem('venue.msg.panel', S.panel ? '1' : '0');
+    paintSide();
+  }
+  let noteT = null;
+  async function paintSide() {
+    const c = S.conv;
+    sidePane.hidden = !(c && S.panel);
+    root.classList.toggle('has-side', !sidePane.hidden);
+    if (!c || sidePane.hidden) return;
+    const close = h('button', { class: 'icon-btn sm msg-side-close', type: 'button', 'aria-label': 'Close details', html: icon('x', { size: 18 }), onclick: () => toggleSide(false) });
+    if (c.type !== 'dm') {
+      sidePane.replaceChildren(close, h('div', { class: 'msg-side-hero' }, h('span', { class: `av xl msg-av-ic ${c.type}`, html: icon(c.type === 'meeting' ? 'video' : 'users', { size: 32 }) }), h('h3', null, c.title), h('span', { class: 'muted small' }, presenceText(c))),
+        labelsBlock(c),
+        c.members && c.members.length ? h('section', { class: 'msg-side-sec' }, h('h4', null, `Members · ${c.members.length}`), h('div', { class: 'msg-side-list' }, c.members.slice(0, 30).map((u) => h('a', { class: 'msg-side-item', href: `/u/${u.username}`, 'data-link': '' }, avatar(u.name, u.avatarUrl, 'sm'), h('span', { class: 'grow ellipsis' }, u.name), u.role !== 'member' ? h('span', { class: 'tiny muted' }, u.role) : null)))) : null);
+      return;
+    }
+    sidePane.replaceChildren(close, h('div', { class: 'msg-side-loading' }, h('span', { class: 'spinner' })));
+    let d;
+    try { d = await api(`/api/messages/conversations/${c.id}/contact`); } catch (e) { sidePane.replaceChildren(close, h('p', { class: 'muted small pad' }, e.message)); return; }
+    if (S.conv !== c) return;
+    const u = d.user; const st = d.stats;
+    const note = h('textarea', { class: 'input msg-note', rows: 4, maxlength: 4000, placeholder: 'Private notes about this contact. Only you can see them.' }); note.value = d.note.body || '';
+    const noteSt = h('span', { class: 'tiny muted' }, d.note.updatedAt ? `Saved ${timeAgo(d.note.updatedAt)}` : 'Only visible to you');
+    note.addEventListener('input', () => { clearTimeout(noteT); noteSt.textContent = 'Saving…'; noteT = setTimeout(() => api(`/api/messages/conversations/${c.id}/note`, { method: 'PUT', body: { body: note.value } }).then(() => { noteSt.textContent = 'Saved'; }).catch(() => { noteSt.textContent = 'Not saved'; }), 600); });
+    const stat = (v, l) => h('div', { class: 'msg-stat' }, h('b', null, v), h('span', null, l));
+    sidePane.replaceChildren(close,
+      h('div', { class: 'msg-side-hero' }, avatar(u.name, u.avatarUrl, 'xl'), h('h3', null, u.name), h('a', { class: 'muted small', href: `/u/${u.username}`, 'data-link': '' }, `@${u.username}`), u.bio ? h('p', { class: 'small msg-side-bio' }, u.bio) : null,
+        h('div', { class: 'msg-side-acts' }, c.canSend ? h('button', { class: 'btn sm', type: 'button', onclick: () => call('audio') }, I('phone', 14), 'Call') : null, h('a', { class: 'btn sm ghost', href: `/u/${u.username}`, 'data-link': '' }, 'Profile'))),
+      h('section', { class: 'msg-side-sec' }, h('h4', null, 'Activity'), h('div', { class: 'msg-stats' },
+        stat(st.total.toLocaleString(), 'messages'), stat(`${st.mine}/${st.theirs}`, 'you / them'), stat(dur(st.myAvgReplySec), 'your avg reply'), stat(dur(st.theirAvgReplySec), 'their avg reply')),
+      st.firstAt ? h('p', { class: 'tiny muted' }, `Chatting since ${fmtDate(st.firstAt)}`) : null),
+      labelsBlock(c),
+      h('section', { class: 'msg-side-sec' }, h('h4', null, I('notes', 14), 'Notes'), note, noteSt),
+      h('section', { class: 'msg-side-sec' }, h('h4', null, `Shared meetings · ${d.sharedMeetings.length}`), d.sharedMeetings.length ? h('div', { class: 'msg-side-list' }, d.sharedMeetings.map((m) => h('div', { class: 'msg-side-item' }, h('span', { class: 'ico-tile sm', html: icon('video', { size: 14 }) }), h('span', { class: 'grow ellipsis' }, m.name), h('span', { class: 'tiny muted' }, fmtDate(m.at))))) : h('p', { class: 'tiny muted' }, 'No meetings together yet.')),
+      h('section', { class: 'msg-side-sec' }, h('h4', null, `Files & materials · ${d.files.length + d.materials.length}`), (d.files.length || d.materials.length) ? h('div', { class: 'msg-side-list' },
+        d.materials.map((m) => h('a', { class: 'msg-side-item', href: `/materials/${m.id}`, 'data-link': '' }, h('span', { class: 'ico-tile sm', html: icon(m.kind === 'sheet' ? 'grid' : 'presentation', { size: 14 }) }), h('span', { class: 'grow ellipsis' }, m.title))),
+        d.files.map((f) => h('button', { class: 'msg-side-item', type: 'button', onclick: () => jumpTo(f.messageId) }, h('span', { class: 'ico-tile sm', html: icon(f.kind === 'image' ? 'image' : f.kind === 'voice' ? 'mic' : 'file', { size: 14 }) }), h('span', { class: 'grow ellipsis' }, f.name), h('span', { class: 'tiny muted' }, timeAgo(f.at))))) : h('p', { class: 'tiny muted' }, 'Files you share here appear in this list.')));
+  }
+  function labelsBlock(c) {
+    return h('section', { class: 'msg-side-sec' }, h('h4', null, I('tag', 14), 'Labels', h('button', { class: 'msg-side-edit', type: 'button', onclick: labelSheet }, 'Edit')),
+      h('div', { class: 'msg-label-edit' }, (c.labels || []).length ? c.labels.map((l) => h('span', { class: 'msg-label lg', style: { '--lc': l.color } }, l.name)) : h('span', { class: 'tiny muted' }, 'None')),
+      h('div', { class: 'msg-side-flags' }, c.starred ? h('span', { class: 'msg-flagchip' }, I('star', 12), 'Starred') : null, c.followUp ? h('span', { class: 'msg-flagchip' }, I('flag', 12), 'Follow up') : null, c.snoozedUntil ? h('span', { class: 'msg-flagchip' }, I('clock', 12), `Snoozed · ${fmtDate(c.snoozedUntil)}`) : null, c.closed ? h('span', { class: 'msg-flagchip' }, I('checkCircle', 12), 'Closed') : null));
+  }
+
   // ------------------------------------------------------------- live events
   const on = (t, f) => { const g = (e) => f(e.detail); bus.addEventListener(t, g); offs.push(() => bus.removeEventListener(t, g)); };
   const offs = [];
   const reloadList = debounce(loadList, 400);
   on('message', (m) => {
     reloadList();
-    if (S.conv && Number(m.conversationId) === S.conv.id) { S.typing.delete(m.message.fromUserId); paintTyping(); upsert(m.message, m.message.mine || m.message.fromUserId === state.user.id); markRead(); }
+    if (S.conv && Number(m.conversationId) === S.conv.id) {
+      const mine = m.message.fromUserId === state.user.id;
+      if (!mine && S.conv.type === 'dm' && m.message.kind === 'text') S.conv.peerReplied = true;
+      S.typing.delete(m.message.fromUserId); paintTyping(); upsert({ ...m.message, mine: m.message.mine || mine }, m.message.mine || mine); markRead();
+    }
   });
   on('message-edited', (m) => { if (S.conv && m.conversationId === S.conv.id) upsert(m.message); });
   on('message-deleted', (m) => { if (S.conv && m.conversationId === S.conv.id) upsert({ id: m.messageId, deleted: true, text: '', attachment: null, payload: null }); reloadList(); });
   on('reaction', (m) => { if (S.conv && m.conversationId === S.conv.id && S.msgs.some((x) => x.id === m.messageId)) upsert({ id: m.messageId, reactions: m.reactions }); });
-  on('read', (m) => { if (S.conv && m.conversationId === S.conv.id && m.userId !== state.user.id) { S.conv.peerReadId = Math.max(S.conv.peerReadId || 0, m.messageId); paintMsgs(false); } });
+  on('read', (m) => { if (S.conv && m.conversationId === S.conv.id && m.userId !== state.user.id) { S.conv.peerReplied = true; S.conv.peerReadId = Math.max(S.conv.peerReadId || 0, m.messageId); paintMsgs(false); } });
   on('conversation-updated', () => reloadList());
+  on('pins', (m) => { if (S.conv && m.conversationId === S.conv.id) { S.pins = m.pins || []; S.pinIdx = Math.min(S.pinIdx, Math.max(0, S.pins.length - 1)); paintPins(); paintMsgs(false); } });
+  on('scheduled-sent', (m) => { if (S.conv && m.conversationId === S.conv.id) toast('Scheduled message sent', { icon: 'clock' }); });
   on('open', () => { if (S.conv) open(S.conv.id); else loadList(); });
   on('typing', (m) => {
     if (!S.conv || m.conversationId !== S.conv.id) return;
@@ -382,7 +773,7 @@ export async function mount(view, params) {
   await open(params.id ? Number(params.id) : null);
   return {
     unmount() {
-      offs.forEach((f) => f()); setActiveConversation(null); barVisible(true);
+      offs.forEach((f) => f()); setActiveConversation(null); barVisible(true); clearInterval(pinTimer);
       document.removeEventListener('visibilitychange', onVis); window.removeEventListener('resize', onResize);
       document.querySelector('.bottomnav')?.classList.remove('hidden');
     },

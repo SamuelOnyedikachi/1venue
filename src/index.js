@@ -58,7 +58,7 @@ async function start() {
   ];
   const billingTimer = require('./features/billing/service').startWorker();
   if (billingTimer) timers.push(billingTimer);
-  for (const w of ['./features/recurring/reminders', './features/replays/service', './features/messages/calls', './features/messages/retention']) {
+  for (const w of ['./features/recurring/reminders', './features/replays/service', './features/messages/calls', './features/messages/retention', './features/messages/power']) {
     try { const t = require(w).startWorker(); if (t) timers.push(t); } catch (e) { console.error('[worker]', w, e.message); }
   }
   const metricsLog = metrics.startLogger();

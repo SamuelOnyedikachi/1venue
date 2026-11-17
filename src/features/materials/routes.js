@@ -84,6 +84,26 @@ module.exports = function routes(route, kit) {
       throw e;
     }
   });
+  // Follow-up questions about a file, beyond the first summary. Owner / organisation only (spends points).
+  route('GET', '/api/materials/(\\d+)/questions', async (ctx, [id]) => {
+    const u = await requireUser(ctx.req, ctx.res);
+    const m = await data.getMaterial(Number(id), u.id);
+    if (!m) throw httpError(404, 'Material not found');
+    return { questions: await require('./analysis').listQueries(m.id) };
+  });
+  route('POST', '/api/materials/(\\d+)/questions', async (ctx, [id]) => {
+    const u = await requireUser(ctx.req, ctx.res);
+    const m = await data.getMaterial(Number(id), u.id);
+    if (!m) throw httpError(404, 'Material not found');
+    if (!rateLimit('mat-ask:' + u.id, 10)) throw httpError(429, 'Please wait a minute before asking again');
+    const b = (await ctx.body(8 * 1024).catch(() => ({}))) || {};
+    try {
+      return { $status: 201, $body: { question: await require('./analysis').ask(m, { userId: u.id, question: b.question, takeAi: require('../../lib/plans').takeAi }) } };
+    } catch (e) {
+      log[(e.status || 500) >= 500 ? 'error' : 'warn']('materials', 'ask failed', { id: m.id, user: u.id, status: e.status || 500, error: e.message });
+      throw e;
+    }
+  });
   route('PATCH', '/api/materials/(\\d+)', async (ctx, [id]) => {
     const u = await requireUser(ctx.req, ctx.res);
     const m = await data.updateMaterial(Number(id), u.id, await ctx.body());

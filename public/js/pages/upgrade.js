@@ -20,6 +20,24 @@ const core = (p) => [
 ];
 const extras = (p) => [...FEATURES.filter(([k]) => p.features && p.features[k]).map(([, l]) => l),
   ...(p.features && p.features.orgMembers ? [`Organisation with ${p.features.orgMembers} members, roles and a shared library`] : [])];
+// Shorter venue links: a one-off add-on, shown as two price tiles and one accent button to Billing.
+function addonCard(addons, signedIn) {
+  const tile = (len, sample, price) => h('div', { class: 'pr-addon-tile' },
+    h('span', { class: 'pr-addon-len' }, `${len}-character`),
+    h('code', { class: 'pr-addon-url' }, `1venue.live/v/`, h('b', null, sample)),
+    h('strong', { class: 'pr-addon-price' }, money(price)),
+    h('span', { class: 'pr-addon-once' }, 'one-off'));
+  const href = signedIn ? '/billing' : '/login?next=/billing';
+  return h('section', { class: 'pr-addons', 'aria-labelledby': 'pr-addons-h' },
+    h('div', { class: 'pr-addon-head' },
+      h('span', { class: 'pr-addon-ic', html: icon('link', { size: 20 }) }),
+      h('div', null, h('h2', { id: 'pr-addons-h' }, 'Shorter venue links'), h('p', { class: 'pr-addon-pitch' }, 'A link people remember. Yours to keep, for any venue on a paid plan.'))),
+    h('div', { class: 'pr-addon-tiles' }, tile(3, 'abc', addons.slug3), tile(2, 'ab', addons.slug2)),
+    h('div', { class: 'pr-addon-foot' },
+      h('a', { class: 'btn primary pr-btn pr-addon-btn', href, 'data-link': '' }, h('span', { class: 'i', html: icon('arrowRight', { size: 16 }) }), 'Get a short link'),
+      signedIn ? h('a', { class: 'pr-addon-manage', href: '/billing', 'data-link': '' }, 'Manage billing') : null),
+    h('p', { class: 'pr-addon-note' }, 'If your plan lapses, the link stays reserved and comes back when you upgrade.'));
+}
 const tick = (txt, cls = '') => h('li', { class: cls }, h('span', { class: 'pr-tick', html: icon('check', { size: 13 }) }), h('span', null, txt));
 
 export async function mount(view) {
@@ -94,10 +112,7 @@ export async function mount(view) {
     status, grid,
     h('div', { class: 'pr-foot' }, compareLink),
     compare,
-    h('section', { class: 'card pad pr-addons' }, h('h2', null, 'Shorter venue links'),
-      h('p', { class: 'small muted' }, `One-off add-ons for one venue on a paid plan, yours to keep: 3-character links ${money(addons.slug3)}, 2-character links ${money(addons.slug2)}. Buy them from Billing. If your plan lapses the link stays reserved for you and comes back when you upgrade.`),
-      h('p', { class: 'tiny muted' }, `AI points: translate, ask and titles cost ${table.aiWeights.translate}; summaries, catch-up, file analysis and “Write it for me” cost ${table.aiWeights.summary}. Upgrades start a new billing period straight away; downgrades take effect at the end of your period. In your rooms, guests use your allowance.`)),
-    !table.purchasesEnabled ? h('p', { class: 'small muted pr-center' }, 'Online payments are not switched on yet.') : null,
-    me ? h('p', { class: 'small pr-center' }, h('a', { href: '/billing', 'data-link': '' }, 'Manage billing →')) : null));
+    addonCard(addons, !!me),
+    !table.purchasesEnabled ? h('p', { class: 'small muted pr-center' }, 'Online payments are not switched on yet.') : null));
   paint();
 }

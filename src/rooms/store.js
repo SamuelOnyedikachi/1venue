@@ -189,6 +189,8 @@ function getContentState(meeting) {
     slideshow: !!c.slideshow,
     media: c.media || null,
     fileMeta: c.fileMeta || null,
+    docKind: c.docKind || null,
+    pageCount: c.pageCount || null,
   };
 }
 

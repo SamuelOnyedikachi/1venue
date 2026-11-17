@@ -153,6 +153,15 @@ const MATERIALS = {
   maxChars: int('MATERIAL_ANALYSIS_MAX_CHARS', 12_000), // excerpt sent to the model
 };
 
+// Messages power features: voice-note transcription (Whisper on Replicate) and scheduled sends.
+const MESSAGES = {
+  // Empty = reuse STT_REPLICATE_MODEL (incredibly-fast-whisper, already proven for voice typing).
+  sttModel: env('REPLICATE_STT_MODEL', ''),
+  sttTimeoutMs: int('MESSAGES_STT_TIMEOUT_MS', 120_000),
+  maxAudioMB: int('MESSAGES_STT_MAX_MB', 25),
+  schedulerMs: int('MESSAGES_SCHEDULER_MS', 15_000),
+};
+
 // Storage: VPS disk by default, S3-compatible when STORAGE_DRIVER=s3
 const STORAGE = {
   driver: env('STORAGE_DRIVER', 'local'),
@@ -252,5 +261,5 @@ module.exports = {
   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
   AUTH, ALLOW_LOCAL_SIGNUP, ADMIN_EMAILS, CANONICAL_HOST,
   MEETING_INACTIVITY_MS, MEETING_CLEANUP_INTERVAL_MS, MAX_PARTICIPANTS, MAX_AUDIENCE, DEFAULT_SPEAKER_SEATS,
-  MEDIA, AI, STT, COVERS, MATERIALS, STORAGE, UPLOADS, BIBLE, MEMORY, RESTART, RATE_LIMIT_PER_MIN, TRUST_PROXY, MIME,
+  MEDIA, AI, STT, COVERS, MATERIALS, MESSAGES, STORAGE, UPLOADS, BIBLE, MEMORY, RESTART, RATE_LIMIT_PER_MIN, TRUST_PROXY, MIME,
 };

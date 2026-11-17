@@ -660,8 +660,8 @@ Object.assign(Room.prototype, {
   canControlContent() { const c = this.content; return !!c && (c.ownerId === this.me.id || c.remoteHolderId === this.me.id); },
   setContentPage(page) {
     const c = this.content;
-    if (!this.canControlContent() || c.type !== 'slides') return;
-    page = Math.max(1, Math.min(c.pages.length, Math.round(Number(page)) || 1));
+    if (!this.canControlContent() || (c.type !== 'slides' && c.type !== 'doc')) return;
+    page = Math.max(1, Math.min(c.type === 'doc' ? c.pageCount || 1 : c.pages.length, Math.round(Number(page)) || 1));
     this.send('content-update', { page });
   },
   /** Replace slide pages live (add/remove/reorder) without stopping the share. */

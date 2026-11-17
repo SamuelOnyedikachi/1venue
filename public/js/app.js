@@ -208,7 +208,7 @@ export function setRoomMode(on) {
 
 /* ---------- shell ---------- */
 const NAV = [
-  ['/', 'home', 'Home'], ['/discover', 'compass', 'Discover'], ['/feed', 'feed', 'Feed'], ['/messages', 'chat', 'Messages'], ['/dashboard', 'dashboard', 'Dashboard'],
+  ['/', 'home', 'Home'], ['/discover', 'compass', 'Discover'], ['/feed', 'feed', 'Feed'], ['/messages', 'messages', 'Messages'], ['/dashboard', 'dashboard', 'Dashboard'],
 ];
 function highlightNav(path) {
   document.querySelectorAll('[data-nav]').forEach((a) => {
@@ -274,6 +274,7 @@ function renderUserSlot() {
   slot.innerHTML = '';
   setCreditUser(state.user?.id || null);
   import('./messages/live.js').then((m) => m.startLive(state.user?.id || null)).catch(() => {});
+  if (state.user) import('./messages/notify.js').then((m) => m.initNotifyPrompt()).catch(() => {});
   if (state.user) {
     const b = h('button', { class: 'icon-btn', 'data-tip': state.user.displayName, 'aria-label': 'Account menu', style: { width: 'auto', padding: '0 2px' } }, avatar(state.user.displayName, state.user.avatarUrl, 'sm ring'));
     b.onclick = () => menu(b, [
@@ -281,7 +282,7 @@ function renderUserSlot() {
       { label: 'Dashboard', icon: 'dashboard', run: () => navigate('/dashboard') },
       { label: 'Plan & billing', icon: 'crown', run: () => navigate('/billing') },
       { label: 'Host tools', icon: 'chart', run: () => navigate('/host') },
-      { label: 'Messages', icon: 'chat', group: 'social', run: () => navigate('/messages') },
+      { label: 'Messages', icon: 'messages', group: 'social', run: () => navigate('/messages') },
       { label: 'Credit wallet', icon: 'creditCard', run: () => navigate('/wallet') },
       { label: 'My sessions', icon: 'history', run: () => navigate('/sessions') },
       { label: 'My whiteboard', icon: 'board', group: 'content', run: () => navigate('/whiteboard') },
@@ -326,7 +327,7 @@ function buildShell() {
     h('a', { href: '/discover', 'data-link': '', 'data-nav': '/discover', html: icon('compass', { size: 22 }) + '<span>Discover</span>' }),
     h('a', { href: '/create', 'data-link': '', class: 'fab', 'aria-label': 'Create', html: `<span class="fabc">${icon('plus', { size: 26 })}</span>` }),
     // Messages replaces Feed on phones; Feed lives in Discover.
-    h('a', { href: '/messages', 'data-link': '', 'data-nav': '/messages', html: icon('chat', { size: 22 }) + '<span>Messages</span>' }),
+    h('a', { href: '/messages', 'data-link': '', 'data-nav': '/messages', html: icon('messages', { size: 22 }) + '<span>Messages</span>' }),
     h('a', { href: '/me', 'data-link': '', 'data-nav': '/me', html: icon('user', { size: 22 }) + '<span>Me</span>' }),
   );
   const main = h('main', { id: 'view', class: 'main' });
@@ -387,7 +388,7 @@ function registerGlobal() {
     ...CATS.map(([k, l, ic]) => ({ id: 'cat-' + k, label: l, icon: ic, group: k === 'sermon' ? 'faith' : 'content', keywords: ['category', k.replace('_', ' ')], run: go('/discover?category=' + k) })),
     { id: 'home', label: 'Home', icon: 'home', group: 'nav', run: go('/') },
     { id: 'feed', label: 'Social feed', short: 'Feed', icon: 'feed', group: 'social', keywords: ['timeline', 'posts'], run: go('/feed') },
-    { id: 'messages', label: 'Messages', icon: 'chat', group: 'social', keywords: ['dm', 'inbox', 'chat', 'call'], when: () => !!state.user, run: go('/messages') },
+    { id: 'messages', label: 'Messages', icon: 'messages', group: 'social', keywords: ['dm', 'inbox', 'chat', 'call'], when: () => !!state.user, run: go('/messages') },
     { id: 'post', label: 'New post', icon: 'pen', group: 'social', keywords: ['write', 'share update', 'status'], run: go('/feed?compose=1') },
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', group: 'nav', keywords: ['stats', 'analytics'], run: go('/dashboard') },
     { id: 'host', label: 'Host tools', short: 'Host', icon: 'chart', group: 'settings', keywords: ['analytics', 'branding', 'recurring', 'tickets', 'earnings', 'payout', 'promote', 'organisation', 'replays', 'export'], when: () => !!state.user, run: go('/host') },

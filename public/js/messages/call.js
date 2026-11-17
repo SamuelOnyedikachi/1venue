@@ -3,6 +3,7 @@
 import { h, api, toast, toastErr, avatar } from '../ui.js';
 import { icon } from '../icons.js';
 import { loadLiveKit } from '../room/media.js';
+import { startRingtone } from './tones.js';
 
 let cur = null;      // { call, room, el, video, muted, camOn, t0, timer, title }
 let ringing = null;  // { call, el, stop }
@@ -10,16 +11,7 @@ const ib = (ic, label, run, cls = '') => h('button', { class: `icon-btn ${cls}`,
 const me = () => import('../app.js').then((a) => a.state.user);
 export const inCall = () => !!cur;
 
-function ringtone() {
-  let ctx, iv;
-  try {
-    ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const beep = () => { const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = 520; g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.5); o.connect(g).connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.55); };
-    beep(); iv = setInterval(beep, 1600);
-  } catch { /* autoplay blocked: the sheet is still visible */ }
-  try { navigator.vibrate && navigator.vibrate([300, 200, 300]); } catch { /* ignore */ }
-  return () => { clearInterval(iv); try { ctx && ctx.close(); } catch { /* ignore */ } };
-}
+const ringtone = () => startRingtone();
 function dismissRing() { if (!ringing) return; ringing.stop(); ringing.el.remove(); ringing = null; }
 
 /** Incoming call (from the user socket). */

@@ -1,0 +1,18 @@
+/* Word documents and spreadsheets presented in a meeting (room stage, content type "doc"). */
+.present-body.doc-body { display: flex; flex-direction: column; min-height: 0; background: var(--s1); color: var(--text); }
+.doc-scroll { flex: 1; min-height: 0; overflow: auto; padding: clamp(1rem, 3vw, 2.2rem); scroll-behavior: auto; }
+.doc-loading { color: var(--muted); padding: 2rem; text-align: center; }
+.doc-page { max-width: 760px; margin: 0 auto; font-size: clamp(1rem, 1.5vw, 1.15rem); line-height: 1.7; }
+.doc-page p { margin: 0 0 1em; white-space: normal; }
+.doc-page .doc-li { position: relative; padding-left: 1.2em; }
+.doc-page .doc-li::before { content: '•'; position: absolute; left: .2em; color: var(--accent); }
+.doc-table-wrap { overflow: auto; border-radius: var(--r-md); border: 1px solid var(--line); }
+.doc-table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+.doc-table th, .doc-table td { padding: .45rem .7rem; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.doc-table thead th { position: sticky; top: 0; background: var(--s2); font-weight: 700; z-index: 1; }
+.doc-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.doc-table .doc-rn { color: var(--faint); width: 1%; text-align: right; font-variant-numeric: tabular-nums; }
+.doc-table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--s2) 50%, transparent); }
+.doc-controls { display: flex; justify-content: center; flex-wrap: wrap; gap: .5rem; align-items: center; padding: .5rem .75rem; border-top: 1px solid var(--line); background: var(--s1); flex: none; }
+.doc-kind { display: inline-flex; align-items: center; gap: .3rem; font-size: .76rem; font-weight: 600; padding: .2rem .55rem; border-radius: var(--r-pill); color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.doc-kind span { display: inline-flex; }

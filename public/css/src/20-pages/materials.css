@@ -274,3 +274,19 @@
   cursor: progress;
   opacity: 0.75;
 }
+
+/* Ask this file: follow-up questions under the analysis (owner / organisation). */
+.mat-qa { display: flex; flex-direction: column; gap: .75rem; margin-top: 1rem; }
+.mat-qa-thread { display: flex; flex-direction: column; gap: .9rem; max-height: 520px; overflow-y: auto; }
+.mat-qa-thread:empty { display: none; }
+.mat-qa-item { display: flex; flex-direction: column; gap: .45rem; }
+.mat-qa-q { align-self: flex-end; max-width: 80%; padding: .5rem .8rem; border-radius: 16px 16px 6px 16px; background: var(--accent); color: var(--accent-ink); }
+.mat-qa-a { display: flex; gap: .55rem; align-items: flex-start; max-width: 92%; }
+.mat-qa-a p { margin: 0 0 .5em; line-height: 1.55; }
+.mat-qa-ai { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border-radius: 50%; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.mat-qa-ideas { display: flex; flex-wrap: wrap; gap: .35rem; }
+.mat-qa-compose { display: flex; align-items: flex-end; gap: .5rem; padding: .35rem .35rem .35rem .9rem; border-radius: 24px; border: 1px solid var(--line-2); background: var(--s2); }
+.mat-qa-compose:focus-within { border-color: var(--accent); background: var(--s1); }
+.mat-qa-input { flex: 1; resize: none; border: 0; background: none; outline: none; color: var(--text); font: inherit; padding: .55rem 0; max-height: 140px; }
+.mat-qa-send { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; flex: none; background: var(--accent); color: var(--accent-ink); }
+.mat-qa-send:disabled { opacity: .5; }

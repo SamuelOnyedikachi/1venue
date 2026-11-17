@@ -22,6 +22,10 @@
  *   POST   /api/messages/calls/:id/accept|decline|leave|video|token
  *   POST   /api/messages/conversations/:id/cards { type: meeting|venue, code, key, venueId }
  *   POST   /api/messages/conversations/:id/schedule { title, startsAt, durationMin, pattern?, count?, until? }
+ *   POST   /api/messages/new { handle }   (username or email)   GET /api/messages/search?q=&from=me|them&has=file|image|voice|link&conversationId=
+ *   POST|DELETE .../messages/:mid/pin   POST .../messages/:mid/forward { conversationId }   POST .../messages/:mid/analyse | transcribe   GET .../messages/:mid/table
+ *   POST .../summary   GET .../contact   PUT .../note { body }   GET|POST .../scheduled   DELETE /api/messages/scheduled/:id
+ *   GET|POST /api/messages/quick-replies   DELETE /api/messages/quick-replies/:id
  *   GET    /api/admin/message-reports?status=open|dismissed|actioned|all   POST /api/admin/message-reports/:id { status, note }
  */
 const svc = require('./service');
@@ -35,7 +39,7 @@ module.exports = function routes(route, { requireUser, httpError, int, db }) {
   const C = '/api/messages/conversations/(\\d+)';
   route('GET', '/api/messages/conversations', async (ctx) => {
     const u = await me(ctx); const s = ctx.url.searchParams;
-    return { conversations: await svc.listConversations(u.id, { filter: s.get('filter') || 'all', archived: s.get('archived') === '1' }) };
+    return { conversations: await svc.listConversations(u.id, { filter: s.get('filter') || 'all', archived: s.get('archived') === '1', type: s.get('type') || '' }) };
   });
   route('GET', '/api/messages/unread', async (ctx) => svc.unreadSummary((await me(ctx)).id));
   route('POST', '/api/messages/dm', async (ctx) => { const u = await me(ctx); return { conversation: await svc.openDm(u, int((await ctx.body()).userId)) }; });
@@ -70,8 +74,8 @@ module.exports = function routes(route, { requireUser, httpError, int, db }) {
   route('POST', '/api/messages/blocks', async (ctx) => { const u = await me(ctx); return access.block(u.id, int((await ctx.body()).userId)); });
   route('DELETE', '/api/messages/blocks/(\\d+)', async (ctx, [uid]) => access.unblock((await me(ctx)).id, int(uid)));
   route('POST', '/api/messages/reports', async (ctx) => { const u = await me(ctx); return { $status: 201, $body: await svc.report(u, await ctx.body()) }; });
-  route('GET', '/api/messages/settings', async (ctx) => { const p = await access.prefs((await me(ctx)).id); return { dmPolicy: p.dmPolicy, hidePresence: p.hidePresence, push: push.publicConfig() }; });
-  route('PUT', '/api/messages/settings', async (ctx) => { const u = await me(ctx); const p = await access.savePrefs(u.id, await ctx.body()); return { dmPolicy: p.dmPolicy, hidePresence: p.hidePresence, push: push.publicConfig() }; });
+  route('GET', '/api/messages/settings', async (ctx) => { const p = await access.prefs((await me(ctx)).id); return { dmPolicy: p.dmPolicy, hidePresence: p.hidePresence, notifyPrompt: p.notifyPrompt, push: push.publicConfig() }; });
+  route('PUT', '/api/messages/settings', async (ctx) => { const u = await me(ctx); const p = await access.savePrefs(u.id, await ctx.body()); return { dmPolicy: p.dmPolicy, hidePresence: p.hidePresence, notifyPrompt: p.notifyPrompt, push: push.publicConfig() }; });
 
   route('GET', '/api/messages/push/config', async () => push.publicConfig());
   route('POST', '/api/messages/push/subscribe', async (ctx) => { const u = await me(ctx); return push.subscribe(u.id, await ctx.body(8 * 1024), ctx.req.headers['user-agent']); });
@@ -95,6 +99,29 @@ module.exports = function routes(route, { requireUser, httpError, int, db }) {
     throw httpError(400, 'Choose a meeting or a venue');
   });
   route('POST', `${C}/schedule`, async (ctx, [id]) => { const u = await me(ctx); return { $status: 201, $body: await meet.schedule(u, int(id), await ctx.body(16 * 1024)) }; });
+
+  // ---------------------------------------------------------------- power features (power.js)
+  const P = require('./power');
+  route('POST', '/api/messages/new', async (ctx) => { const u = await me(ctx); return { conversation: await P.openByHandle(u, (await ctx.body(4 * 1024)).handle) }; });
+  route('GET', '/api/messages/search', async (ctx) => {
+    const u = await me(ctx); const s = ctx.url.searchParams;
+    return P.search(u.id, { q: s.get('q') || '', conversationId: s.get('conversationId') ? int(s.get('conversationId')) : null, from: s.get('from') || '', has: s.get('has') || '' });
+  });
+  route('POST', `${C}/messages/(\\d+)/pin`, async (ctx, [id, mid]) => P.pin(await me(ctx), int(id), int(mid)));
+  route('DELETE', `${C}/messages/(\\d+)/pin`, async (ctx, [id, mid]) => P.unpin(await me(ctx), int(id), int(mid)));
+  route('POST', `${C}/messages/(\\d+)/forward`, async (ctx, [id, mid]) => { const u = await me(ctx); return { $status: 201, $body: await P.forward(u, int(id), int(mid), int((await ctx.body()).conversationId)) }; });
+  route('POST', `${C}/messages/(\\d+)/analyse`, async (ctx, [id, mid]) => { const u = await me(ctx); return P.analyseFile(u, int(id), int(mid), { force: !!(await ctx.body().catch(() => ({}))).force }); });
+  route('GET', `${C}/messages/(\\d+)/table`, async (ctx, [id, mid]) => P.tableData(await me(ctx), int(id), int(mid)));
+  route('POST', `${C}/messages/(\\d+)/transcribe`, async (ctx, [id, mid]) => P.transcribe(await me(ctx), int(id), int(mid)));
+  route('POST', `${C}/summary`, async (ctx, [id]) => P.summarize(await me(ctx), int(id)));
+  route('GET', `${C}/contact`, async (ctx, [id]) => P.contact((await me(ctx)).id, int(id)));
+  route('PUT', `${C}/note`, async (ctx, [id]) => { const u = await me(ctx); return P.saveNote(u.id, int(id), (await ctx.body(16 * 1024)).body); });
+  route('GET', `${C}/scheduled`, async (ctx, [id]) => P.listScheduled(await me(ctx), int(id)));
+  route('POST', `${C}/scheduled`, async (ctx, [id]) => { const u = await me(ctx); return { $status: 201, $body: await P.schedule(u, int(id), await ctx.body(64 * 1024)) }; });
+  route('DELETE', '/api/messages/scheduled/(\\d+)', async (ctx, [sid]) => P.cancelScheduled(await me(ctx), int(sid)));
+  route('GET', '/api/messages/quick-replies', async (ctx) => P.listQuick((await me(ctx)).id));
+  route('POST', '/api/messages/quick-replies', async (ctx) => { const u = await me(ctx); return { $status: 201, $body: await P.addQuick(u.id, await ctx.body(8 * 1024)) }; });
+  route('DELETE', '/api/messages/quick-replies/(\\d+)', async (ctx, [qid]) => P.delQuick((await me(ctx)).id, int(qid)));
 
   const admin = async (ctx) => { const u = await me(ctx); if (!u.isAdmin) throw httpError(403, 'Admins only'); return u; };
   route('GET', '/api/admin/message-reports', async (ctx) => { await admin(ctx); return { reports: await svc.listReports(ctx.url.searchParams.get('status') || 'open') }; });
