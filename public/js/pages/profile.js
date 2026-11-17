@@ -30,6 +30,9 @@ export async function mount(view, params) {
     r.posts.forEach((p) => body.append(postCard(p)));
     if (!r.posts.length) body.append(empty('feed', u.isMe ? 'Your timeline starts here' : 'Nothing posted yet', u.isMe ? 'Posts, events you host and session summaries you share appear here.' : null));
   }
+  // Message: shown only when the allow-list lets me start (or continue) a chat with this person.
+  const msgBtn = h('a', { class: 'btn sm', href: `/messages/new?user=${u.id}`, 'data-link': '', style: { display: 'none' }, html: icon('chat', { size: 15 }) + 'Message' });
+  if (state.user && !u.isMe && u.id) api(`/api/messages/can?userId=${u.id}`).then((r) => { msgBtn.style.display = r.ok ? '' : 'none'; }).catch(() => {});
   view.append(h('section', { class: 'profile-hero card' },
     h('div', { class: 'band' }),
     h('div', { class: 'in' }, avatar(u.name, u.avatarUrl, 'xxl ring'),
@@ -37,6 +40,7 @@ export async function mount(view, params) {
         h('div', { class: 'row wrap small', style: { gap: '1.1rem', marginTop: '.6rem' } }, h('span', null, h('strong', null, fmtNum(u.followers)), ' followers'), h('span', null, h('strong', null, fmtNum(u.following)), ' following'), h('span', null, h('strong', null, fmtNum(Array.isArray(u.events) ? u.events.length : (u.eventCount ?? u.events))), ' events'))),
       h('div', { class: 'row', style: { gap: '.4rem' } },
         u.isMe ? h('button', { class: 'btn sm', html: icon('pen', { size: 15 }) + 'Edit profile', onclick: () => edit(u) }) : state.user ? followBtn(u, (on) => { u.followers += on ? 1 : -1; }) : null,
+        msgBtn,
         h('button', { class: 'icon-btn', 'data-group': 'content', 'data-tip': 'Share profile', 'aria-label': 'Share', html: icon('share'), onclick: () => shareLink(`${location.origin}${profilePath(u)}`, u.name) })))),
   tabs, body);
   paintTabs(); load();

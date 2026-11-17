@@ -19,7 +19,21 @@ const freePort = () => new Promise((resolve, reject) => {
   srv.listen(0, '127.0.0.1', () => { const { port } = srv.address(); srv.close(() => resolve(port)); });
 });
 
+// PGlite's socket server runs every connection through ONE backend session, so concurrent
+// pool clients interleave their protocol messages ("unnamed prepared statement does not
+// exist") and their transactions. Real Postgres does not; serialize the pool only for PGlite.
+let pgliteChecked = false;
+async function serializePoolForPglite() {
+  if (pgliteChecked || !process.env.DATABASE_URL || process.env.DB_DRIVER === 'sqlite' || process.env.DATABASE_POOL_MAX) return;
+  pgliteChecked = true;
+  const { Client } = require('pg');
+  const c = new Client({ connectionString: process.env.DATABASE_URL });
+  try { await c.connect(); if (/PGlite/i.test((await c.query('SELECT version() AS v')).rows[0].v)) process.env.DATABASE_POOL_MAX = '1'; }
+  catch (_) {} finally { await c.end().catch(() => {}); }
+}
+
 async function boot(env = {}) {
+  await serializePoolForPglite();
   const port = await freePort();
   const base = `http://127.0.0.1:${port}`;
   const child = spawn(process.execPath, ['server.js'], {
@@ -74,7 +88,7 @@ function client(base, j = jar()) {
     let json = null; try { json = await res.json(); } catch {}
     return { status: res.status, body: json, res };
   };
-  return { jar: j, get: (p, h) => call('GET', p, null, h), post: (p, b, h) => call('POST', p, b || {}, h), patch: (p, b, h) => call('PATCH', p, b || {}, h), del: (p) => call('DELETE', p) };
+  return { jar: j, get: (p, h) => call('GET', p, null, h), post: (p, b, h) => call('POST', p, b || {}, h), patch: (p, b, h) => call('PATCH', p, b || {}, h), put: (p, b, h) => call('PUT', p, b || {}, h), del: (p) => call('DELETE', p) };
 }
 
 /** Unique, valid local-signup body (username + Nigerian E.164 phone). Extra overrides any field. */

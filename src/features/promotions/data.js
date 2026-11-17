@@ -69,6 +69,62 @@ async function list() {
   }));
 }
 
+// ---------------------------------------------------------------- admin search, paging and CSV export
+const STATUSES = ['live', 'scheduled', 'ended', 'paused', 'pending'];
+/** Clean admin filters from query params: q, status, type, from, to (YYYY-MM-DD, on the start date). */
+function adminFilters(sp) {
+  const get = (k) => String((sp && sp.get ? sp.get(k) : sp && sp[k]) || '').trim();
+  const day = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(new Date(v + 'T00:00:00Z').getTime()) ? v : null);
+  const status = get('status').toLowerCase(), type = get('type').toLowerCase();
+  return { q: get('q').slice(0, 100), status: STATUSES.includes(status) ? status : null, type: ['event', 'post'].includes(type) ? type : null, from: day(get('from')), to: day(get('to')) };
+}
+function adminWhere(f, now = new Date()) {
+  const where = [], args = [];
+  const arg = (v) => { args.push(v); return `$${args.length}`; };
+  if (f.q) {
+    const like = arg('%' + f.q.toLowerCase().replace(/[\\%_]/g, (c) => '\\' + c) + '%');
+    where.push(`(lower(COALESCE(e.title,'')) LIKE ${like} ESCAPE '\\' OR lower(COALESCE(po.body,'')) LIKE ${like} ESCAPE '\\' OR lower(COALESCE(pu.display_name,'')) LIKE ${like} ESCAPE '\\' OR lower(COALESCE(pu.username,'')) LIKE ${like} ESCAPE '\\' OR lower(COALESCE(e.host_name,'')) LIKE ${like} ESCAPE '\\')`);
+  }
+  if (f.type) where.push(`p.target_type = ${arg(f.type)}`);
+  if (f.status === 'paused') where.push(`p.active = ${arg(false)}`);
+  if (f.status === 'pending') where.push(`p.review_status = ${arg('pending')}`);
+  if (f.status === 'live') { const n = arg(now); where.push(`p.active = ${arg(true)} AND p.starts_at <= ${n} AND (p.ends_at IS NULL OR p.ends_at > ${n})`); }
+  if (f.status === 'scheduled') where.push(`p.active = ${arg(true)} AND p.starts_at > ${arg(now)}`);
+  if (f.status === 'ended') where.push(`p.active = ${arg(true)} AND p.ends_at IS NOT NULL AND p.ends_at <= ${arg(now)}`);
+  if (f.from) where.push(`p.starts_at >= ${arg(new Date(f.from + 'T00:00:00Z'))}`);
+  if (f.to) where.push(`p.starts_at < ${arg(new Date(new Date(f.to + 'T00:00:00Z').getTime() + 86400000))}`);
+  return { sql: where.length ? 'WHERE ' + where.join(' AND ') : '', args };
+}
+const LIST_FROM = `FROM promotions p LEFT JOIN events e ON e.id = p.event_id LEFT JOIN posts po ON po.id = p.post_id LEFT JOIN users pu ON pu.id = po.user_id`;
+const LIST_COLS = `p.*, e.slug AS ev_slug, e.title AS ev_title, e.status AS ev_status, e.host_name AS ev_host, po.body AS post_body, COALESCE(pu.display_name, pu.username) AS post_author`;
+function listRowOut(r, now = new Date()) {
+  const live = !!r.active && new Date(r.starts_at) <= now && (!r.ends_at || new Date(r.ends_at) > now);
+  const state = !r.active ? 'paused' : live ? 'live' : new Date(r.starts_at) > now ? 'scheduled' : 'ended';
+  return {
+    ...promoOut(r),
+    target: r.target_type === 'event'
+      ? { id: Number(r.event_id), slug: r.ev_slug, title: r.ev_title, status: r.ev_status, host: r.ev_host || null }
+      : { id: Number(r.post_id), title: String(r.post_body || '(photo post)').slice(0, 90), author: r.post_author },
+    live, state,
+  };
+}
+/** One page of the admin list matching filters: { promotions, total }. */
+async function adminList(f, { limit = 5, offset = 0 } = {}) {
+  const w = adminWhere(f);
+  const total = Number((await one(`SELECT COUNT(*) AS n ${LIST_FROM} ${w.sql}`, w.args)).n);
+  const rows = await many(`SELECT ${LIST_COLS} ${LIST_FROM} ${w.sql} ORDER BY p.active DESC, p.created_at DESC, p.id DESC LIMIT ${Math.min(200, Math.max(1, limit | 0))} OFFSET ${Math.max(0, offset | 0)}`, w.args);
+  return { promotions: rows.map((r) => listRowOut(r)), total };
+}
+/** Every matching row, in batches (for the CSV export). */
+async function* adminRows(f, batch = 500) {
+  const w = adminWhere(f);
+  for (let offset = 0; ; offset += batch) {
+    const rows = await many(`SELECT ${LIST_COLS} ${LIST_FROM} ${w.sql} ORDER BY p.active DESC, p.created_at DESC, p.id DESC LIMIT ${batch} OFFSET ${offset}`, w.args);
+    for (const r of rows) yield listRowOut(r);
+    if (rows.length < batch) return;
+  }
+}
+
 async function create(userId, b) {
   const type = b.type === 'post' ? 'post' : 'event';
   const id = Number(b.targetId);
@@ -124,4 +180,4 @@ async function candidates(type, term) {
   return rows.map((r) => ({ id: Number(r.id), title: r.title, sub: `${r.host_name || 'host'} · ${r.status}` }));
 }
 
-module.exports = { PLACEMENTS, live, list, create, update, remove, countViews, countClick, candidates };
+module.exports = { PLACEMENTS, STATUSES, adminFilters, adminList, adminRows, live, list, create, update, remove, countViews, countClick, candidates };

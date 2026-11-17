@@ -10,8 +10,7 @@ let busy=false;
 let lastMediaSweep=0;
 let mediaBusy=false,stopping=false;
 async function start({user,code,name,hostName}) {
-  if(!user)throw fail(401,'Sign in to open a meeting and use your credit wallet');
-  return data.open({userId:user.id,code,name,hostName,ownerId});
+  return data.open({userId:user?.id ?? null,code,name,hostName,ownerId});
 }
 async function check(meeting) {
   if(!meeting?.billingId)return null;
@@ -56,6 +55,7 @@ async function recoverSession(row,now=Date.now()) {
     await data.settle(row.id,{now:cutoff,endReason:'restart-expired'});
     return;
   }
+  if(now-new Date(snapshot.created_at).getTime()<config.RESTART.adoptGraceMs)return; // let reconnecting clients restore it first
   const meeting=await require('../../rooms/snapshot').getOrRestoreMeeting(row.code);
   if(meeting&&String(meeting.billingId)===String(row.id)) {
     return;
@@ -65,11 +65,12 @@ async function tick(now=Date.now()) {
   if(busy||stopping)return;busy=true;
   try {
     await data.heartbeat(ownerId,false,now);
-    const rows=(await db.q("SELECT s.*,w.balance_units FROM credit_billing_sessions s JOIN credit_wallets w ON w.user_id=s.user_id WHERE s.state='active'")).rows;
+    const rows=(await db.q("SELECT s.*,w.balance_units FROM credit_billing_sessions s LEFT JOIN credit_wallets w ON w.user_id=s.user_id WHERE s.state='active'")).rows;
     for(let row of rows) {
       try {
         if(row.owner_id!==ownerId) {await recoverSession(row,now);row=await data.get(row.id);if(row.owner_id!==ownerId||row.state!=='active')continue;}
-        if(now-Number(row.accounted_ms)>=Math.min(5000,Number(row.balance_units??0)))row=await data.settle(row.id,{now,ownerId});
+        const due=row.user_id==null ? now>=Number(row.free_until_ms||row.started_ms) : now>=Number(row.free_until_ms||row.started_ms) && now-Number(row.accounted_ms)>=Math.min(5000,Number(row.balance_units??0));
+        if(due)row=await data.settle(row.id,{now,ownerId});
         const meeting=store.getMeeting(row.code);
         if(row.state!=='active'&&meeting&&String(meeting.billingId)===String(row.id))await require('../../rooms/lifecycle').endMeeting(row.code,row.end_reason);
       } catch(e) {console.warn('[billing] reconcile',row.id,e.message);}
@@ -94,5 +95,5 @@ async function cleanupTick(now=Date.now()) {
   } finally {mediaBusy=false;}
 }
 async function recover(){await tick();}
-async function stop(){stopping=true;await data.heartbeat(ownerId,true);}
+async function stop(){stopping=true;for(let i=0;busy&&i<100;i++)await new Promise(r=>setTimeout(r,20));await data.heartbeat(ownerId,true);}
 module.exports={cleanupTick,sweepRetired,start,check,end,tick,recover,stop,closeMedia,recoverSession,ownerId};

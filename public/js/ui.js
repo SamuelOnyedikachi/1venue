@@ -1,5 +1,6 @@
 // Small UI toolkit: DOM builder, API, toasts, sheets, menus, tooltips, formatting.
 import { icon } from './icons.js';
+import { menuPosition } from './menu-pos.js';
 
 export const $ = (s, r = document) => r.querySelector(s);
 export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -120,20 +121,41 @@ export function sheet({ title = '', icon: ic, group = '', body, wide = false, on
 }
 export const closeTopSheet = () => { const s = sheetStack[sheetStack.length - 1]; if (s) { s.close(); return true; } return false; };
 
-export function menu(anchor, items) {
-  document.querySelectorAll('.menu').forEach((m) => m.remove());
-  const m = h('div', { class: 'menu', role: 'menu' });
+/**
+ * Popover menu. Viewport-aware (see menu-pos.js): flips left / up near the edges, stays 8px inside the
+ * screen and scrolls when it is too tall. On phones it is a bottom sheet instead. Pass { header } for
+ * extra content on top (e.g. quick reactions) so it is measured before the menu is placed.
+ */
+export function menu(anchor, items, { header = null, sheet: asSheet = isMobile() } = {}) {
+  document.querySelectorAll('.menu').forEach((x) => x.remove());
+  const m = h('div', { class: 'menu' + (asSheet ? ' menu-sheet' : ''), role: 'menu' });
+  if (header) m.append(header);
   for (const it of items) {
     if (it === '-') { m.append(h('hr')); continue; }
     if (!it || it.hidden) continue;
     m.append(h('button', { role: 'menuitem', 'data-group': it.group || '', onclick: () => { m.remove(); it.run(); } }, it.icon ? I(it.icon, 18) : null, h('span', { class: 'grow' }, it.label), it.hint ? h('span', { class: 'tiny faint' }, it.hint) : null));
   }
+  const back = asSheet ? h('div', { class: 'menu-backdrop', onclick: () => m.remove() }) : null;
+  const place = () => {
+    if (asSheet || !m.isConnected) return;
+    m.style.maxHeight = ''; m.style.maxWidth = '';
+    const p = menuPosition(anchor.getBoundingClientRect(), m.offsetWidth, m.offsetHeight, innerWidth, innerHeight);
+    m.style.left = p.left + 'px'; m.style.top = p.top + 'px';
+    if (p.maxHeight) m.style.maxHeight = p.maxHeight + 'px';
+    if (p.maxWidth) m.style.maxWidth = p.maxWidth + 'px';
+    m.dataset.flipX = p.flipX ? '1' : ''; m.dataset.flipY = p.flipY ? '1' : '';
+  };
+  const onKey = (e) => { if (e.key === 'Escape') m.remove(); };
+  const onScroll = (e) => { if (!m.contains(e.target)) place(); };
+  const off = (e) => { if (!m.contains(e.target) && e.target !== back) m.remove(); };
+  const remove = m.remove.bind(m);
+  m.remove = () => { remove(); back && back.remove(); removeEventListener('resize', place); removeEventListener('keydown', onKey); removeEventListener('scroll', onScroll, true); document.removeEventListener('pointerdown', off); };
+  if (back) document.body.append(back);
   document.body.append(m);
-  const r = anchor.getBoundingClientRect(); const mw = m.offsetWidth, mh = m.offsetHeight;
-  let x = Math.min(r.left, innerWidth - mw - 8), y = r.bottom + 6;
-  if (y + mh > innerHeight - 8) y = Math.max(8, r.top - mh - 6);
-  m.style.left = Math.max(8, x) + 'px'; m.style.top = y + 'px';
-  setTimeout(() => document.addEventListener('pointerdown', function off(e) { if (!m.contains(e.target)) { m.remove(); document.removeEventListener('pointerdown', off); } }), 0);
+  place();
+  addEventListener('resize', place); addEventListener('keydown', onKey); addEventListener('scroll', onScroll, true);
+  setTimeout(() => { if (m.isConnected) document.addEventListener('pointerdown', off); }, 0);
+  m.place = place;
   return m;
 }
 
@@ -253,6 +275,7 @@ export async function deckKind(f) {
   if (t.includes('presentationml') || n.endsWith('.pptx') || n.endsWith('.ppsx')) return 'pptx';
   if (t.startsWith('image/') && !t.includes('svg')) return 'image';
   if (n.endsWith('.ppt') || t === 'application/vnd.ms-powerpoint') return 'ppt';
+  if (/\.(docx?|csv|tsv|xlsx?)$/.test(n) || t.includes('wordprocessingml') || t.includes('spreadsheetml') || t === 'application/msword' || t === 'text/csv' || t === 'application/vnd.ms-excel') return 'doc';
   if (n.endsWith('.key') || t.includes('keynote')) return 'keynote';
   try {
     const b = new Uint8Array(await f.slice(0, 8).arrayBuffer());

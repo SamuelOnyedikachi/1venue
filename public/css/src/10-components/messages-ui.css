@@ -1,0 +1,13 @@
+/* Messages pieces that live outside the page: nav unread badge, sheets and the quick-react row. */
+.nav-badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; margin-left: .3rem; border-radius: var(--r-pill); background: var(--g-admin); color: #fff; font-size: .66rem; font-weight: 700; line-height: 1; }
+.bottomnav .nav-badge { position: absolute; top: 6px; left: calc(50% + 4px); margin: 0; box-shadow: 0 0 0 2px var(--s1); }
+.msg-pick { display: flex; flex-direction: column; gap: .15rem; max-height: 46vh; overflow-y: auto; margin: .25rem 0 .75rem; }
+.msg-pick-row { display: flex; align-items: center; gap: .6rem; padding: .5rem .55rem; border-radius: var(--r-sm); text-align: left; color: var(--text); }
+.msg-pick-row:hover { background: var(--s2); }
+.msg-sub { margin: .9rem 0 .25rem; font-size: .85rem; color: var(--muted); }
+.msg-set-row { display: flex; align-items: center; gap: .75rem; }
+.msg-set-row p { margin: .1rem 0 0; }
+.msg-img-full { width: 100%; border-radius: 12px; }
+.msg-quick { display: flex; gap: .15rem; padding: .25rem .25rem .4rem; border-bottom: 1px solid var(--line); margin-bottom: .25rem; }
+.msg-quick button { font-size: 1.25rem; width: 36px; height: 36px; border-radius: 10px; }
+.msg-quick button:hover { background: var(--s2); }

@@ -7,6 +7,9 @@
  *   POST /api/billing/cancel | /resume                     stop / restart renewal at period end
  *   POST /api/billing/change          { plan, interval }   schedule a downgrade / interval switch at period end
  *   POST /api/billing/payments/:ref/verify                 check a payment again
+ *   GET  /api/billing/history                              every payment I made (plan, short links, credits, promotions, tickets, gifts)
+ *   GET  /api/billing/receipts/:ref                        printable HTML receipt for a paid one (Print → Save as PDF)
+ *   DELETE /api/billing/card                               forget the saved renewal card
  * Admin (/admin):
  *   GET/PUT/DELETE /api/admin/billing/settings             limits, prices, AI weights, grace (DELETE = reset to env defaults)
  *   GET  /api/admin/billing/users?q=                       search users
@@ -23,7 +26,7 @@ module.exports = function routes(route, { requireUser, httpError, rateLimit, int
     if (!u.isAdmin) throw httpError(403, 'Admins only. Add your email to ADMIN_EMAILS and confirm it.');
     return u;
   };
-  route('GET', '/api/plans', async () => billing.publicPlans());
+  route('GET', '/api/plans', async () => ({ ...(await billing.publicPlans()), shortLinkReleaseDays: require('./shortlinks').releaseDays() }));
   route('GET', '/api/billing', async (ctx) => billing.summary((await requireUser(ctx.req, ctx.res)).id));
   route('POST', '/api/billing/checkout', async (ctx) => {
     const u = await requireUser(ctx.req, ctx.res);
@@ -51,6 +54,11 @@ module.exports = function routes(route, { requireUser, httpError, rateLimit, int
     if (!rateLimit('billing-verify:' + u.id, 40)) throw httpError(429, 'Please wait before checking again');
     return billing.confirm(p);
   });
+
+  const hist = () => require('./history');
+  route('GET', '/api/billing/history', async (ctx) => hist().history((await requireUser(ctx.req, ctx.res)).id));
+  route('GET', '/api/billing/receipts/([A-Za-z0-9-]{1,80})', async (ctx, [ref]) => hist().receipt((await requireUser(ctx.req, ctx.res)).id, ref));
+  route('DELETE', '/api/billing/card', async (ctx) => hist().removeCard((await requireUser(ctx.req, ctx.res)).id));
 
   route('GET', '/api/admin/billing/settings', async (ctx) => { await admin(ctx); return { settings: await plans.getSettings({ fresh: true }), defaults: plans.envDefaults() }; });
   route('PUT', '/api/admin/billing/settings', async (ctx) => {

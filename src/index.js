@@ -19,6 +19,7 @@ async function start() {
     await db.ensureReady();
   }
   const billing = require('./features/wallet/billing');
+  const paidEntry = require('./features/wallet/paid-entry');
   await billing.recover();
   const handleRequest = createRequestHandler();
   const server = http.createServer((req, res) => {
@@ -52,13 +53,14 @@ async function start() {
 
   const timers = [
     setInterval(() => billing.tick().catch(e => console.error('[billing]', e.message)), 1000),
+    setInterval(() => paidEntry.tick().catch(e => console.error('[paid entry]', e.message)), 1000),
     setInterval(() => { cleanupInactiveMeetings(); snapshot.expireSnapshots().catch(() => {}); }, config.MEETING_CLEANUP_INTERVAL_MS),
     setInterval(syncViewerCounts, 15000),
     setInterval(pruneLeftParticipants, 60_000),
   ];
   const billingTimer = require('./features/billing/service').startWorker();
   if (billingTimer) timers.push(billingTimer);
-  for (const w of ['./features/recurring/reminders', './features/replays/service']) {
+  for (const w of ['./features/recurring/reminders', './features/replays/service', './features/messages/calls', './features/messages/retention', './features/messages/power']) {
     try { const t = require(w).startWorker(); if (t) timers.push(t); } catch (e) { console.error('[worker]', w, e.message); }
   }
   const metricsLog = metrics.startLogger();
@@ -82,6 +84,7 @@ async function start() {
     wss.notifyRestart(config.RESTART.shutdownGraceMs);
     await new Promise((r) => setTimeout(r, Math.min(config.RESTART.shutdownGraceMs, 5000)));
     for (const ws of wss.clients) { try { ws.terminate(); } catch (_) {} }
+    try { require('./features/messages/socket').closeAll(); } catch (_) {}
     await db.close().catch(() => {});
     process.exit(0);
   };

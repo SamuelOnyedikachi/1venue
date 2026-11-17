@@ -183,6 +183,8 @@ const T = {
     expiryNote: 'This invite expires in 7 days. If you were not expecting it, you can ignore this email.' }),
   reminder: (d) => layout({ ...d, title: d.title || `Starting soon on ${d.app}`, intro: d.intro || '', button: d.button || 'Open', link: d.link }),
   billingNotice: (d) => layout({ ...d, title: d.title || `Your ${d.app} plan`, intro: d.intro || '', button: 'Open billing', link: d.link }),
+  shortLinkNotice: (d) => layout({ ...d, title: d.title || 'Your short link', intro: d.intro || '', button: 'Renew your plan', link: d.link }),
+  walletNotice: (d) => layout({ ...d, title: d.title || `Your ${d.app} credits`, intro: d.intro || '', button: 'Open wallet', link: d.link }),
   verify: (d) => layout({ ...d, title: `Confirm your email for ${d.app}`, intro: `Hi ${d.name || 'there'}, please confirm that this is your email address.`, button: 'Confirm email', link: d.link,
     expiryNote: `This link expires in ${d.expires}. If you didn't create an account, you can ignore this email.` }),
   reset: (d) => layout({ ...d, title: `Reset your ${d.app} password`, intro: 'Someone (hopefully you) asked to reset the password for this email address.', button: 'Choose a new password', link: d.link,

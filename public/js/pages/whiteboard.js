@@ -2,6 +2,7 @@ import { icon } from '../icons.js';
 import { h, api, toast, toastErr, download, debounce, menu, confirmDlg, promptDlg, timeAgo, uploadFile, isMobile } from '../ui.js';
 import { requireLogin } from '../app.js';
 import { registerCommands, unregisterCommands } from '../commands.js';
+import { textSession, onPointerDown, onBlur } from '../wb-text.js';
 import { VW, VH, TOOLS, BGS, uid, emptyPage, normalizeBoard, pageEmpty, pointWidth, painter, drawStroke, drawTexts, textBox, drawImages, drawPaper, setInkTheme, inkOf, renderPage, toMwb, fromMwbBytes, toPdf } from '../wbcore.js';
 
 export const COLORS = ['ink', '#2563eb', '#16a34a', '#dc2626', '#f59e0b', '#9333ea'];
@@ -41,7 +42,7 @@ export function createBoard({ doc, strokes, onChange, onPage, readOnly = false, 
   const pageTag = h('span', { class: 'wb-pagetag', hidden: true });
   const wrap = h('div', { class: 'wb', tabindex: '0', 'aria-label': 'Whiteboard' }, paper, ink, live, pageTag);
   const pc = paper.getContext('2d'), ic = ink.getContext('2d'), lc = live.getContext('2d');
-  let W = 0, H = 0, dpr = 1, k = 1, ox = 0, oy = 0, cur = null, curP = null, last = null, sel = null, drag = null, editing = null;
+  let W = 0, H = 0, dpr = 1, k = 1, ox = 0, oy = 0, cur = null, curP = null, last = null, sel = null, drag = null, editing = null, tap = null;
   const page = () => D.pages[pi];
   const emit = (info) => { onChange && onChange(api_, info); };
   const T = (c) => c.setTransform(dpr * k, 0, 0, dpr * k, dpr * ox, dpr * oy);
@@ -92,27 +93,52 @@ export function createBoard({ doc, strokes, onChange, onPage, readOnly = false, 
     for (let i = p.images.length - 1; i >= 0; i--) { const o = p.images[i]; if (x >= o.x && x <= o.x + o.w && y >= o.y && y <= o.y + o.h) return { kind: 'image', id: o.id }; }
     return null;
   }
+  // Text editing. Lifecycle rules (and the root cause of the "disappearing text box" bug) in wb-text.js.
+  const MIN_FONT = 16; // iOS zooms the page into any field under 16px; scale a 16px field down instead
+  function placeEditor() {
+    if (!editing) return; const { t, inp } = editing;
+    const px = t.size * k, f = Math.max(MIN_FONT, px), sc = px / f;
+    Object.assign(inp.style, { left: ox + t.x * k + 'px', top: oy + t.y * k + 'px', fontSize: f + 'px', color: inkOf(t.color), fontWeight: t.bold ? 700 : 500, transform: sc < 1 ? `scale(${sc})` : '', transformOrigin: '0 0' });
+    inp.style.height = 'auto'; inp.style.height = inp.scrollHeight + 'px';
+    const room = (W - (ox + t.x * k) - 8) / (sc || 1);
+    inp.style.width = Math.max(80, Math.min(room, inp.scrollWidth + 12)) + 'px';
+  }
   function startText([x, y], existing) {
     finishText();
     const t = existing || { id: uid(), x, y: y - 16, text: '', size: 34, color, bold: false };
-    const inp = h('textarea', { class: 'wb-text-in', rows: 1, placeholder: 'Type…', 'aria-label': 'Text on board' });
+    const inp = h('textarea', { class: 'wb-text-in', rows: 1, placeholder: 'Type…', 'aria-label': 'Text on board', autocapitalize: 'sentences', enterkeyhint: 'done' });
     inp.value = t.text;
-    Object.assign(inp.style, { left: ox + t.x * k + 'px', top: oy + t.y * k + 'px', fontSize: t.size * k + 'px', color: inkOf(t.color), fontWeight: t.bold ? 700 : 500 });
-    const grow = () => { inp.style.height = 'auto'; inp.style.height = inp.scrollHeight + 'px'; inp.style.width = Math.max(80, Math.min(W - (ox + t.x * k) - 8, inp.scrollWidth + 12)) + 'px'; };
-    inp.addEventListener('input', grow);
-    inp.addEventListener('keydown', (e) => { if (e.key === 'Escape' || (e.key === 'Enter' && !e.shiftKey)) { e.preventDefault(); finishText(); } e.stopPropagation(); });
-    inp.addEventListener('blur', () => setTimeout(finishText, 0));
-    editing = { id: t.id, t, inp, isNew: !existing };
-    wrap.append(inp); drawPaperLayer(); setTimeout(() => { inp.focus(); grow(); }, 0);
+    const sess = textSession();
+    inp.addEventListener('input', placeEditor);
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Escape' || (e.key === 'Enter' && !e.shiftKey && !e.isComposing)) { e.preventDefault(); finishText(); } e.stopPropagation(); });
+    inp.addEventListener('pointerdown', (e) => e.stopPropagation());
+    inp.addEventListener('blur', (e) => {
+      const to = e.relatedTarget;
+      setTimeout(() => {
+        if (!editing || editing.inp !== inp || document.activeElement === inp) return;
+        const a = to || document.activeElement;
+        const next = document.hidden ? 'hidden' : !a || a === document.body ? 'body' : wrap.contains(a) ? 'board' : 'control';
+        if (onBlur(sess, { next }) === 'commit') finishText();
+      }, 60);
+    });
+    editing = { id: t.id, t, inp, isNew: !existing, sess };
+    wrap.append(inp); drawPaperLayer(); placeEditor();
+    inp.focus({ preventScroll: true }); // synchronously, inside the tap: iOS only opens the keyboard then
+    try { inp.setSelectionRange(inp.value.length, inp.value.length); } catch { /* old engines */ }
   }
+  // Any pointer-down outside the editor commits it (capture phase, before the board reacts).
+  const outsideDown = (e) => { if (editing && onPointerDown(editing.sess, { insideEditor: editing.inp.contains(e.target) })) finishText(); };
+  document.addEventListener('pointerdown', outsideDown, true);
   function finishText() {
-    if (!editing) return; const { t, inp, isNew } = editing; editing = null; inp.remove();
+    if (!editing) return; const { t, inp, isNew, sess } = editing; editing = null; sess.closed = true; inp.remove();
     const text = inp.value.replace(/\s+$/, '');
     if (text !== t.text || isNew) {
-      pushUndo(); const p = page();
-      if (!text) p.texts = p.texts.filter((x) => x.id !== t.id);
-      else if (isNew) p.texts.push({ ...t, text }); else t.text = text;
-      emit({ type: 'full' });
+      if (text || !isNew) {
+        pushUndo(); const p = page();
+        if (!text) p.texts = p.texts.filter((x) => x.id !== t.id);
+        else if (isNew) p.texts.push({ ...t, text }); else t.text = text;
+        emit({ type: 'full' });
+      }
     }
     drawPaperLayer();
   }
@@ -121,7 +147,13 @@ export function createBoard({ doc, strokes, onChange, onPage, readOnly = false, 
     wrap.addEventListener('pointerdown', (e) => {
       if (e.button > 0 || e.target.closest('.wb-text-in')) return;
       const p = pt(e);
-      if (tool === 'text') { e.preventDefault(); const hh = hit(p); const ex = hh && hh.kind === 'text' ? page().texts.find((x) => x.id === hh.id) : null; startText(p, ex); return; }
+      if (tool === 'text') {
+        e.preventDefault(); // no compat mousedown: it would move focus to the board and blur the editor
+        const go = () => { const hh = hit(p); const ex = hh && hh.kind === 'text' ? page().texts.find((x) => x.id === hh.id) : null; startText(p, ex); };
+        if (e.pointerType === 'mouse') go();
+        else tap = { id: e.pointerId, x: e.clientX, y: e.clientY, go }; // touch / pen: open on lift (a real tap, keyboard allowed)
+        return;
+      }
       finishText(); wrap.focus({ preventScroll: true });
       wrap.setPointerCapture(e.pointerId);
       if (tool === 'move') {
@@ -152,7 +184,8 @@ export function createBoard({ doc, strokes, onChange, onPage, readOnly = false, 
         P.push([p[0], p[1], pointWidth(tool, pressure(ev), speed, lp[2])]); curP.seg(P.length - 1);
       }
     });
-    const up = () => {
+    const up = (e) => {
+      if (tap && e && e.pointerId === tap.id) { const t0 = tap; tap = null; if (e.type === 'pointerup' && Math.hypot(e.clientX - t0.x, e.clientY - t0.y) < 12) t0.go(); return; }
       if (drag) { const moved = drag.moved; drag = null; if (moved) emit({ type: 'full' }); else undoS.pop(); return; }
       if (!cur) return; curP.end(); ic.restore();
       const s = cur; cur = null; curP = null;
@@ -168,7 +201,9 @@ export function createBoard({ doc, strokes, onChange, onPage, readOnly = false, 
     wrap.addEventListener('dragleave', () => wrap.classList.remove('drop'));
     wrap.addEventListener('drop', (e) => { e.preventDefault(); wrap.classList.remove('drop'); const f = e.dataTransfer?.files?.[0]; if (f) api_.importFile(f).catch(toastErr); });
   }
-  const ro = new ResizeObserver(() => { finishText(); fit(); }); ro.observe(wrap);
+  // Resizes (virtual keyboard, rotation, visualViewport) keep the editor open and just move it.
+  const ro = new ResizeObserver(() => { fit(); placeEditor(); }); ro.observe(wrap);
+  const vv = window.visualViewport; const onVV = () => placeEditor(); if (vv) vv.addEventListener('resize', onVV);
   const mo = new MutationObserver(() => drawAll()); mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
   // Imported boards carry images inline; move them to file storage so saved boards and live frames stay small.
@@ -223,12 +258,18 @@ export function createBoard({ doc, strokes, onChange, onPage, readOnly = false, 
       toast(`Imported ${nd.pages.length} page${nd.pages.length === 1 ? '' : 's'}${title ? ' from “' + title + '”' : ''}`, { icon: 'check', group: 'content' });
       return { title, pages: nd.pages.length };
     },
+    /** Swap the whole page for one full-size image (AI "Refine page" → Replace page). Undo restores it. */
+    replacePage(url) { finishText(); pushUndo(); D.pages[pi] = { strokes: [], texts: [], images: [{ id: uid(), url, x: 0, y: 0, w: VW, h: VH }] }; sel = null; drawAll(); emit({ type: 'full' }); },
+    /** Upload an image (Blob/File) the board can keep: a /files/ URL, or a data URL without storage. */
+    uploadImage(file) { return imageUrl(file, upload); },
+    /** The page as a light-theme canvas (for AI); restores the screen ink theme. */
+    async snapshot({ bg = 'plain', scale = 0.8 } = {}) { setInkTheme(false); const c = await renderPage(page(), { bg, dark: false, scale }); setInkTheme(isDark()); return c; },
     png() { return renderPage(page(), { bg: D.bg, dark: false, scale: 1.25 }).then((c) => { setInkTheme(isDark()); return new Promise((r) => c.toBlob(r, 'image/png')); }); },
     async pdf() { const cs = []; for (const p of D.pages) cs.push(await renderPage(p, { bg: D.bg, dark: false, scale: 1 })); setInkTheme(isDark()); return toPdf(cs); },
     mwb(title) { return toMwb(api_.doc, { title }); },
     thumb(i = pi) { return renderPage(D.pages[i], { bg: D.bg, dark: isDark(), scale: 0.15 }).then((c) => { setInkTheme(isDark()); return c; }); },
     redraw: () => drawAll(), focus: () => wrap.focus({ preventScroll: true }),
-    destroy() { finishText(); ro.disconnect(); mo.disconnect(); },
+    destroy() { finishText(); ro.disconnect(); mo.disconnect(); document.removeEventListener('pointerdown', outsideDown, true); if (vv) vv.removeEventListener('resize', onVV); },
     COLORS,
   };
   wrap.dataset.tool = tool;
@@ -236,8 +277,9 @@ export function createBoard({ doc, strokes, onChange, onPage, readOnly = false, 
 }
 
 /** One compact row: tools · colours · size · undo/redo · pages · image · more. */
-export function boardToolbar(b, { extra = [], title = () => 'whiteboard', files = true, pages = b.multi !== false, clear = true, history = true, tools = null, compact = false } = {}) {
+export function boardToolbar(b, { extra = [], title = () => 'whiteboard', files = true, pages = b.multi !== false, clear = true, history = true, tools = null, compact = false, refine = files && !b.readOnly } = {}) {
   const bar = h('div', { class: 'wb-tools' + (compact ? ' compact' : '') });
+  const openRefine = () => import('../wb-refine.js').then((m) => m.refineSheet(b)).catch(toastErr);
   const tdefs = [['pencil', 'pencil', 'Pencil · grainy, 1px', 'P'], ['pen', 'penTool', 'Pen · smooth', 'N'], ['brush', 'brush', 'Airbrush · soft', 'B'], ['eraser', 'eraser', 'Eraser', 'E'], ['text', 'type', 'Text', 'T'], ['move', 'move', 'Select & move', 'V']];
   const tb = {};
   const size = h('input', { type: 'range', class: 'wb-size', 'aria-label': 'Size', 'data-tip': 'Size' });
@@ -270,6 +312,8 @@ export function boardToolbar(b, { extra = [], title = () => 'whiteboard', files 
       { label: 'Download board (.mwb)', icon: 'download', group: 'content', hint: 'all pages', run: () => exportAs('mwb') },
       { label: 'Download PDF', icon: 'fileText', group: 'content', hint: 'all pages', run: () => exportAs('pdf') },
       { label: 'Download PNG', icon: 'image', group: 'content', hint: 'this page', run: () => exportAs('png') },
+      refine ? '-' : null,
+      refine ? { label: 'Refine page with AI…', icon: 'wand', group: 'ai', hint: 'this page', run: openRefine } : null,
       '-',
       ...BGS.map((g) => ({ label: `Background: ${g[0].toUpperCase() + g.slice(1)}`, icon: b.bg === g ? 'check' : 'grid', run: () => b.setBg(g) })),
       clear ? '-' : null,
@@ -284,6 +328,7 @@ export function boardToolbar(b, { extra = [], title = () => 'whiteboard', files 
     h('button', { class: 'icon-btn sm', type: 'button', 'data-tip': 'Add page', 'aria-label': 'Add page', html: icon('plus', { size: 16 }), onclick: () => b.addPage() }),
     h('button', { class: 'icon-btn sm', type: 'button', 'data-tip': 'Delete page', 'aria-label': 'Delete page', html: icon('minus', { size: 16 }), onclick: () => b.removePage() })));
   if (files) bar.append(sep(), h('button', { class: 'icon-btn', type: 'button', 'data-group': 'content', 'data-tip': 'Add image', 'aria-label': 'Add image', html: icon('image', { size: 18 }), onclick: () => { fileIn.accept = 'image/*'; fileIn.click(); setTimeout(() => { fileIn.accept = 'image/*,.mwb,application/json,application/gzip'; }, 500); } }), fileIn);
+  if (refine) bar.append(h('button', { class: 'icon-btn wb-refine-btn', type: 'button', 'data-group': 'ai', 'data-tip': 'Refine page with AI', 'aria-label': 'Refine page with AI', html: icon('wand', { size: 18 }), onclick: openRefine }));
   bar.append(more, ...extra);
   syncSize(); markColor(); syncPages();
   bar.sync = () => { syncPages(); syncSize(); markColor(); Object.entries(tb).forEach(([k, el]) => el.classList.toggle('on', k === b.tool)); };
@@ -346,7 +391,7 @@ export async function mount(view) {
     await flush();
     try {
       const r = await api(`/api/whiteboards/${id}`);
-      cur = { id: r.id, title: r.title }; b.doc = r.data; dirty = false;
+      cur = { id: r.id, title: r.title }; b.doc = r.data; dirty = false; banner.hidden = true;
       titleEl.textContent = r.title; status.textContent = r.updatedAt ? 'Saved' : '';
       history.replaceState(history.state, '', `/whiteboard?id=${r.id}`);
       renderList(); bar.sync(); if (isMobile()) side.classList.add('hidden');
@@ -377,18 +422,38 @@ export async function mount(view) {
     } catch (e) { toastErr(e); }
   }
 
+  // A .mwb shared in Messages (or any stored board file): view it here, save a copy only if asked.
+  const banner = h('div', { class: 'wb-banner', hidden: true });
+  async function openFile(url, name) {
+    if (!/^\/files\/[\w-]{10,40}\/[^/?#]+$/.test(url) && !/^https:\/\//.test(url)) return toast('That whiteboard link isn’t valid', { icon: 'alert' });
+    try {
+      const res = await fetch(url, { credentials: 'include' }); if (!res.ok) throw new Error('That whiteboard file is no longer available');
+      const { doc, title } = await fromMwbBytes(new Uint8Array(await res.arrayBuffer()));
+      const label = title || String(name || 'Shared board').replace(/\.mwb$/i, '');
+      await flush(); cur = null; dirty = false; b.doc = doc; bar.sync(); renderList();
+      titleEl.textContent = label; status.textContent = 'Viewing a shared file';
+      banner.hidden = false;
+      banner.replaceChildren(h('span', { class: 'grow', html: icon('board', { size: 16 }) + `<span>Viewing <b></b> · ${doc.pages.length} page${doc.pages.length === 1 ? '' : 's'}. Changes aren’t saved until you save a copy.</span>` }),
+        h('button', { class: 'btn sm primary', type: 'button', onclick: async () => { banner.hidden = true; await createNew(label, b.doc); } }, 'Save to My boards'),
+        h('a', { class: 'btn sm ghost', href: url, download: name || 'board.mwb' }, 'Download'));
+      banner.querySelector('b').textContent = `“${label}”`;
+    } catch (e) { toastErr(e); if (boards[0]) await open(boards[0].id); }
+  }
+
   view.append(h('div', { class: 'wbp' }, side,
     h('section', { class: 'wb-main card layer' },
       h('div', { class: 'wb-head' },
         h('button', { class: 'icon-btn', type: 'button', 'data-tip': 'My boards', 'aria-label': 'My boards', html: icon('layers', { size: 18 }), onclick: toggleSide }),
         titleEl, status, h('span', { class: 'grow' }),
         h('button', { class: 'btn sm ghost', type: 'button', html: icon('plus', { size: 15 }) + '<span>New board</span>', onclick: () => createNew() })),
-      bar, b.el)));
+      banner, bar, b.el)));
 
   try {
     boards = (await api('/api/whiteboards')).boards || [];
-    const want = Number(new URLSearchParams(location.search).get('id'));
-    if (want && boards.some((x) => x.id === want)) await open(want);
+    const qs = new URLSearchParams(location.search);
+    const want = Number(qs.get('id'));
+    if (qs.get('open')) await openFile(qs.get('open'), qs.get('name'));
+    else if (want && boards.some((x) => x.id === want)) await open(want);
     else if (boards[0]) await open(boards[0].id);
     else await createNew('My board');
   } catch (e) { toastErr(e); }

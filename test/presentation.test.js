@@ -173,5 +173,5 @@ test('multi-image picker uploads every selected image in order, mixed selections
   assert.deepEqual(uploads, ['1.png', '2.png']); assert.equal(sent[0].payload.contentType, 'slides');
   assert.deepEqual(sent[0].payload.pages, ['/files/gallery/1.png', '/files/gallery/2.png']);
   input.files = [{ name: '1.png', type: 'image/png' }, { name: 'deck.pptx', type: 'application/octet-stream' }];
-  await input.onchange(); assert.equal(sent.length, 1); assert.match(notices.at(-1), /one PDF\/PPTX/);
+  await input.onchange(); assert.equal(sent.length, 1); assert.match(notices.at(-1), /one document at a time/);
 });

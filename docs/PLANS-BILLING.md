@@ -30,8 +30,10 @@ to the saved card. The credit wallet (`/wallet`) is a separate product and is un
 | Uploads | 250 MB | 2 GB | 10 GB |
 | Monthly / annual | – | ₦5,000 / ₦50,000 | ₦25,000 / ₦250,000 |
 
-Links: Free gets `/v/name-venue`; paid plans get `/v/name`. The `slug3` (3–4 characters, ₦10,000) and
-`slug2` (2 characters, ₦25,000) add-ons are one-off, perpetual, per venue, and only work on a paid plan.
+Links: Free gets `/v/name-venue`; paid plans get `/v/name` (5+ characters). Shorter links are one-off add-ons
+per venue on a paid plan: `slug4` (4 characters, ₦10,000) and `slug3` (3 characters, ₦25,000; also allows 4).
+Links are never shorter than 3 characters. A short link is kept while the owner's plan is active and
+**released 60 days after it lapses** (see *Short-link release* below).
 AI weights: translate, ask, title, scripture 1; summaries, catch-up, “Write it for me” 2. In a room, AI
 use is charged to the room's paying host (venue owner, else the signed-in host); each guest IP can spend
 at most 30 points a day from a host's pool. The existing per-minute IP limit stays.
@@ -51,15 +53,15 @@ Server ceilings always apply: `MAX_AUDIENCE` (default now **1000**) and `MAX_PAR
   from the old period end.
 - **Failed renewal:** status `past_due`, plan kept for **5 days** of grace (retry at most daily, email on
   the first failure). After grace: plan expires to Free; the oldest venues up to the Free limit stay open,
-  the rest are archived (read-only, hidden, restored on re-upgrade); clean/short custom links are kept
-  reserved and the venue falls back to a `-venue` link until the owner upgrades again.
+  the rest are archived (read-only, hidden, restored on re-upgrade); clean/short custom links are parked
+  and the venue falls back to a `-venue` link; they return on re-upgrade. Short (3/4-character) links are
+  released 60 days after the lapse (see *Short-link release*).
 - **Cancel:** renewal stops; access continues to period end, then Free (no grace).
 - **Downgrade / interval switch:** scheduled with `POST /api/billing/change`; applied at period end by
   charging the new plan's price.
 - **Admin grant:** status `comp`, optional end date, never charges a card. Every change goes to `plan_audit`.
-- **Existing users:** everyone is Free, except users who had `plan=premium` (or the old `slug3`/`slug2`
-  packages) who get Premium free for 3 months (`source=grandfather`). Old `slug3`/`slug2` users keep that tier
-  as an add-on on each venue they owned. Grandfathered users have no saved card: they get the 5-day grace
+- **Existing users:** everyone is Free, except users who had `plan=premium` (or an old short-link
+  package) who get Premium free for 3 months (`source=grandfather`). Grandfathered users have no saved card: they get the 5-day grace
   and a reminder at the end, then Free unless they pay from /billing.
 - **Account deletion** is blocked while a plan payment is pending or under review (same idea as credits).
 
@@ -68,9 +70,10 @@ Server ceilings always apply: `MAX_AUDIENCE` (default now **1000**) and `MAX_PAR
 ```
 MAX_AUDIENCE=1000                 # server hard ceiling for stage events (was 300)
 PLAN_<FREE|PREMIUM|ORGANISATION>_<VENUES|AUDIENCE|MEETING|SPEAKER_SEATS|AI_DAILY|UPLOAD_MB|PRICE_MONTH_KOBO|PRICE_YEAR_KOBO>=…
-AI_WEIGHT_<ASK|CATCHUP|TRANSLATE|TITLE|SUMMARY|FINETUNE|SCRIPTURE>=…
-SLUG3_PRICE_KOBO=1000000
-SLUG2_PRICE_KOBO=2500000
+AI_WEIGHT_<ASK|CATCHUP|TRANSLATE|TITLE|SUMMARY|FINETUNE|SCRIPTURE|ANALYSIS>=…
+LINK4_PRICE_KOBO=1000000          # 4-character link (old name SLUG3_PRICE_KOBO still works for this tier)
+LINK3_PRICE_KOBO=2500000          # 3-character link (old name SLUG2_PRICE_KOBO still works for this tier)
+SHORT_LINK_RELEASE_DAYS=60        # days after a plan lapses before a parked short link is released
 BILLING_GRACE_DAYS=5
 AI_GUEST_PER_IP_DAILY=30
 BILLING_WORKER=true               # set false on extra replicas if you prefer one renewer (claims are safe either way)
@@ -80,6 +83,29 @@ BILLING_RENEW_INTERVAL_MS=600000
 `UPLOAD_USER_QUOTA_MB`, if set, is used as the Free upload default. `AI_FINETUNE_DAILY_LIMIT` still caps
 “Write it for me” on top of the pool. The Paystack variables are unchanged (`PAYSTACK_SECRET_KEY`,
 `PAYSTACK_WEBHOOK_SECRET`, `PAYSTACK_PASS_FEES_CONFIRMED`, `PAYSTACK_BASE_URL` for Bannk).
+
+## Short-link release
+
+When a paid plan lapses (cancel, failed renewal after grace, admin downgrade) the venue's short link is
+parked (`venues.reserved_slug`, `link_parked_at`) and the venue uses a `-venue` link. Renewing or buying any
+paid plan within `SHORT_LINK_RELEASE_DAYS` (default 60) puts the link straight back. Otherwise the billing
+worker's sweep (same interval as renewals, `billing/shortlinks.js`):
+
+- emails the owner 14 and 3 days before release (`link_notice_days` records the last notice, so each goes once);
+- on day 60 releases the link: `reserved_slug` cleared, the add-on ends (`slug_addon='none'`), a
+  `short_link_released` row goes to `plan_audit`, and the owner gets a release email;
+- the old `/v/<slug>` URL shows "this link is available" (`GET /api/venues/claimable/:slug`) and anyone on a
+  paid plan can buy it.
+
+Every step is a conditional `UPDATE … RETURNING`, so running the sweep on several replicas, or twice, sends
+each notice once and releases once. The owner's billing page shows the release date of a parked link.
+
+## Short-link tiers and saved prices
+
+The add-ons used to be named `slug3` (3–4 characters, ₦10,000) and `slug2` (₦25,000). They are now `slug4`
+(₦10,000) and `slug3` (₦25,000). Admin prices saved under the old keys are mapped by price when read
+(old `slug3` → `slug4`, old `slug2` → `slug3`) and rewritten with a version marker on the next save. A
+venue's tier lives in `venues.slug_addon` (migration 014); the original `slug_tier` column is kept.
 
 ## Migrating
 

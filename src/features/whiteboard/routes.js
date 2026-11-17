@@ -30,6 +30,12 @@ module.exports = function routes(route, kit) {
     if ((await data.listWhiteboards(u.id)).length >= 200) throw httpError(400, 'You have 200 boards — delete some first');
     return data.createWhiteboard(u.id, String(b.title || 'Untitled board').trim() || 'Untitled board', cleanBoard(b.data) || cleanBoard({}));
   });
+  // ------------------------------------------------------------ AI "Refine page" (see refine.js)
+  route('GET', '/api/whiteboards/refine', async (ctx) => { await requireUser(ctx.req, ctx.res); return { presets: require('./refine').presetList() }; });
+  route('POST', '/api/whiteboards/refine', async (ctx) => {
+    const u = await requireUser(ctx.req, ctx.res);
+    return require('./refine').refine(u, await ctx.body(12e6), { httpError, rateLimit });
+  });
   route('GET', '/api/whiteboards/(\\d+)', async (ctx, [id]) => {
     const u = await requireUser(ctx.req, ctx.res);
     const b = await data.getWhiteboardById(u.id, int(id));

@@ -12,11 +12,14 @@ module.exports = function routes(route, kit) {
   route('POST', '/api/files', async (ctx) => {
     const uploads = require('../../venue/uploads');
     const t0 = Date.now();
-    const mime = String(ctx.req.headers['content-type'] || 'application/octet-stream').split(';')[0].trim().toLowerCase();
+    let mime = String(ctx.req.headers['content-type'] || 'application/octet-stream').split(';')[0].trim().toLowerCase();
     const purpose = uploads.normalizePurpose(ctx.url.searchParams.get('purpose'));
     const declared = Number(ctx.req.headers['content-length']) || 0;
     let filename = 'upload';
     try { filename = decodeURIComponent(String(ctx.req.headers['x-file-name'] || 'upload')); } catch (_) { filename = String(ctx.req.headers['x-file-name'] || 'upload'); }
+    const mwb = require('../../lib/mwb');
+    const board = mwb.looksMwb({ name: filename, mime }); // 1venue whiteboard file: browsers send no MIME for .mwb
+    if (board) mime = mwb.MWB_MIME;
     const f = { purpose, mime, declared, name: filename.slice(0, 80) };
     try {
       const u = await getAuthUser(ctx.req, ctx.res);
@@ -32,6 +35,12 @@ module.exports = function routes(route, kit) {
       let buf;
       try { buf = await readRaw(ctx.req, max); } catch (e) { if (e.status === 413) throw httpError(413, `That file is too big (max ${uploads.fmtMB(max)})`); throw e; }
       if (!buf.length) throw httpError(400, 'The file is empty');
+      if (board) { // sniff: the name says whiteboard, so the bytes must be one
+        const info = mwb.sniffMwb(buf);
+        if (!info) throw httpError(415, 'That .mwb file isn’t a 1venue whiteboard (it may be damaged)');
+        if (!mwb.isMwbName(filename)) filename = filename.replace(/\.[^.]*$/, '') + '.mwb';
+        f.board = info.pages;
+      }
       const roomCode = rp ? rp.code : null;
       await uploads.quota(data, { size: buf.length, userId: u && u.id, ownerKey, roomCode });
       const rec = await storage().save(buf, { filename, mime, ownerUserId: u && u.id, ownerKey, roomCode, purpose });

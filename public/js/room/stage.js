@@ -190,7 +190,7 @@ export function createStage(R) {
       canStop ? closeBtn('Stop', () => R.confirmStopContent()) : null);
     const body = h('div', { class: 'present-body' });
     present.append(head, body);
-    R.applyMediaSync = null; R.applyPage = null; R.applySlideshow = null;
+    R.applyMediaSync = null; R.applyPage = null; R.applySlideshow = null; R.applyScroll = null;
     if (c.type === 'youtube' && c.videoId) {
       body.classList.add('yt-wrap');
       const tap = h('button', { class: 'btn sm glass yt-tap', type: 'button', hidden: true, html: icon('volume', { size: 14 }) + '<span>Tap for sound</span>' });
@@ -246,7 +246,14 @@ export function createStage(R) {
       return;
     }
     if (c.type === 'image' && c.url) { body.append(h('img', { src: c.url, alt: c.title || '', class: 'present-img' })); return; }
-    body.append(h('div', { class: 'empty-card' }, I('presentation'), h('b', null, 'This content type isn’t supported any more'), h('div', { class: 'tiny muted' }, 'Ask the presenter to share YouTube, slides or an image.')));
+    if (c.type === 'doc' && c.url) {
+      const canControl = R.canControlContent();
+      let undo = () => {};
+      import('./docview.js').then((m) => { if (present.contains(body)) undo = m.mountDoc(body, { R, c, canControl }); });
+      presentCleanup = () => undo();
+      return;
+    }
+    body.append(h('div', { class: 'empty-card' }, I('presentation'), h('b', null, 'This content type isn’t supported any more'), h('div', { class: 'tiny muted' }, 'Ask the presenter to share YouTube, slides, a document or an image.')));
   }
   function buildTimeline() {
     const tl = R.timeline; const i = Math.min(tl.selected || 0, tl.items.length - 1); const it = tl.items[i];
@@ -417,18 +424,35 @@ export function createStage(R) {
 
   // ---------- captions overlay ----------
   const interim = new Map();
+  const CAPTION_TTL = 9000;
+  const INTERIM_TTL = 4500;
   function caption(c) {
-    if (!c.final) interim.set(c.participantId, c); else interim.delete(c.participantId);
+    const line = { ...c, at: Number(c.at) || Date.now() };
+    if (!line.final) interim.set(line.participantId, line); else interim.delete(line.participantId);
     paintCaps();
   }
   function paintCaps() {
     caps.hidden = !R.showCaptions;
     if (!R.showCaptions) return;
-    const finals = R.data.captions.slice(-3).filter((l) => Date.now() - l.at < 15000);
-    const lines = [...finals, ...interim.values()].slice(-3);
+    const now = Date.now();
+    const latestBySpeaker = new Map();
+    // Keep a recent line per speaker so one person taking several turns cannot crowd out
+    // everyone else, and so the host appears alongside the other active speakers.
+    for (let i = R.data.captions.length - 1; i >= 0; i--) {
+      const line = R.data.captions[i];
+      const at = Number(line.at) || 0;
+      if (now - at > CAPTION_TTL) continue;
+      if (!latestBySpeaker.has(line.participantId)) latestBySpeaker.set(line.participantId, line);
+    }
+    for (const [id, line] of interim) {
+      if (now - line.at > INTERIM_TTL) { interim.delete(id); continue; }
+      const current = latestBySpeaker.get(id);
+      if (!current || line.at >= (Number(current.at) || 0)) latestBySpeaker.set(id, line);
+    }
+    const lines = [...latestBySpeaker.values()].sort((a, b) => (Number(a.at) || 0) - (Number(b.at) || 0)).slice(-4);
     caps.replaceChildren(...lines.map((l) => h('div', { class: `cap-line${l.final === false ? ' interim' : ''}` }, h('b', null, l.name + ': '), l.text)));
   }
-  setInterval(paintCaps, 4000);
+  setInterval(paintCaps, 1000);
 
   // ---------- reactions ----------
   function burst(emoji, name) {

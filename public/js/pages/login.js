@@ -7,6 +7,42 @@ export const GOOGLE_G = '<svg width="18" height="18" viewBox="0 0 48 48" aria-hi
 
 export const APPLE_LOGO = '<svg width="18" height="18" viewBox="0 0 814 1000" aria-hidden="true" fill="currentColor"><path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105.6-57-155.5-127C46.7 790.7 0 663 0 541.8c0-194.4 126.4-297.5 250.8-297.5 66.1 0 121.2 43.4 162.7 43.4 39.5 0 101.1-46 176.3-46 28.5 0 130.9 2.6 198.3 99.2zm-234-181.5c31.1-36.9 53.1-88.1 53.1-139.3 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.6-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 135.5-71.3z"/></svg>';
 
+let welcomeOpen = false;
+export function showWelcomeCredits(credits = 60) {
+  if (welcomeOpen) return Promise.resolve();
+  welcomeOpen = true;
+  return new Promise((resolve) => {
+    const scrim = h('div', { class: 'au-scrim' });
+    const closeBtn = h('button', { class: 'icon-btn au-x', type: 'button', 'aria-label': 'Close', html: icon('x', { size: 20 }) });
+    const button = h('button', { class: 'au-btn au-primary block', type: 'button' }, 'Start exploring');
+    const modal = h('div', { class: 'au-modal welcome-credit-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'welcome-credit-title', 'aria-describedby': 'welcome-credit-copy' },
+      closeBtn,
+      h('div', { class: 'au-body' },
+        h('div', { class: 'im-badge', html: icon('sparkles', { size: 25 }) }),
+        h('p', { class: 'welcome-credit-eyebrow' }, 'You’re all set'),
+        h('h2', { class: 'au-title', id: 'welcome-credit-title' }, 'Welcome to 1venue!'),
+        h('p', { class: 'au-sub', id: 'welcome-credit-copy' }, 'Thanks for signing up. We’ve added free credits to your wallet so you can start hosting.'),
+        h('div', { class: 'welcome-credit-amount' }, `${credits} free credits added`),
+        h('p', { class: 'welcome-credit-footnote' }, 'That’s 60 minutes of meeting time. Your credits are ready whenever you are.'),
+        button));
+    const finish = () => {
+      if (!welcomeOpen) return;
+      welcomeOpen = false;
+      document.removeEventListener('keydown', onKey, true);
+      modal.classList.add('out'); scrim.classList.add('out');
+      setTimeout(() => { modal.remove(); scrim.remove(); }, 200);
+      document.documentElement.classList.remove('au-lock');
+      resolve();
+    };
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); finish(); } };
+    button.onclick = finish; scrim.onclick = finish; closeBtn.onclick = finish;
+    document.body.append(scrim, modal);
+    document.documentElement.classList.add('au-lock');
+    document.addEventListener('keydown', onKey, true);
+    setTimeout(() => button.focus(), 40);
+  });
+}
+
 const GOOGLE_ERRORS = {
   'apple-cancelled': 'Apple sign-in was cancelled.',
   'apple-expired': 'That Apple sign-in took too long. Please try again.',

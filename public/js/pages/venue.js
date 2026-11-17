@@ -27,20 +27,18 @@ function venueIcon(name) {
 }
 const venueMark = (name, size = 20) => h('span', { class: 'venue-mark', 'data-group': 'media', html: icon(venueIcon(name), { size }) });
 
-/* Custom venue links. Free → 5+ chars + "-venue"; Premium/Organisation → 5+, no suffix; a venue's slug3 add-on → 3+; slug2 → 2+. */
-const PLAN_LABEL = { free: 'Free', premium: 'Premium', organisation: 'Organisation', slug3: '3-char add-on', slug2: '2-char add-on' };
-const RANK = { free: 0, premium: 1, organisation: 1, slug3: 2, slug2: 3 };
-const rightsKey = (plan, tier) => (!plan || plan === 'free' ? 'free' : tier === 'slug3' || tier === 'slug2' ? tier : plan);
+/* Custom venue links. Free → 5+ chars + "-venue"; Premium/Organisation → 5+, no suffix; a venue's slug4 add-on → 4+; slug3 → 3+. */
+const PLAN_LABEL = { free: 'Free', premium: 'Premium', organisation: 'Organisation', slug4: '4-character add-on', slug3: '3-character add-on' };
+const RANK = { free: 0, premium: 1, organisation: 1, slug4: 2, slug3: 3 };
+const rightsKey = (plan, tier) => (!plan || plan === 'free' ? 'free' : tier === 'slug4' || tier === 'slug3' ? tier : plan);
 const slugBase = (v) => String(v || '').toLowerCase().replace(/-venue$/, '').replace(/[^a-z0-9]/g, '').slice(0, 16);
 function previewSlug(base, plan) {
   if (!base) return { slug: '', err: '' };
   const r = RANK[plan] || 0;
   if (r === 0) return base.length >= 5 ? { slug: `${base}-venue` } : { slug: `${base.padEnd(5, '•')}-venue`, err: 'At least 5 letters/numbers on Free' };
-  if (base.length < 2) return { slug: base, err: 'Too short' };
-  if (base.length === 4 && r < 2) return { slug: base, err: 'Clean links need at least 5 characters (4 needs the slug3 add-on)' };
-  if (base.length === 2 && r < 3) return { slug: base, err: '2-character links need the slug2 add-on (Billing)' };
-  if (base.length === 3 && r < 2) return { slug: base, err: '3-character links need the slug3 add-on (Billing)' };
-  if (base.length < 2) return { slug: base, err: 'Too short' };
+  if (base.length < 3) return { slug: base, err: 'At least 3 characters' };
+  if (base.length === 4 && r < 2) return { slug: base, err: '4-character links need the 4-character add-on (Billing)' };
+  if (base.length === 3 && r < 3) return { slug: base, err: '3-character links need the 3-character add-on (Billing)' };
   return { slug: base };
 }
 const planNote = (plan) => h('div', { class: 'tiny muted' },
@@ -124,7 +122,12 @@ async function list(view) {
 async function door(view, slug) {
   let v;
   try { v = await api(`/api/venues/${encodeURIComponent(slug)}`); }
-  catch (e) { view.append(empty('door', 'Venue not found', 'Check the link and try again.', h('a', { class: 'btn', href: '/', 'data-link': '' }, 'Home'))); return; }
+  catch (e) {
+    const c = e.status === 404 ? await api('/api/venues/claimable/' + encodeURIComponent(slug)).catch(() => null) : null;
+    if (c && c.claimable) view.append(empty('link', `1venue.live/v/${c.slug} is available`, `This ${c.slug.length}-character link isn't in use. Get it for one of your venues with a paid plan.`, h('a', { class: 'btn primary', href: state.user ? '/billing' : '/upgrade', 'data-link': '' }, 'Get this link')));
+    else view.append(empty('door', 'Venue not found', 'Check the link and try again.', h('a', { class: 'btn', href: '/', 'data-link': '' }, 'Home')));
+    return;
+  }
   // Bare /{slug} only opens auto (7-char) or free *-venue links; premium custom venues live under /v/ only.
   if (!location.pathname.startsWith('/v/') && v.isCustom && !/-venue$/.test(v.slug)) { view.append(empty('door', 'Venue not found', 'Check the link and try again.', h('a', { class: 'btn', href: '/', 'data-link': '' }, 'Home'))); return; }
   if (location.pathname !== `/v/${v.slug}`) history.replaceState({}, '', `/v/${v.slug}`);

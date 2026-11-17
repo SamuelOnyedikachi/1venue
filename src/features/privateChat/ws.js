@@ -73,14 +73,10 @@ module.exports = {
           const bUser = targetUserId || null;
 
           if (aUser && bUser) {
-            const thread = await db.findOrCreateDmThread(aUser, bUser);
-            await db.saveDmMessage({
-              threadId: thread.id,
-              senderUserId: aUser,
-              senderParticipantId: participantId,
-              senderName: actor.name,
-              body: bodyForDb,
-              meetingCode,
+            // Signed-in pair: the same dm_threads row and inbox conversation as /messages
+            // (attachments column, unread, user-socket fan-out and push). Blocks drop the save.
+            await require('../messages/service').saveRoomDm({
+              fromUserId: aUser, toUserId: bUser, participantId, senderName: actor.name, text, attachment, meetingCode,
             });
           } else if (aUser && !bUser) {
             const guestKey = 'guest:' + targetId;
@@ -169,7 +165,7 @@ module.exports = {
                 toId: m.sender_user_id === p.userId ? ('user:' + (peerUserId || 'peer')) : participantId,
                 toName: m.sender_user_id === p.userId ? peerName : p.name,
                 toUserId: m.sender_user_id === p.userId ? peerUserId : p.userId,
-                text: m.body,
+                text: m.attachments ? (m.body || '') + '\n__attach__' + JSON.stringify(typeof m.attachments === 'string' ? JSON.parse(m.attachments) : m.attachments) : m.body,
                 at: m.created_at ? new Date(m.created_at).getTime() : Date.now(),
                 peerIsGuest,
                 _peerUserId: peerUserId,

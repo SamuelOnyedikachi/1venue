@@ -4,6 +4,7 @@ import { state, navigate, requireLogin } from '../app.js';
 import { catOf, commentThread, shareLink, sectionHead, empty, followBtn, eventCard } from '../components.js';
 import { registerCommands, unregisterCommands } from '../commands.js';
 import { promoCompact, loadPromos } from '../promo.js';
+import { loadMoney, fmtMoney, checkoutSheet } from '../money.js';
 
 export const roomPath = (code) => '/' + String(code || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -56,7 +57,7 @@ export async function mount(view, { slug }) {
   const live = ev.status === 'live';
   const c1 = ev.theme?.accent || cc, c2 = ev.theme?.accent2 || 'var(--accent-2)';
   document.title = `${ev.title} · 1venue`;
-  const goLive = () => { sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, eventId: ev.id, name: ev.title, stage: ev.category !== 'meeting', speakerSeats: ev.speakerSeats, code: ev.code })); navigate(roomPath(ev.code)); };
+  const goLive = () => { sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, eventId: ev.id, name: ev.title, stage: ev.category !== 'meeting', speakerSeats: ev.speakerSeats, code: ev.code, meetingAccessMode: ev.meetingAccessMode, meetingDurationMin: ev.meetingDurationMin, meetingEntryPriceCredits: ev.meetingEntryPriceCredits })); navigate(roomPath(ev.code)); };
   const join = () => navigate(roomPath(ev.code));
   const rsvpBtns = [];
   const paintRsvp = () => {
@@ -145,6 +146,10 @@ export async function mount(view, { slug }) {
   const matsSlot = h('div');
   const ticketSlot = h('div');
   const replaySlot = h('div');
+  const meetingAccess = ev.category === 'meeting' && ev.meetingAccessMode === 'paid_entry'
+    ? h('div', { class: 'ev-card' }, sectionHead('Paid meeting entry', 'wallet'),
+      h('p', { class: 'small' }, `${ev.meetingEntryPriceCredits} credits · ${ev.meetingDurationMin} minutes advertised. Sign in and ask to join; credits are charged only when the host accepts you.`))
+    : null;
   const speakersBlock = speakers.length ? h('div', null, sectionHead('Speakers', 'stage'), h('div', { class: 'speaker-cards' }, speakers.map((sp) => h(sp.userId ? 'a' : 'div', { class: 'card speaker-card', href: sp.userId ? profilePath({ username: sp.username, id: sp.userId }) : null, 'data-link': sp.userId ? '' : null, style: { '--c1': c1, '--c2': c2 } },
     h('div', { class: 'band' }), avatar(sp.name, sp.avatarUrl, 'xl ring'), h('strong', null, sp.name), h('span', { class: 'muted small' }, sp.headline || 'Speaker'))))) : null;
 
@@ -152,6 +157,7 @@ export async function mount(view, { slug }) {
     hero,
     h('div', { class: 'ev-summary' }, factsCard()),
     hostMenu,
+    meetingAccess,
     ticketSlot,
     replaySlot,
     ev.description ? h('div', { class: 'card pad prose', html: md(ev.description) }) : null,
@@ -182,12 +188,14 @@ export async function mount(view, { slug }) {
   const stopScroll = [slim(left), slim(right)];
 
   // Tickets, donations and replays (Phase 3). Returning from Paystack carries ?reference=1vc-…
-  const naira = (k) => '₦' + (Number(k || 0) / 100).toLocaleString('en-NG');
+  const naira = (k) => fmtMoney(k);
   async function paintTickets() {
+    await loadMoney();
     const t = await api(`/api/events/${ev.id}/tickets`).catch(() => null);
     if (!t || !ticketSlot.isConnected || (!t.tiers.length && !t.donations)) { ticketSlot.replaceChildren(); return; }
     const buy = async (tier, qty) => {
       if (!requireLogin('Sign in to get a ticket')) return;
+      if (tier.priceKobo > 0) { await checkoutSheet({ title: 'Ticket checkout', what: `${qty} × ${tier.name}`, subtotalKobo: tier.priceKobo * qty, start: () => api(`/api/events/${ev.id}/tickets`, { method: 'POST', body: { tierId: tier.id, quantity: qty } }) }); return; }
       const r = await api(`/api/events/${ev.id}/tickets`, { method: 'POST', body: { tierId: tier.id, quantity: qty } });
       if (r.authorizationUrl) { location.assign(r.authorizationUrl); return; }
       toast('You have a ticket', { icon: 'ticket' }); paintTickets();
@@ -202,7 +210,7 @@ export async function mount(view, { slug }) {
           qty, h('button', { class: 'btn sm primary', type: 'button', disabled: soldOut || (!t.purchasesEnabled && tier.priceKobo > 0), onclick: () => buy(tier, Number(qty.value) || 1).catch(toastErr) }, soldOut ? 'Sold out' : tier.priceKobo ? 'Buy' : 'Get free ticket'));
       }),
       t.donations && t.purchasesEnabled ? h('div', { class: 'ev-meta-row' }, h('span', { class: 'grow small' }, 'Send the host a gift'), gift,
-        h('button', { class: 'btn sm', type: 'button', onclick: async () => { if (!requireLogin('Sign in to send a gift')) return; try { const r = await api(`/api/events/${ev.id}/donate`, { method: 'POST', body: { amountKobo: Math.round(Number(gift.value) * 100) } }); location.assign(r.authorizationUrl); } catch (e) { toastErr(e); } } }, 'Give')) : null));
+        h('button', { class: 'btn sm', type: 'button', onclick: async () => { if (!requireLogin('Sign in to send a gift')) return; const amountKobo = Math.round(Number(gift.value) * 100); checkoutSheet({ title: 'Send a gift', what: 'A gift to the host of this event.', subtotalKobo: amountKobo, start: () => api(`/api/events/${ev.id}/donate`, { method: 'POST', body: { amountKobo } }) }); } }, 'Give')) : null));
   }
   const ref = new URLSearchParams(location.search).get('reference') || new URLSearchParams(location.search).get('trxref');
   if (ref && ref.startsWith('1vc-')) {

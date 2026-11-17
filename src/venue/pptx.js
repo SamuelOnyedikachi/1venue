@@ -13,6 +13,7 @@ const MAX_PAGES = 80;
 const JPEG_DPI = 144;
 const MIMES = new Set([
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.ms-powerpoint', // legacy .ppt: LibreOffice converts it the same way
   'application/octet-stream',
   'application/zip',
   'application/x-zip-compressed',
@@ -101,15 +102,17 @@ async function pdfToJpegs(pdfPath, outDir, maxPages) {
 async function convertPptxToSlides(buf, { ownerUserId = null, ownerKey = null, roomCode = null, title = 'Slides' } = {}) {
   if (!buf.length) throw fail(400, 'The presentation is empty');
   if (buf.length > MAX_BYTES) throw fail(413, 'PPTX must be 50 MB or smaller');
-  if (buf.length < 4 || buf.readUInt32LE(0) !== 0x04034b50) {
-    throw fail(415, 'This is not a PPTX file. Save the presentation as .pptx and try again.');
+  const isZip = buf.length >= 4 && buf.readUInt32LE(0) === 0x04034b50;
+  const isOle = buf.length >= 8 && buf.readUInt32BE(0) === 0xd0cf11e0; // legacy .ppt (OLE compound file)
+  if (!isZip && !isOle) {
+    throw fail(415, 'This is not a PowerPoint file. Save the presentation as .pptx and try again.');
   }
   if (active >= 2) throw fail(503, 'Presentation conversion is busy. Please try again shortly.');
   active++;
   let tmp;
   try {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), '1venue-pptx-'));
-    const input = path.join(tmp, 'slides.pptx');
+    const input = path.join(tmp, isOle ? 'slides.ppt' : 'slides.pptx');
     await fs.writeFile(input, buf);
 
     const pdfPath = await officeToPdf(input, tmp);
@@ -181,4 +184,4 @@ async function convertPptx(buf) {
   }
 }
 
-module.exports = { convertPptxToSlides, convertPptx, MAX_BYTES, MAX_PAGES, MIMES };
+module.exports = { convertPptxToSlides, convertPptx, officeBin, MAX_BYTES, MAX_PAGES, MIMES };

@@ -1,4 +1,5 @@
 'use strict';
+process.env.PROCESSING_FEE_PERCENT = '0'; // these suites pin the original price maths; the fee is covered in test/settings-wallet.test.js
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -114,6 +115,9 @@ test('verified payment posts exactly once across concurrent callbacks and signed
   assert.equal(history[0].balanceAfter, 30);
   assert.equal((await webhook(ref)).status, 200);
   assert.equal((await alice.get('/api/wallet')).body.balanceCredits, 30);
+  // The database itself must hold exactly one purchase entry for this payment.
+  const rows = (await db.q('SELECT COUNT(*) AS n FROM credit_ledger l JOIN credit_payments p ON p.id=l.payment_id WHERE p.reference=$1', [ref])).rows;
+  assert.equal(Number(rows[0].n), 1);
 });
 
 test('amount, net funding, currency, customer, metadata and mode mismatches never mint credits', { skip }, async () => {

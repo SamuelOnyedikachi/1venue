@@ -3,7 +3,8 @@ import { h, api, esc, toast, toastErr, uploadFile, avatar, debounce, sheet, repo
 import { state, navigate, requireLogin, CATS, ACCENTS } from '../app.js';
 import { catOf } from '../components.js';
 import { isRichInput } from '../event-draft.js';
-import { listenOn } from '../voice.js';
+import { listenOn, isListening, stopListening } from '../voice.js';
+import { materialPicker } from '../material-picker.js';
 
 const field = (label, ic, el, actions) => h('div', { class: 'field-row' },
   h('div', { class: 'field-lab' },
@@ -18,6 +19,7 @@ export async function mount(view, params) {
   const editing = params.edit ? await api(`/api/events/${encodeURIComponent(params.edit)}`).catch(() => null) : null;
   const ev = editing || { category: params.category || 'talk_show', visibility: 'public', speakerSeats: 4, theme: { accent: state.prefs.accent, accent2: state.prefs.accent2 || ACCENTS.find((a) => a[1] === state.prefs.accent)?.[2] || '#7c3aed' }, tags: [] };
   let category = ev.category, visibility = ev.visibility, seats = ev.speakerSeats || 4, coverUrl = ev.coverUrl || null;
+  let meetingAccessMode = ev.meetingAccessMode || 'host_funded';
   let catTouched = !!editing, themeTouched = !!editing;
   let acc = ev.theme?.accent || '#2563eb', acc2 = ev.theme?.accent2 || '#7c3aed';
   let materialIds = [];
@@ -48,7 +50,27 @@ export async function mount(view, params) {
     if (k === category) o.selected = true;
     catSel.append(o);
   });
-  catSel.onchange = () => { category = catSel.value; catTouched = true; preview(); };
+  const accessMode = h('select', { class: 'input' },
+    h('option', { value: 'host_funded' }, 'Host-funded'),
+    h('option', { value: 'paid_entry' }, 'Paid entry'));
+  accessMode.value = meetingAccessMode;
+  const meetingDuration = h('input', { class: 'input', type: 'number', min: 1, max: 720, step: 1, value: String(ev.meetingDurationMin || 60), inputmode: 'numeric' });
+  const entryPrice = h('input', { class: 'input', type: 'number', min: 1, step: 1, value: String(ev.meetingEntryPriceCredits || 30), inputmode: 'numeric' });
+  const paidEntryFields = h('div', { class: 'grid2', hidden: meetingAccessMode !== 'paid_entry' },
+    field('Advertised duration (minutes)', 'clock', meetingDuration),
+    field('Entry price (credits)', 'coin', entryPrice));
+  const meetingAccess = h('div', { class: 'card pad layer col', style: { gap: '.8rem' }, hidden: category !== 'meeting' },
+    field('Who pays for this meeting?', 'wallet', accessMode),
+    h('p', { class: 'tiny muted' }, 'Paid-entry attendees must sign in. They are charged when you accept them. You receive 80% of entry credits after refunds are settled.'),
+    paidEntryFields);
+  const syncMeetingAccess = () => {
+    meetingAccess.hidden = category !== 'meeting';
+    if (category !== 'meeting') { meetingAccessMode = 'host_funded'; accessMode.value = 'host_funded'; }
+    else meetingAccessMode = accessMode.value;
+    paidEntryFields.hidden = meetingAccessMode !== 'paid_entry';
+  };
+  accessMode.onchange = () => { meetingAccessMode = accessMode.value; paidEntryFields.hidden = meetingAccessMode !== 'paid_entry'; };
+  catSel.onchange = () => { category = catSel.value; catTouched = true; syncMeetingAccess(); preview(); };
 
   const visSeg = h('div', { class: 'seg' }, [['public', 'Public', 'globe'], ['unlisted', 'Unlisted', 'link'], ['private', 'Private', 'lock']].map(([v, l, ic]) =>
     h('button', { type: 'button', class: visibility === v ? 'on' : '', 'data-v': v, html: icon(ic, { size: 15 }) + l, onclick: () => { visibility = v; visSeg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === v)); } })));
@@ -114,38 +136,8 @@ export async function mount(view, params) {
   speakerInput.addEventListener('input', searchSpeakers);
   speakerInput.addEventListener('blur', () => setTimeout(() => { speakerSug.hidden = true; }, 180));
 
-  // Materials autosuggest
-  const matChips = h('div', { class: 'row wrap', style: { gap: '.4rem' } });
-  const matInput = h('input', { class: 'input', placeholder: 'Search your materials…', autocomplete: 'off' });
-  const matSug = h('div', { class: 'suggest-list', hidden: true });
-  let allMats = [];
-  const paintMats = () => {
-    const selected = allMats.filter((m) => materialIds.includes(m.id));
-    matChips.replaceChildren(...selected.map((m) => {
-      const th = m.kind === 'youtube' && m.payload?.videoId ? `https://i.ytimg.com/vi/${m.payload.videoId}/mqdefault.jpg`
-        : m.kind === 'image' && m.payload?.url ? m.payload.url
-        : (m.payload?.pages && m.payload.pages[0]) || null;
-      return h('span', { class: 'chip-mat' },
-        th ? h('img', { src: th, alt: '', style: { width: '22px', height: '22px', borderRadius: '5px', objectFit: 'cover' } }) : null,
-        m.title,
-        h('button', { class: 'rm', type: 'button', 'aria-label': 'Remove', onclick: () => { materialIds = materialIds.filter((id) => id !== m.id); paintMats(); } }, '−'));
-    }));
-  };
-  api('/api/materials').then((r) => { allMats = r.materials || []; paintMats(); }).catch(() => {});
-  matInput.addEventListener('input', debounce(() => {
-    const q = matInput.value.trim().toLowerCase();
-    const list = allMats.filter((m) => !materialIds.includes(m.id) && (!q || m.title.toLowerCase().includes(q))).slice(0, 8);
-    matSug.replaceChildren(...list.map((m) => {
-      const th = m.kind === 'youtube' && m.payload?.videoId ? `https://i.ytimg.com/vi/${m.payload.videoId}/mqdefault.jpg`
-        : m.kind === 'image' && m.payload?.url ? m.payload.url
-        : (m.payload?.pages && m.payload.pages[0]) || null;
-      return h('button', { type: 'button', onclick: () => {
-        materialIds.push(m.id); matInput.value = ''; matSug.hidden = true; paintMats();
-      } }, th ? h('img', { class: 'sug-thumb', src: th, alt: '' }) : h('span', { class: 'ico-tile sm', html: icon(m.kind === 'youtube' ? 'youtube' : 'presentation', { size: 14 }) }), h('b', { class: 'grow' }, m.title));
-    }));
-    matSug.hidden = !list.length;
-  }, 180));
-  matInput.addEventListener('blur', () => setTimeout(() => { matSug.hidden = true; }, 180));
+  // Materials: searchable picker with "Upload materials" inside it.
+  const matPicker = materialPicker({ selected: materialIds, onChange: (ids) => { materialIds = ids; } });
 
   const setTheme = (a, a2, { touched = true } = {}) => { acc = a; acc2 = a2; if (touched) themeTouched = true; swatches.querySelectorAll('.swatch').forEach((sw, i) => sw.classList.toggle('on', ACCENTS[i][1] === a)); preview(); };
   const swatches = h('div', { class: 'swatches' }, ACCENTS.map(([n, a, a2]) => h('button', { type: 'button', class: `swatch${acc === a ? ' on' : ''}`, 'data-tip': n, style: { background: `linear-gradient(135deg, ${a}, ${a2})` }, 'aria-label': n, onclick: () => setTheme(a, a2) })));
@@ -230,11 +222,12 @@ export async function mount(view, params) {
       let done = false;
       const s = sheet({ title: 'Tell us about your event', icon: 'sparkles', group: 'ai', onClose: () => { if (!done) resolve(null); } });
       s.el.previousElementSibling?.classList.add('heavy');
-      const box = h('textarea', { class: 'textarea tell-notes', rows: 8, maxlength: 4000, placeholder: "What's it about, who's it for, when and where, who's speaking, anything special?" });
+      const box = h('textarea', { class: 'textarea tell-notes no-vmic', rows: 8, maxlength: 4000, placeholder: "What's it about, who's it for, when and where, who's speaking, anything special?" });
       box.value = seed;
       const mic = h('button', { type: 'button', class: 'icon-btn tell-mic', 'aria-label': 'Voice typing', 'data-tip': 'Voice typing', html: icon('mic', { size: 18 }) });
       mic.addEventListener('mousedown', (e) => e.preventDefault());
-      mic.onclick = () => { box.focus(); listenOn(box); };
+      const paintMic = () => mic.classList.toggle('on', isListening(box));
+      mic.onclick = () => { if (isListening(box)) { stopListening(box, 'user'); paintMic(); return; } box.focus(); listenOn(box, { keepTyping: true, onStart: paintMic, onEnd: paintMic }); };
       const go = () => {
         const t = box.value.trim();
         if (!t) return toast('Tell us a little about the event first', { icon: 'info' });
@@ -255,7 +248,7 @@ export async function mount(view, params) {
     if (apply.title && r.title) title.value = r.title;
     if (apply.description && r.description) desc.value = r.description;
     if (apply.tags && Array.isArray(r.tags) && r.tags.length) tags.value = r.tags.join(', ');
-    if (apply.category && r.category) { category = r.category; catSel.value = r.category; catTouched = true; }
+    if (apply.category && r.category) { category = r.category; catSel.value = r.category; catTouched = true; syncMeetingAccess(); }
     if (apply.theme && r.theme && r.theme.accent) setTheme(r.theme.accent, r.theme.accent2);
     if (apply.starts && r.start) starts.value = r.start;
     if (apply.ends && r.end) ends.value = r.end;
@@ -367,6 +360,9 @@ export async function mount(view, params) {
     startsAt: starts.value ? new Date(starts.value).toISOString() : null,
     endsAt: ends.value ? new Date(ends.value).toISOString() : null,
     speakers: speakers.map((s) => ({ userId: s.userId || null, name: s.name, headline: s.headline || null, avatarUrl: s.avatarUrl || null, email: s.email || null })),
+    meetingAccessMode: category === 'meeting' ? meetingAccessMode : 'host_funded',
+    meetingDurationMin: category === 'meeting' && meetingAccessMode === 'paid_entry' ? Number(meetingDuration.value) : null,
+    meetingEntryPriceCredits: category === 'meeting' && meetingAccessMode === 'paid_entry' ? Number(entryPrice.value) : null,
   });
 
   async function save(goLive) {
@@ -374,7 +370,7 @@ export async function mount(view, params) {
       const r = editing
         ? await api(`/api/events/${editing.id}`, { method: 'PATCH', body: body() })
         : await api('/api/events', { method: 'POST', body: body() });
-      if (materialIds.length) {
+      if (materialIds.length || editing) {
         await api(`/api/events/${r.id}/materials`, { method: 'PUT', body: { materialIds } }).catch((e) => reportClientError('event-materials', new Error(`Event saved, but its materials could not be attached: ${e.message || 'unknown error'}`), { step: 'attach', pages: materialIds.length }));
       }
       if (speakers.length && !editing) {
@@ -382,7 +378,7 @@ export async function mount(view, params) {
       }
       toast(editing ? 'Saved' : 'Event published', { icon: 'check', group: 'engage' });
       if (goLive) {
-        sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, eventId: r.id, name: r.title, stage: category !== 'meeting', speakerSeats: seats, code: r.code }));
+        sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, eventId: r.id, name: r.title, stage: category !== 'meeting', speakerSeats: seats, code: r.code, meetingAccessMode: r.meetingAccessMode, meetingDurationMin: r.meetingDurationMin, meetingEntryPriceCredits: r.meetingEntryPriceCredits }));
         navigate('/' + String(r.code).toLowerCase());
       } else navigate(`/e/${r.slug}`);
     } catch (e) { toastErr(e); }
@@ -395,6 +391,7 @@ export async function mount(view, params) {
       field('Description', 'notes', desc),
       field('Category', 'tag', catSel),
       field('Tags', 'hash', tags)),
+    meetingAccess,
     h('div', { class: 'card pad layer col has-suggest', style: { gap: '1rem' } },
       h('div', { class: 'grid2' }, field('Starts', 'calendar', starts), field('Ends', 'clock', ends)),
       field('Visibility', 'eye', visSeg),
@@ -408,11 +405,7 @@ export async function mount(view, params) {
       field('Cover', 'image', h('div', { class: 'col cover-step', style: { gap: '.6rem' } },
         h('div', { class: 'row wrap', style: { gap: '.5rem' } }, coverBtn, genBtn, coverIn),
         coverOpts, coverNote)),
-      field('Materials', 'folder', h('div', { class: 'col', style: { gap: '.5rem' } },
-        h('div', { class: 'suggest-box' }, matInput, matSug),
-        matChips,
-        h('a', { class: 'btn sm', href: '/materials', target: '_blank', rel: 'noopener', html: icon('folder', { size: 14 }) + 'Open materials library' }),
-      ))),
+      field('Materials', 'folder', matPicker.el)),
     h('div', { class: 'row wrap', style: { gap: '.6rem' } }, submit, liveNow));
 
   view.append(

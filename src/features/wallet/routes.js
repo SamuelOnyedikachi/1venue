@@ -4,11 +4,20 @@ const { quote, BUNDLES, PRICE_PER_CREDIT_KOBO } = require('./rules');
 module.exports = function routes(route, { requireUser, httpError, rateLimit }) {
   route('GET', '/api/wallet', async (ctx) => {
     const u = await requireUser(ctx.req, ctx.res);
-    return { userId:u.id, ...await require('./billing-data').current(u.id), pricePerCreditKobo: PRICE_PER_CREDIT_KOBO, currency: 'NGN', bundles: BUNDLES, purchasesEnabled: gateway.enabled(), expires: false };
+    return { userId:u.id, ...await require('./billing-data').current(u.id), meetingEarnings: await require('./paid-entry').earnings(u.id), pricePerCreditKobo: PRICE_PER_CREDIT_KOBO, currency: 'NGN', feePercent: require('../../lib/money').feePercent(), bundles: BUNDLES, purchasesEnabled: gateway.enabled(), expires: false };
+  });
+  route('POST', '/api/wallet/meeting-earnings/transfer', async (ctx) => {
+    const u = await requireUser(ctx.req, ctx.res);
+    const body = await ctx.body();
+    return require('./paid-entry').transfer(u.id, body.credits);
+  });
+  route('POST', '/api/wallet/welcome-notice', async (ctx) => {
+    const u = await requireUser(ctx.req, ctx.res);
+    return data.claimWelcomeNotice(u.id);
   });
   route('POST', '/api/wallet/quote', async (ctx) => {
     await requireUser(ctx.req, ctx.res);
-    return { ...quote((await ctx.body()).credits), feeNotice: 'Paystack adds its processing fee at checkout. Fees do not buy additional credits.' };
+    return { ...quote((await ctx.body()).credits), feeNotice: 'The processing fee is shown above and included in the total. Fees do not buy additional credits.' };
   });
   route('POST', '/api/wallet/checkout', async (ctx) => {
     const u = await requireUser(ctx.req, ctx.res);
@@ -26,6 +35,16 @@ module.exports = function routes(route, { requireUser, httpError, rateLimit }) {
     if (!rateLimit('wallet-verify:' + u.id, 40)) throw httpError(429, 'Please wait before checking again');
     return gateway.confirm(payment);
   });
+  // Auto top-up (accounts without a paid plan). The card is added through hosted checkout; only a gateway token is kept.
+  const auto = () => require('./autotopup');
+  route('GET', '/api/wallet/auto-topup', async (ctx) => auto().get((await requireUser(ctx.req, ctx.res)).id));
+  route('PUT', '/api/wallet/auto-topup', async (ctx) => auto().save((await requireUser(ctx.req, ctx.res)).id, await ctx.body()));
+  route('POST', '/api/wallet/auto-topup/card', async (ctx) => {
+    const u = await requireUser(ctx.req, ctx.res);
+    if (!rateLimit('wallet-checkout:' + u.id, 10)) throw httpError(429, 'Please wait before starting another purchase');
+    return { $status: 201, $body: await auto().startCardSetup(u) };
+  });
+  route('DELETE', '/api/wallet/auto-topup/card', async (ctx) => auto().removeCard((await requireUser(ctx.req, ctx.res)).id));
   route('GET', '/api/wallet/transactions', async (ctx) => {
     const u = await requireUser(ctx.req, ctx.res);
     return data.history(u.id, ctx.url.searchParams.get('before'));

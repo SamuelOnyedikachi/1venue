@@ -4,6 +4,8 @@
  *   youtube — a YouTube video id; every viewer streams from YouTube, play/pause/seek follow the remote holder
  *   slides  — page images (a PDF rendered to images in the presenter's browser, uploaded to storage)
  *   image   — a single uploaded image
+ *   doc     — a Word document or spreadsheet, extracted on the server into a paged JSON file in storage
+ *             (see doc.js); page and scroll follow the presenter
  * Generic web pages (most sites refuse to be framed) and self-hosted video (would stream from this server)
  * are intentionally not supported.
  */
@@ -31,6 +33,13 @@ function sanitizeContent(msg) {
     const url = normalizeStoredFileUrl(msg.url);
     if (!url) return null;
     return { type, url, pages: null, title: title || 'Image', fileMeta: sanitizeMeta(msg.fileMeta) };
+  }
+  if (type === 'doc') {
+    const url = normalizeStoredFileUrl(msg.url);
+    if (!url) return null;
+    const docKind = msg.docKind === 'table' ? 'table' : 'text';
+    const pageCount = Math.max(1, Math.min(200, Math.round(Number(msg.pageCount)) || 1));
+    return { type, url, pages: null, docKind, pageCount, title: title || 'Document', fileMeta: sanitizeMeta(msg.fileMeta) };
   }
   return null;
 }
@@ -91,7 +100,7 @@ module.exports = {
       if (!isHolder && !isOwner) return;
       if (msg.scroll) meeting.content.scroll = msg.scroll;
       if (msg.page != null) {
-        const max = meeting.content.pages ? meeting.content.pages.length : 1;
+        const max = meeting.content.pages ? meeting.content.pages.length : meeting.content.pageCount || 1;
         meeting.content.page = Math.max(1, Math.min(max, Math.round(Number(msg.page)) || 1));
       }
       if (msg.slideshow != null && meeting.content.type === 'slides') {

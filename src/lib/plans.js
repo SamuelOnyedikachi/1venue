@@ -14,14 +14,28 @@ const config = require('../config');
 const PLAN_IDS = ['free', 'premium', 'organisation'];
 const PAID = ['premium', 'organisation'];
 const INTERVALS = ['month', 'year'];
-const SLUG_TIERS = ['none', 'slug3', 'slug2'];
+// Short-link add-ons per venue (paid plans): slug4 = 4+ characters (₦10,000), slug3 = 3+ (₦25,000). Links are
+// never shorter than 3. Admin prices saved before this change used the keys { slug3: ₦10k price, slug2: ₦25k price };
+// they map across by price (old slug3 → slug4, old slug2 → slug3), see legacySlugPrices.
+const SLUG_TIERS = ['none', 'slug4', 'slug3'];
+const SLUG_FOR_SALE = ['slug4', 'slug3'];
+const SLUG_RANK = { none: 0, slug4: 1, slug3: 2 };
+const SLUG_PRICES_V = 2;
+/** Old price keys { slug3, slug2 } → { slug4, slug3 } (same money). */
+function legacySlugPrices(old) {
+  const out = {};
+  if (old && old.slug3 != null) out.slug4 = old.slug3;
+  if (old && old.slug2 != null) out.slug3 = old.slug2;
+  return out;
+}
 const LIMIT_KEYS = ['venues', 'audience', 'meeting', 'speakerSeats', 'aiDaily', 'uploadMB'];
 const PRICE_KEYS = ['priceMonthKobo', 'priceYearKobo'];
-const AI_KINDS = ['ask', 'catchup', 'translate', 'title', 'summary', 'finetune', 'scripture'];
+const AI_KINDS = ['ask', 'catchup', 'translate', 'title', 'summary', 'finetune', 'scripture', 'analysis', 'transcribe', 'whiteboard_ai'];
 // Phase 2/3 feature switches per plan (0 = off, 1 = on), editable from /admin like the limits.
-const FEATURE_KEYS = ['branding', 'recurring', 'reminders', 'whatsapp', 'exports', 'analytics', 'badge', 'selfPromo', 'ticketing', 'replays'];
+const FEATURE_KEYS = ['branding', 'recurring', 'reminders', 'whatsapp', 'exports', 'analytics', 'badge', 'selfPromo', 'ticketing', 'replays', 'callVideo'];
 // Numeric Phase 3 limits per plan: organisation members (0 = cannot create an organisation), replay storage.
-const EXTRA_LIMIT_KEYS = ['orgMembers', 'replayMB'];
+// Messages: standing group size, call size (2 = 1:1 only) and message history in days (0 = forever).
+const EXTRA_LIMIT_KEYS = ['orgMembers', 'replayMB', 'groupMembers', 'callParticipants', 'historyDays'];
 // Site-wide money and scheduling settings (not per plan).
 const PLATFORM_KEYS = {
   feeBps: [500, 5000], // platform cut of tickets and donations, basis points (500 = 5%)
@@ -39,22 +53,40 @@ const PLATFORM_KEYS = {
   seriesMax: [52, 200], // occurrences one recurring series may create
 };
 
+// Self-serve promotion pricing: a per-day rate for each placement, times days, less a duration discount.
+// Rates are kobo per day; tiers are "N+ days → P% off" (0 days or 0% turns a tier off). Env: PROMO_RATE_<PLACEMENT>_KOBO,
+// PROMO_TIER<n>_DAYS, PROMO_TIER<n>_PERCENT. The four default rates add up to the old flat promoDayKobo (₦1,000 a day).
+const PROMO_PLACEMENTS = ['discover', 'feed', 'venues', 'books'];
+const PROMO_SHARE = { discover: 35, feed: 30, venues: 20, books: 15 };
+const PROMO_KEYS = {
+  discover: [35000, 1e10], feed: [30000, 1e10], venues: [20000, 1e10], books: [15000, 1e10],
+  tier1Days: [7, 365], tier1Pct: [10, 90], tier2Days: [14, 365], tier2Pct: [15, 90], tier3Days: [30, 365], tier3Pct: [25, 90],
+};
+/** Placement rates that add up to one flat per-day price (used when only promoDayKobo was customised). */
+function scaledRates(dayKobo) {
+  const out = {}; let left = dayKobo;
+  for (const k of PROMO_PLACEMENTS.slice(1)) { out[k] = Math.floor((dayKobo * PROMO_SHARE[k]) / 100); left -= out[k]; }
+  out.discover = left;
+  return out;
+}
+
 const DEFAULTS = Object.freeze({
   plans: {
     free: { venues: 1, audience: 100, meeting: 25, speakerSeats: 2, aiDaily: 20, uploadMB: 250, priceMonthKobo: 0, priceYearKobo: 0 },
     premium: { venues: 3, audience: 300, meeting: 50, speakerSeats: 4, aiDaily: 200, uploadMB: 2048, priceMonthKobo: 500000, priceYearKobo: 5000000 },
     organisation: { venues: 20, audience: 1000, meeting: 50, speakerSeats: 10, aiDaily: 1000, uploadMB: 10240, priceMonthKobo: 2500000, priceYearKobo: 25000000 },
   },
-  aiWeights: { ask: 1, translate: 1, title: 1, scripture: 1, summary: 2, catchup: 2, finetune: 2 },
-  slugAddons: { slug3: 1000000, slug2: 2500000 }, // kobo, one-off, per venue, paid plans only
+  aiWeights: { ask: 1, translate: 1, title: 1, scripture: 1, summary: 2, catchup: 2, finetune: 2, analysis: 2, transcribe: 2, whiteboard_ai: 3 },
+  slugAddons: { slug4: 1000000, slug3: 2500000 }, // kobo, one-off, per venue, paid plans only (4-char ₦10,000, 3-char ₦25,000)
   graceDays: 5,
   aiGuestPerIpDaily: 30, // points one guest IP may spend from a host's pool per day
   features: {
-    free: { branding: 0, recurring: 0, reminders: 0, whatsapp: 0, exports: 0, analytics: 0, badge: 0, selfPromo: 1, ticketing: 0, replays: 0, orgMembers: 0, replayMB: 0 },
-    premium: { branding: 1, recurring: 1, reminders: 1, whatsapp: 1, exports: 1, analytics: 1, badge: 1, selfPromo: 1, ticketing: 0, replays: 0, orgMembers: 0, replayMB: 0 },
-    organisation: { branding: 1, recurring: 1, reminders: 1, whatsapp: 1, exports: 1, analytics: 1, badge: 1, selfPromo: 1, ticketing: 1, replays: 1, orgMembers: 25, replayMB: 51200 },
+    free: { branding: 0, recurring: 0, reminders: 0, whatsapp: 0, exports: 0, analytics: 0, badge: 0, selfPromo: 1, ticketing: 0, replays: 0, orgMembers: 0, replayMB: 0, callVideo: 0, groupMembers: 8, callParticipants: 2, historyDays: 365 },
+    premium: { branding: 1, recurring: 1, reminders: 1, whatsapp: 1, exports: 1, analytics: 1, badge: 1, selfPromo: 1, ticketing: 0, replays: 0, orgMembers: 0, replayMB: 0, callVideo: 1, groupMembers: 32, callParticipants: 8, historyDays: 0 },
+    organisation: { branding: 1, recurring: 1, reminders: 1, whatsapp: 1, exports: 1, analytics: 1, badge: 1, selfPromo: 1, ticketing: 1, replays: 1, orgMembers: 25, replayMB: 51200, callVideo: 1, groupMembers: 64, callParticipants: 16, historyDays: 0 },
   },
   platform: Object.fromEntries(Object.entries(PLATFORM_KEYS).map(([k, [d]]) => [k, d])),
+  promoPricing: Object.fromEntries(Object.entries(PROMO_KEYS).map(([k, [d]]) => [k, d])),
 });
 
 const snake = (k) => k.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase();
@@ -69,7 +101,10 @@ function envDefaults() {
     if (v != null) out.plans[p][k] = v;
   }
   for (const k of AI_KINDS) { const v = envNum(`AI_WEIGHT_${k.toUpperCase()}`); if (v != null) out.aiWeights[k] = v; }
-  for (const k of ['slug3', 'slug2']) { const v = envNum(`${k.toUpperCase()}_PRICE_KOBO`); if (v != null) out.slugAddons[k] = v; }
+  // LINK4_PRICE_KOBO / LINK3_PRICE_KOBO; the old SLUG3_PRICE_KOBO / SLUG2_PRICE_KOBO still work and map across by price.
+  for (const [k, oldName, newName] of [['slug4', 'SLUG3_PRICE_KOBO', 'LINK4_PRICE_KOBO'], ['slug3', 'SLUG2_PRICE_KOBO', 'LINK3_PRICE_KOBO']]) {
+    const v = envNum(newName) ?? envNum(oldName); if (v != null) out.slugAddons[k] = v;
+  }
   if (envNum('PLAN_FREE_UPLOAD_MB') == null && envNum('UPLOAD_USER_QUOTA_MB') != null) out.plans.free.uploadMB = envNum('UPLOAD_USER_QUOTA_MB');
   const g = envNum('BILLING_GRACE_DAYS'); if (g != null) out.graceDays = g;
   const ip = envNum('AI_GUEST_PER_IP_DAILY'); if (ip != null) out.aiGuestPerIpDaily = ip;
@@ -78,6 +113,11 @@ function envDefaults() {
     if (v != null) out.features[p][k] = FEATURE_KEYS.includes(k) ? (v ? 1 : 0) : v;
   }
   for (const [k, [, max]] of Object.entries(PLATFORM_KEYS)) { const v = envNum(`PLATFORM_${snake(k)}`); if (v != null && v <= max) out.platform[k] = v; }
+  if (envNum('PLATFORM_PROMO_DAY_KOBO') != null) Object.assign(out.promoPricing, scaledRates(out.platform.promoDayKobo));
+  for (const k of PROMO_PLACEMENTS) { const v = envNum(`PROMO_RATE_${k.toUpperCase()}_KOBO`); if (v != null && v <= PROMO_KEYS[k][1]) out.promoPricing[k] = v; }
+  for (const n of [1, 2, 3]) for (const [k, env] of [[`tier${n}Days`, `PROMO_TIER${n}_DAYS`], [`tier${n}Pct`, `PROMO_TIER${n}_PERCENT`]]) {
+    const v = envNum(env); if (v != null && v <= PROMO_KEYS[k][1]) out.promoPricing[k] = v;
+  }
   return out;
 }
 
@@ -95,7 +135,11 @@ function mergeSettings(base, patch) {
     }
   }
   if (patch.aiWeights) for (const [k, v] of Object.entries(patch.aiWeights)) { if (!AI_KINDS.includes(k)) bad(`Unknown AI feature ${k}`); out.aiWeights[k] = num(v, `weight ${k}`, 1000); }
-  if (patch.slugAddons) for (const [k, v] of Object.entries(patch.slugAddons)) { if (!['slug3', 'slug2'].includes(k)) bad(`Unknown add-on ${k}`); out.slugAddons[k] = num(v, `${k} price`); }
+  if (patch.slugAddons) {
+    // A patch that still names slug2 uses the old keys (e.g. an admin page loaded before the update): map it across.
+    const addons = patch.slugAddons && Object.prototype.hasOwnProperty.call(patch.slugAddons, 'slug2') ? legacySlugPrices(patch.slugAddons) : patch.slugAddons;
+    for (const [k, v] of Object.entries(addons || {})) { if (!SLUG_FOR_SALE.includes(k)) bad(`Unknown add-on ${k}`); out.slugAddons[k] = num(v, `${k} price`); }
+  }
   if (patch.graceDays != null) out.graceDays = num(patch.graceDays, 'Grace days', 60);
   if (patch.aiGuestPerIpDaily != null) out.aiGuestPerIpDaily = num(patch.aiGuestPerIpDaily, 'Guest AI per IP', 1e6);
   if (patch.features) for (const [p, vals] of Object.entries(patch.features)) {
@@ -110,6 +154,11 @@ function mergeSettings(base, patch) {
     if (!PLATFORM_KEYS[k]) bad(`Unknown platform setting ${k}`);
     out.platform[k] = num(v, k, PLATFORM_KEYS[k][1]);
   }
+  if (patch.promoPricing) for (const [k, v] of Object.entries(patch.promoPricing)) {
+    if (!PROMO_KEYS[k]) bad(`Unknown promotion price ${k}`);
+    out.promoPricing[k] = num(v, k, PROMO_KEYS[k][1]);
+  }
+  if (patch.promoPricing && PROMO_PLACEMENTS.every((k) => out.promoPricing[k] === 0)) bad('At least one placement needs a price');
   for (const p of PAID) for (const k of PRICE_KEYS) if (out.plans[p][k] < 100) bad(`${p} ${k} must be at least 100 kobo`);
   return out;
 }
@@ -128,10 +177,23 @@ function diff(base, next) {
 let cache = null; let cacheAt = 0;
 const TTL = 30000;
 function db() { return require('../core/db'); }
+/** Saved settings written before the 4/3-character change keep their prices under the old names. */
+function upgradeSaved(saved) {
+  if (!saved || typeof saved !== 'object') return saved;
+  const { slugAddonsV, promoPricingV, ...rest } = saved;
+  if (promoPricingV) rest.promoPricingV = promoPricingV;
+  if (slugAddonsV !== SLUG_PRICES_V && rest.slugAddons) rest.slugAddons = legacySlugPrices(rest.slugAddons);
+  // A flat promotion day price saved before per-placement pricing keeps the same all-placement total.
+  if (rest.platform && rest.platform.promoDayKobo != null && !rest.promoPricing && !rest.promoPricingV) {
+    const n = nonNegInt(rest.platform.promoDayKobo); if (n) rest.promoPricing = scaledRates(n);
+  }
+  return rest;
+}
 async function getSettings({ fresh = false } = {}) {
   if (!fresh && cache && Date.now() - cacheAt < TTL) return cache;
   let saved = null;
   try { const r = await db().one("SELECT value FROM app_settings WHERE key='plans'"); saved = r ? JSON.parse(r.value) : null; } catch (_) { saved = null; }
+  saved = upgradeSaved(saved);
   let merged;
   try { merged = mergeSettings(envDefaults(), saved); } catch (_) { merged = envDefaults(); }
   cache = merged; cacheAt = Date.now();
@@ -142,7 +204,7 @@ async function saveSettings(patch, actorId) {
   const next = mergeSettings(current, patch);
   // Store only what differs from env defaults, so env changes still flow through for untouched values.
   await db().q(`INSERT INTO app_settings (key, value, updated_by, updated_at) VALUES ('plans', $1, $2, NOW())
-    ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_by=EXCLUDED.updated_by, updated_at=NOW()`, [JSON.stringify(diff(envDefaults(), next)), actorId || null]);
+    ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_by=EXCLUDED.updated_by, updated_at=NOW()`, [JSON.stringify({ ...diff(envDefaults(), next), slugAddonsV: SLUG_PRICES_V, promoPricingV: 1 }), actorId || null]);
   cache = next; cacheAt = Date.now();
   return next;
 }
@@ -200,6 +262,37 @@ function featuresFor(settings, plan) {
   return out;
 }
 const platform = (settings) => ({ ...DEFAULTS.platform, ...(settings.platform || {}) });
+const promoPricing = (settings) => ({ ...DEFAULTS.promoPricing, ...(settings.promoPricing || {}) });
+/** Discount tiers sorted by days, only the switched-on ones. */
+function promoTiers(pp) {
+  return [1, 2, 3].map((n) => ({ minDays: pp[`tier${n}Days`], percent: pp[`tier${n}Pct`] })).filter((t) => t.minDays > 0 && t.percent > 0).sort((a, b) => a.minDays - b.minDays);
+}
+/**
+ * Pure: the server-side promotion price. sum(rate of each chosen placement) x days, less the best tier the
+ * days reach. No placements = all priced placements. Throws 400 on bad days or unknown/unpriced placements.
+ */
+function promoQuote(settings, { days, placements } = {}) {
+  const bad = (m) => { const e = new Error(m); e.status = 400; e.expose = true; throw e; };
+  const pf = platform(settings); const pp = promoPricing(settings);
+  const d = Number(days);
+  if (!Number.isInteger(d) || d < 1 || d > pf.promoMaxDays) bad(`Choose 1 to ${pf.promoMaxDays} days`);
+  let list = Array.isArray(placements) ? placements : typeof placements === 'string' && placements ? placements.split(',') : [];
+  list = [...new Set(list.map((x) => String(x).trim()).filter(Boolean))];
+  for (const x of list) if (!PROMO_PLACEMENTS.includes(x)) bad(`Unknown placement ${x}`);
+  if (!list.length) list = PROMO_PLACEMENTS.filter((k) => pp[k] > 0);
+  for (const x of list) if (!(pp[x] > 0)) bad(`${x} is not available right now`);
+  list = PROMO_PLACEMENTS.filter((k) => list.includes(k));
+  const lines = list.map((k) => ({ id: k, dayKobo: pp[k], kobo: pp[k] * d }));
+  const perDayKobo = lines.reduce((a, l) => a + l.dayKobo, 0);
+  const grossKobo = perDayKobo * d;
+  const tiers = promoTiers(pp);
+  const tier = tiers.filter((t) => d >= t.minDays).pop() || null;
+  const discountPercent = tier ? tier.percent : 0;
+  const discountKobo = Math.round((grossKobo * discountPercent) / 100);
+  const next = tiers.find((t) => d < t.minDays) || null;
+  return { days: d, placements: lines, perDayKobo, grossKobo, discountPercent, discountKobo, subtotalKobo: grossKobo - discountKobo, priceKobo: grossKobo - discountKobo,
+    dayKobo: perDayKobo, tiers, nextTier: next, maxDays: pf.promoMaxDays, approval: !!pf.promoApproval };
+}
 /** Platform fee on a gross amount in kobo: rounded half up to whole kobo; net = gross - fee. */
 function feeSplit(grossKobo, feeBps) {
   const g = Number(grossKobo); const b = Number(feeBps);
@@ -294,7 +387,8 @@ async function takeAi({ kind, ownerId, guestIp }) {
 async function aiUsed(userId) { return require('./usage').used(`u:${userId}`, 'ai'); }
 
 module.exports = {
-  PLAN_IDS, PAID, INTERVALS, SLUG_TIERS, LIMIT_KEYS, PRICE_KEYS, AI_KINDS, DEFAULTS, FEATURE_KEYS, EXTRA_LIMIT_KEYS, PLATFORM_KEYS,
+  PLAN_IDS, PAID, INTERVALS, SLUG_TIERS, SLUG_FOR_SALE, SLUG_RANK, legacySlugPrices, LIMIT_KEYS, PRICE_KEYS, AI_KINDS, DEFAULTS, FEATURE_KEYS, EXTRA_LIMIT_KEYS, PLATFORM_KEYS,
+  PROMO_PLACEMENTS, PROMO_KEYS, promoPricing, promoTiers, promoQuote, scaledRates,
   featuresFor, platform, feeSplit, requireFeature, orgPlanFor,
   envDefaults, mergeSettings, diff, getSettings, saveSettings, resetSettings, clearCache,
   effectivePlan, parseOverrides, limitsFor, slugRights, aiWeight, priceFor, planRank, addInterval,

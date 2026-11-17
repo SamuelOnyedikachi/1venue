@@ -52,42 +52,11 @@ module.exports = {
       }
       broadcast(meetingCode, chatMsg);
 
-      // Persist full attachment so files survive refresh/rejoin
-      const attachForDb = attachment
-        ? {
-            kind: attachment.kind,
-            name: attachment.name,
-            mime: attachment.mime,
-            size: attachment.size,
-            dataUrl: attachment.dataUrl || null,
-            url: attachment.url || null,
-          }
-        : null;
-
+      // One persist path for room and inbox sends; the inbox entry is refreshed and fanned out.
+      const messages = require('../messages/service');
       Promise.resolve()
-        .then(async () => {
-          let artifactId = meeting.artifactId || null;
-          if (!artifactId && meeting.historyId) {
-            try {
-              const art = await db.ensureArtifactForHistory(meeting.historyId, meetingCode);
-              if (art) {
-                meeting.artifactId = art.id;
-                artifactId = art.id;
-              }
-            } catch (_) {}
-          }
-          await db.saveChatMessage({
-            meetingHistoryId: meeting.historyId || null,
-            artifactId,
-            sessionId: meetingCode,
-            senderId: participantId,
-            senderName: p.name,
-            senderUserId: p.userId || null,
-            body: text || null,
-            attachments: attachForDb,
-            groupId: null,
-          });
-        })
+        .then(() => messages.persistRoomChat(meeting, meetingCode, { senderId: participantId, senderName: p.name, senderUserId: p.userId || null, text, attachment }))
+        .then((row) => messages.onRoomChat(row))
         .catch((e) => console.warn('[chat] persist', e.message));
     });
 

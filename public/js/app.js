@@ -5,6 +5,7 @@ import { h, $, api, toast, sheet, menu, avatar, initTooltips, debounce, closeTop
 import { mountCommandBar, registerCommands, setBarContext, barVisible, focusBar, refreshBar } from './commands.js';
 import { surahCommands, loadSurahs, looksLikeQuran } from './quran-cmd.js';
 import { initPwa, promptInstall } from './pwa.js';
+import './messages/tones.js'; // install audio-unlock handlers before any incoming call or message arrives
 
 export const state = { config: null, user: null, session: null, prefs: null, route: null, inRoom: false };
 const LS_PREFS = 'venue.prefs';
@@ -47,6 +48,10 @@ export async function refreshSession() {
   } catch { state.session = { authenticated: false }; state.user = null; }
   if (state.user) {
     try { const p = await api('/api/prefs'); const local = loadLocalPrefs(); state.prefs = { ...DEFAULT_PREFS, ...p }; if (p.anonymous) state.prefs = local; applyPrefs(); localStorage.setItem(LS_PREFS, JSON.stringify(state.prefs)); } catch { /* keep local */ }
+    try {
+      const welcome = await api('/api/wallet/welcome-notice', { method: 'POST' });
+      if (welcome.show) await (await import('./pages/login.js')).showWelcomeCredits(welcome.credits);
+    } catch { /* the credit award remains available in the wallet if the welcome notice cannot load */ }
   }
   renderUserSlot();
   renderVerifyBanner();
@@ -110,9 +115,12 @@ const ROUTES = [
   [/^\/e\/([\w-]+)\/?$/, () => import('./pages/event.js'), 'slug'],
   [/^\/create\/?$/, () => import('./pages/create.js')],
   [/^\/materials\/?$/, () => import('./pages/materials.js')],
+  [/^\/materials\/(\d+)\/?$/, () => import('./pages/material.js'), 'id'],
   [/^\/dashboard\/?$/, () => import('./pages/dashboard.js')],
   [/^\/a\/([a-f0-9]{32,})\/?$/, () => import('./pages/attendance.js'), 'token'],
   [/^\/feed\/?$/, () => import('./pages/feed.js')],
+  [/^\/messages\/?$/, () => import('./pages/messages.js')],
+  [/^\/messages\/(\w+)\/?$/, () => import('./pages/messages.js'), 'id'],
   [/^\/u\/([\w.-]+)\/?$/, () => import('./pages/profile.js'), 'id'],
   [/^\/me\/?$/, () => import('./pages/profile.js'), { me: true }],
   [/^\/wallet\/?$/, () => import('./pages/wallet.js')],
@@ -134,7 +142,7 @@ const ROUTES = [
   [/^\/reset-password\/?$/, () => import('./pages/reset.js')],
   [/^\/verify-email\/?$/, () => import('./pages/verify.js')],
   [/^\/venues\/?$/, () => import('./pages/venue.js'), { list: true }],
-  [/^\/v\/([A-Za-z0-9]{2,16}(?:-venue)?)\/?$/, () => import('./pages/venue.js'), 'slug'],
+  [/^\/v\/([A-Za-z0-9]{3,16}(?:-venue)?)\/?$/, () => import('./pages/venue.js'), 'slug'],
   [/^\/(?=[A-Za-z]*\d)(?=\d*[A-Za-z])([A-Za-z0-9]{7})\/?$/, () => import('./pages/venue.js'), 'slug'],
   [/^\/([A-Za-z0-9]{5,16}-venue)\/?$/, () => import('./pages/venue.js'), 'slug'],
   [/^\/new\/?$/, () => import('./room/room.js'), { code: null, instant: true }],
@@ -205,7 +213,7 @@ export function setRoomMode(on) {
 
 /* ---------- shell ---------- */
 const NAV = [
-  ['/', 'home', 'Home'], ['/discover', 'compass', 'Discover'], ['/feed', 'feed', 'Feed'], ['/dashboard', 'dashboard', 'Dashboard'],
+  ['/', 'home', 'Home'], ['/discover', 'compass', 'Discover'], ['/feed', 'feed', 'Feed'], ['/messages', 'messages', 'Messages'], ['/dashboard', 'dashboard', 'Dashboard'],
 ];
 function highlightNav(path) {
   document.querySelectorAll('[data-nav]').forEach((a) => {
@@ -270,6 +278,8 @@ function renderUserSlot() {
   creditControl?.unsubscribe(); creditControl=null;
   slot.innerHTML = '';
   setCreditUser(state.user?.id || null);
+  import('./messages/live.js').then((m) => m.startLive(state.user?.id || null)).catch(() => {});
+  if (state.user) import('./messages/notify.js').then((m) => m.initNotifyPrompt()).catch(() => {});
   if (state.user) {
     const b = h('button', { class: 'icon-btn', 'data-tip': state.user.displayName, 'aria-label': 'Account menu', style: { width: 'auto', padding: '0 2px' } }, avatar(state.user.displayName, state.user.avatarUrl, 'sm ring'));
     b.onclick = () => menu(b, [
@@ -277,6 +287,7 @@ function renderUserSlot() {
       { label: 'Dashboard', icon: 'dashboard', run: () => navigate('/dashboard') },
       { label: 'Plan & billing', icon: 'crown', run: () => navigate('/billing') },
       { label: 'Host tools', icon: 'chart', run: () => navigate('/host') },
+      { label: 'Messages', icon: 'messages', group: 'social', run: () => navigate('/messages') },
       { label: 'Credit wallet', icon: 'creditCard', run: () => navigate('/wallet') },
       { label: 'My sessions', icon: 'history', run: () => navigate('/sessions') },
       { label: 'My whiteboard', icon: 'board', group: 'content', run: () => navigate('/whiteboard') },
@@ -313,14 +324,14 @@ function buildShell() {
     h('div', { class: 'grow' }),
     h('a', { class: 'btn sm primary top-desktop', href: '/create', 'data-link': '', html: icon('plus', { size: 16 }) + 'Create' }),
     h('div', { class: 'row', 'data-group': 'nav', style: { gap: '2px' } },
-      h('a', { class: 'icon-btn', href: '/settings', 'data-link': '', 'data-group': 'settings', 'data-tip': 'Settings', 'aria-label': 'Settings', html: icon('settings') }),
       themeBtn, h('div', { id: 'userslot', class: 'row' })),
   );
   const bottom = h('nav', { class: 'bottomnav', 'aria-label': 'Primary' },
     h('a', { href: '/', 'data-link': '', 'data-nav': '/', html: icon('home', { size: 22 }) + '<span>Home</span>' }),
     h('a', { href: '/discover', 'data-link': '', 'data-nav': '/discover', html: icon('compass', { size: 22 }) + '<span>Discover</span>' }),
     h('a', { href: '/create', 'data-link': '', class: 'fab', 'aria-label': 'Create', html: `<span class="fabc">${icon('plus', { size: 26 })}</span>` }),
-    h('a', { href: '/feed', 'data-link': '', 'data-nav': '/feed', html: icon('feed', { size: 22 }) + '<span>Feed</span>' }),
+    // Messages replaces Feed on phones; Feed lives in Discover.
+    h('a', { href: '/messages', 'data-link': '', 'data-nav': '/messages', html: icon('messages', { size: 22 }) + '<span>Messages</span>' }),
     h('a', { href: '/me', 'data-link': '', 'data-nav': '/me', html: icon('user', { size: 22 }) + '<span>Me</span>' }),
   );
   const main = h('main', { id: 'view', class: 'main' });
@@ -381,6 +392,7 @@ function registerGlobal() {
     ...CATS.map(([k, l, ic]) => ({ id: 'cat-' + k, label: l, icon: ic, group: k === 'sermon' ? 'faith' : 'content', keywords: ['category', k.replace('_', ' ')], run: go('/discover?category=' + k) })),
     { id: 'home', label: 'Home', icon: 'home', group: 'nav', run: go('/') },
     { id: 'feed', label: 'Social feed', short: 'Feed', icon: 'feed', group: 'social', keywords: ['timeline', 'posts'], run: go('/feed') },
+    { id: 'messages', label: 'Messages', icon: 'messages', group: 'social', keywords: ['dm', 'inbox', 'chat', 'call'], when: () => !!state.user, run: go('/messages') },
     { id: 'post', label: 'New post', icon: 'pen', group: 'social', keywords: ['write', 'share update', 'status'], run: go('/feed?compose=1') },
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', group: 'nav', keywords: ['stats', 'analytics'], run: go('/dashboard') },
     { id: 'host', label: 'Host tools', short: 'Host', icon: 'chart', group: 'settings', keywords: ['analytics', 'branding', 'recurring', 'tickets', 'earnings', 'payout', 'promote', 'organisation', 'replays', 'export'], when: () => !!state.user, run: go('/host') },
@@ -455,6 +467,7 @@ async function boot() {
   await route();
   initPwa();
   import('./voice.js').then((m) => m.initVoice()).catch(() => {}); // voice typing in every eligible text box
+  import('./lightbox.js').then((m) => m.initLightbox()).catch(() => {}); // full-screen viewer for content images
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 if (!window.__1venueBooted) { window.__1venueBooted = true; boot(); }

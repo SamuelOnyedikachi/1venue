@@ -1,22 +1,21 @@
 import { refreshCredits } from "../credits.js";
 import { h, api, timeAgo } from "../ui.js";
 import { icon } from "../icons.js";
+import { loadMoney, fmtMoney, fmtCredits, creditsEl, breakdownEl, moneyConfig } from "../money.js";
 
-const credits = (n) =>
-  new Intl.NumberFormat("en-NG", { maximumFractionDigits: 4 }).format(n);
-const money = (kobo) =>
-  new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency: "NGN",
-    maximumFractionDigits: 2,
-  }).format(kobo / 100);
-const statusLabel = (s) =>
-  ({
-    paid: "Credits added",
-    pending: "Awaiting confirmation",
-    failed: "Not completed",
-    review: "Needs review",
-  })[s] || s;
+const credits = fmtCredits;
+// Purchase status → icon (each with a title and an aria-label).
+const STATUS = {
+  paid: ["checkCircle", "ok", "Completed"],
+  pending: ["hourglass", "wait", "Pending"],
+  review: ["hourglass", "wait", "Being reviewed"],
+  failed: ["xCircle", "bad", "Declined"],
+  refunded: ["returnArrow", "ref", "Refunded"],
+};
+const statusIcon = (p) => {
+  const [ic, cls, label] = STATUS[p.refunded ? "refunded" : p.status] || ["clock", "wait", p.status];
+  return h("span", { class: `pay-st ${cls}`, title: label, html: icon(ic, { size: 20, label }) });
+};
 
 export async function mount(view) {
   let alive = true;
@@ -24,6 +23,7 @@ export async function mount(view) {
   let quoteVersion = 0;
   let buying = false;
   let wallet = await api("/api/wallet");
+  await loadMoney();
   const page = h("div", { class: "wallet-page" });
   const message = h("p", {
     class: "small",
@@ -31,6 +31,10 @@ export async function mount(view) {
     "aria-live": "polite",
   });
   const balance = h("strong", { class: "wallet-balance" });
+  const meetingPending = h("strong");
+  const meetingAvailable = h("strong");
+  const transferAmount = h("input", { class: "input", type: "number", min: "0.1", step: "0.1", value: "0.8", inputmode: "decimal" });
+  const transferButton = h("button", { class: "btn primary", type: "button" }, icon("arrowRight", { size: 16 }), "Move to spending wallet");
   const amount = h("input", {
     class: "input",
     id: "wallet-credits",
@@ -42,7 +46,7 @@ export async function mount(view) {
     required: true,
     autocomplete: "off",
   });
-  const price = h("p", { class: "wallet-price", "aria-live": "polite" });
+  const price = h("div", { class: "wallet-price", "aria-live": "polite" });
   const checkout = h(
     "button",
     { class: "btn primary", type: "submit" },
@@ -74,8 +78,15 @@ export async function mount(view) {
     message.classList.toggle("wallet-error", error);
   };
   function renderBalance() {
-    balance.textContent = credits(wallet.balanceCredits) + " credits";
+    balance.replaceChildren(creditsEl(wallet.balanceCredits, { size: 26 }));
     checkout.disabled = !wallet.purchasesEnabled || buying;
+  }
+  function renderEarnings() {
+    const e = wallet.meetingEarnings || {};
+    meetingPending.replaceChildren(creditsEl(e.pendingCredits || 0));
+    meetingAvailable.replaceChildren(creditsEl(e.availableCredits || 0));
+    transferAmount.max = String(e.availableCredits || 0);
+    transferButton.disabled = !(Number(e.availableCredits) >= Number(transferAmount.value) && Number(transferAmount.value) > 0);
   }
   function renderEntries(list, append = false) {
     if (!append) entries.replaceChildren();
@@ -84,10 +95,26 @@ export async function mount(view) {
         h(
           "p",
           { class: "small muted" },
-          "No credit transactions yet. Completed purchases will appear here.",
+          "Credit additions and meeting usage will appear here.",
         ),
       );
-    for (const entry of list)
+    for (const entry of list) {
+      const title =
+        entry.type === "usage"
+          ? entry.meetingName || entry.meetingCode || "Meeting usage"
+          : entry.type === "welcome" ? "Welcome credits"
+            : entry.type === "entry" ? (entry.meetingName || "Paid meeting entry")
+              : entry.type === "entry_refund" ? (entry.meetingName || "Paid meeting refund")
+                : entry.type === "extension" ? (entry.meetingName || "Meeting extension")
+                : entry.type === "earning_transfer" ? "Meeting earnings transfer" : "Credit purchase";
+      const detail =
+        entry.type === "usage"
+          ? `Meeting usage · ${timeAgo(entry.createdAt)}`
+          : entry.type === "welcome" ? `New account bonus · ${timeAgo(entry.createdAt)}`
+            : entry.type === "entry" ? `Paid meeting entry · ${timeAgo(entry.createdAt)}`
+              : entry.type === "entry_refund" ? `Meeting refund · ${timeAgo(entry.createdAt)}`
+                : entry.type === "extension" ? `Added meeting time · ${timeAgo(entry.createdAt)}`
+                : entry.type === "earning_transfer" ? `Host earnings moved to spending wallet · ${timeAgo(entry.createdAt)}` : timeAgo(entry.createdAt);
       entries.append(
         h(
           "div",
@@ -95,12 +122,8 @@ export async function mount(view) {
           h(
             "div",
             null,
-            h(
-              "strong",
-              null,
-              entry.type === "usage" ? "Meeting usage" : "Credit purchase",
-            ),
-            h("div", { class: "tiny muted" }, timeAgo(entry.createdAt)),
+            h("strong", null, title),
+            h("div", { class: "tiny muted" }, detail),
           ),
           h(
             "div",
@@ -108,16 +131,17 @@ export async function mount(view) {
             h(
               "strong",
               null,
-              (entry.credits > 0 ? "+" : "") + credits(entry.credits),
+              h("span", { class: "credits" }, (entry.credits > 0 ? "+" : "") + credits(entry.credits), h("span", { class: "credits-coin", html: icon("coin", { size: 14, label: "credits" }) })),
             ),
             h(
               "div",
               { class: "tiny muted" },
-              credits(entry.balanceAfter) + " balance",
+              credits(entry.balanceAfter) + " left",
             ),
           ),
         ),
       );
+    }
   }
   async function refresh() {
     const [summary, purchases, ledger] = await Promise.all([
@@ -128,6 +152,7 @@ export async function mount(view) {
     if (!alive) return;
     wallet = summary;
     renderBalance();
+    renderEarnings();
     refreshCredits();
     renderEntries(ledger.entries);
     cursor = ledger.nextBefore;
@@ -168,15 +193,16 @@ export async function mount(view) {
           h(
             "div",
             { class: "grow" },
-            h("strong", null, credits(payment.credits) + " credits"),
+            h("strong", null, creditsEl(payment.credits)),
             h(
               "div",
               { class: "tiny muted" },
-              money(payment.priceKobo) +
-                " + processing fee · " +
+              fmtMoney(payment.priceKobo) +
+                (payment.feeKobo ? ` (incl. ${fmtMoney(payment.feeKobo)} fee)` : "") +
+                (payment.source === "auto_topup" ? " · auto top-up" : "") +
+                " · " +
                 timeAgo(payment.createdAt),
             ),
-            h("div", { class: "tiny" }, statusLabel(payment.status)),
           ),
           payment.status !== "paid"
             ? h(
@@ -191,7 +217,8 @@ export async function mount(view) {
                   : null,
                 check,
               )
-            : h("span", { class: "chip" }, "Complete"),
+            : null,
+          statusIcon(payment),
         ),
       );
     }
@@ -231,8 +258,7 @@ export async function mount(view) {
         body: { credits: count },
       });
       if (!alive || version !== quoteVersion) return;
-      price.textContent =
-        money(result.priceKobo) + " + Paystack processing fee";
+      price.replaceChildren(breakdownEl(result.subtotalKobo ?? result.priceKobo, { label: `${credits(count)} credits` }));
       checkout.disabled = !wallet.purchasesEnabled || buying;
     } catch (e) {
       if (alive && version === quoteVersion) price.textContent = e.message;
@@ -253,8 +279,8 @@ export async function mount(view) {
             updateQuote();
           },
         },
-        h("strong", null, credits(bundle.credits) + " credits"),
-        h("span", { class: "small muted" }, money(bundle.priceKobo)),
+        h("strong", null, creditsEl(bundle.credits, { size: 18 })),
+        h("span", { class: "small muted" }, fmtMoney(bundle.priceKobo)),
       ),
     );
   amount.oninput = () => {
@@ -262,6 +288,16 @@ export async function mount(view) {
     quoteVersion++;
     clearTimeout(quoteTimer);
     quoteTimer = setTimeout(updateQuote, 250);
+  };
+  transferAmount.oninput = renderEarnings;
+  transferButton.onclick = async () => {
+    transferButton.disabled = true;
+    try {
+      const moved = await api("/api/wallet/meeting-earnings/transfer", { method: "POST", body: { credits: Number(transferAmount.value) } });
+      notify(`${credits(moved.credits)} credits moved to your spending wallet.`);
+      await refresh();
+    } catch (e) { notify(e.message, true); }
+    finally { renderEarnings(); }
   };
   const form = h(
     "form",
@@ -307,11 +343,6 @@ export async function mount(view) {
       amount,
     ),
     price,
-    // h(
-    //   "p",
-    //   { class: "tiny muted" },
-    //   "Paystack shows the final processing fee before you pay. Fees do not buy extra credits.",
-    // ),
     checkout,
   );
   olderPurchases.onclick = async () => {
@@ -352,7 +383,7 @@ export async function mount(view) {
       h(
         "p",
         { class: "muted" },
-        "₦500 per credit. Purchased credits never expire.",
+        `${fmtMoney(wallet.pricePerCreditKobo)} per credit. Purchased credits never expire.`,
       ),
     ),
     h(
@@ -361,8 +392,18 @@ export async function mount(view) {
       h("span", { class: "small muted" }, "Available balance"),
       balance,
     ),
+    h("section", { class: "card pad" },
+      h("h2", null, "Meeting earnings"),
+      h("p", { class: "small muted" }, "Paid-entry meeting earnings become available after the meeting ends and refunds are settled. Your share is 80% of retained entry credits."),
+      h("div", { class: "row between wrap", style: { gap: ".8rem", margin: ".8rem 0" } },
+        h("div", null, h("span", { class: "tiny muted" }, "Pending"), h("br"), meetingPending),
+        h("div", null, h("span", { class: "tiny muted" }, "Available to transfer"), h("br"), meetingAvailable)),
+      h("div", { class: "row wrap", style: { gap: ".6rem", alignItems: "end" } },
+        h("label", { class: "field", style: { maxWidth: "12rem" } }, h("span", { class: "lbl" }, "Credits to move"), transferAmount),
+        transferButton)),
     message,
-    h("section", { class: "card pad" }, h("h2", null, "Buy credits"), form),
+    h("section", { class: "card pad" }, h("h2", null, "Buy credits"), form,
+      h("a", { class: "tiny wallet-auto", href: "/settings#auto-topup", "data-link": "", html: icon("zap", { size: 14 }) + "Auto top-up when my balance runs low" })),
     h(
       "section",
       { class: "card pad" },

@@ -10,13 +10,12 @@ import { field } from './pages/login.js';
 let open = null;
 
 export function openInstant({ onClose } = {}) {
-  if (!state.user) { requireLogin(); return; }
   if (open) { open.focus(); return open; }
   const prevFocus = document.activeElement;
   const defName = state.user ? `${(state.user.displayName || state.user.username || 'My').split(' ')[0]}’s meeting` : 'Quick meeting';
   const nameIn = h('input', { type: 'text', maxlength: 120, autocomplete: 'off', value: defName, enterkeyhint: 'go', 'data-voice': 'off' });
   const name = field(nameIn, 'Meeting name');
-  const opts = { stage: false, waitingRoom: false };
+  const opts = { stage: false, waitingRoom: false, accessMode: 'host_funded' };
   const opt = (key, ic, label, hint) => {
     const cb = h('input', { type: 'checkbox', role: 'switch', 'aria-describedby': `im-h-${key}` });
     cb.onchange = () => { opts[key] = cb.checked; row.classList.toggle('on', cb.checked); };
@@ -27,9 +26,27 @@ export function openInstant({ onClose } = {}) {
     return row;
   };
   const start = h('button', { class: 'au-btn au-primary', type: 'submit', html: icon('zap', { size: 18 }) + '<span>Start now</span>' });
+  const accessMode = h('select', { class: 'input' },
+    h('option', { value: 'host_funded' }, 'Host-funded'),
+    h('option', { value: 'paid_entry' }, 'Paid entry'));
+  const billingNote = h('p', { class: 'small muted' }, 'The first 15 minutes are free. Sign in and use credits to keep the meeting going after that. ', h('a', { href: '/wallet', 'data-link': '' }, 'View wallet'));
+  const duration = h('input', { class: 'input', type: 'number', min: 1, max: 720, step: 1, value: '60', inputmode: 'numeric' });
+  const entryPrice = h('input', { class: 'input', type: 'number', min: 1, step: 1, value: '30', inputmode: 'numeric' });
+  const paidEntry = h('div', { class: 'col', hidden: true },
+    h('div', { class: 'grid2' },
+      h('label', { class: 'field' }, h('span', { class: 'field-lab' }, 'Advertised duration (minutes)'), duration),
+      h('label', { class: 'field' }, h('span', { class: 'field-lab' }, 'Entry price (credits)'), entryPrice)),
+    h('p', { class: 'tiny muted' }, 'Attendees sign in and pay when you accept them. You receive 80% of entry credits after refunds are settled.'));
+  accessMode.onchange = () => {
+    opts.accessMode = accessMode.value;
+    paidEntry.hidden = opts.accessMode !== 'paid_entry';
+    billingNote.hidden = opts.accessMode === 'paid_entry';
+  };
   const form = h('form', { class: 'au-form', novalidate: true },
     name.el,
-    h('p', {class:'small muted'}, '1 credit per minute while the room is open. At least 30 credits are required to start. ', h('a',{href:'/wallet','data-link':''},'View wallet')),
+    billingNote,
+    h('label', { class: 'field' }, h('span', { class: 'field-lab' }, 'Who pays for this meeting?'), accessMode),
+    paidEntry,
     h('div', { class: 'im-opts' },
       opt('stage', 'stage', 'Stage mode', 'Audience watches; limited speaker seats'),
       opt('waitingRoom', 'door', 'Waiting room', 'Admit people one by one')),
@@ -38,7 +55,9 @@ export function openInstant({ onClose } = {}) {
     e.preventDefault();
     const n = nameIn.value.trim();
     if (!n) { name.setError('Give your meeting a name.'); nameIn.focus(); return; }
-    sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, name: n, stage: opts.stage, waitingRoom: opts.waitingRoom }));
+    if (opts.accessMode === 'paid_entry' && !requireLogin('Sign in to host a paid-entry meeting')) return;
+    if (opts.accessMode === 'paid_entry' && (!Number.isInteger(Number(duration.value)) || Number(duration.value) < 1 || Number(duration.value) > 720 || !Number.isSafeInteger(Number(entryPrice.value)) || Number(entryPrice.value) < 1)) return toast('Enter a duration from 1 to 720 minutes and a positive whole-credit entry price.', { icon: 'alert' });
+    sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, name: n, stage: opts.stage, waitingRoom: opts.waitingRoom, meetingAccessMode: opts.accessMode, meetingDurationMin: Number(duration.value), meetingEntryPriceCredits: Number(entryPrice.value) }));
     close({ starting: true });
     navigate('/new');
   };
