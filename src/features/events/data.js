@@ -6,6 +6,7 @@ const { USE_PG } = require('../../../db');
 const crypto = require('crypto');
 const { q, tx, one, many } = require('../../core/db');
 const { createPost } = require('../social/data');
+const { UNITS_PER_CREDIT } = require('../wallet/rules');
 
 // ---------------------------------------------------------------- events
 const CATEGORIES = ['talk_show', 'presentation', 'seminar', 'sermon', 'webinar', 'workshop', 'meeting', 'concert', 'class', 'other'];
@@ -20,6 +21,8 @@ function eventOut(r) {
     tags: r.tags || [], language: r.language, visibility: r.visibility, status: r.status,
     startsAt: r.starts_at, endsAt: r.ends_at, startedAt: r.started_at, endedAt: r.ended_at,
     coverUrl: r.cover_url, theme: r.theme || {}, speakerSeats: r.speaker_seats, settings: r.settings || {},
+    meetingAccessMode: r.meeting_access_mode || 'host_funded', meetingDurationMin: r.meeting_duration_min == null ? null : Number(r.meeting_duration_min),
+    meetingEntryPriceCredits: r.meeting_entry_units == null ? null : Number(r.meeting_entry_units) / UNITS_PER_CREDIT,
     templateSlug: r.template_slug, liveViewers: r.live_viewers, peakViewers: r.peak_viewers, totalJoins: r.total_joins,
     host: { id: r.host_user_id, username: r.host_username || null, name: r.host_name, avatarUrl: r.host_avatar || null, verified: !!r.host_verified },
     seriesId: r.series_id ? Number(r.series_id) : null,
@@ -67,6 +70,22 @@ function validateEventInput(b, partial = false) {
   if (b.speakerSeats != null) out.speaker_seats = Math.min(50, Math.max(1, parseInt(b.speakerSeats, 10) || 4));
   if (b.settings != null && typeof b.settings === 'object') out.settings = JSON.stringify(b.settings);
   if (b.templateSlug != null) out.template_slug = String(b.templateSlug).slice(0, 40);
+  if (b.meetingAccessMode != null) {
+    if (!['host_funded', 'paid_entry'].includes(b.meetingAccessMode)) { const e = new Error('Choose host-funded or paid entry'); e.status = 400; throw e; }
+    out.meeting_access_mode = b.meetingAccessMode;
+  }
+  if (b.meetingDurationMin != null) {
+    const duration = Number(b.meetingDurationMin);
+    if (!Number.isInteger(duration) || duration < 1 || duration > 720) { const e = new Error('Advertised duration must be 1 to 720 minutes'); e.status = 400; throw e; }
+    out.meeting_duration_min = duration;
+  }
+  if (b.meetingEntryPriceCredits != null) {
+    const credits = Number(b.meetingEntryPriceCredits);
+    if (!Number.isSafeInteger(credits) || credits < 1 || credits > Math.floor(Number.MAX_SAFE_INTEGER / UNITS_PER_CREDIT)) { const e = new Error('Entry price must be a positive whole number of credits'); e.status = 400; throw e; }
+    out.meeting_entry_units = credits * UNITS_PER_CREDIT;
+  }
+  if ((out.meeting_access_mode === 'paid_entry' || b.meetingAccessMode === 'paid_entry') && (out.category || b.category || 'meeting') !== 'meeting') { const e = new Error('Paid entry is available for meetings'); e.status = 400; throw e; }
+  if (b.meetingAccessMode === 'paid_entry' && (out.meeting_duration_min == null || out.meeting_entry_units == null)) { const e = new Error('Paid entry requires an advertised duration and entry price'); e.status = 400; throw e; }
   return out;
 }
 /** Clamp requested speaker seats to the host's plan (the browser picker is capped too). */
@@ -80,11 +99,12 @@ async function createEvent(user, b, opts = {}) {
   await clampSeats(user.id, v);
   const code = await uniqueEventCode();
   const r = await one(`INSERT INTO events (slug, code, host_user_id, host_name, title, description, category, tags, language, visibility,
-      status, starts_at, ends_at, cover_url, theme, speaker_seats, settings, template_slug)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING id`,
+      status, starts_at, ends_at, cover_url, theme, speaker_seats, settings, template_slug, meeting_access_mode, meeting_duration_min, meeting_entry_units)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING id`,
   [slugify(v.title), code, user.id, user.displayName || user.username, v.title, v.description || null, v.category || 'meeting',
     v.tags || [], v.language || 'en', v.visibility || 'public', b.status === 'draft' ? 'draft' : 'scheduled',
-    v.starts_at || null, v.ends_at || null, v.cover_url || null, v.theme || '{}', v.speaker_seats || 4, v.settings || '{}', v.template_slug || null]);
+    v.starts_at || null, v.ends_at || null, v.cover_url || null, v.theme || '{}', v.speaker_seats || 4, v.settings || '{}', v.template_slug || null,
+    v.meeting_access_mode || 'host_funded', v.meeting_duration_min || null, v.meeting_entry_units || null]);
   if (opts.seriesId) await q('UPDATE events SET series_id=$2 WHERE id=$1', [r.id, opts.seriesId]);
   const ev = await getEventById(r.id, user.id);
   if (!opts.quiet && ev.visibility === 'public' && ev.status === 'scheduled') {
@@ -94,6 +114,14 @@ async function createEvent(user, b, opts = {}) {
 }
 async function updateEvent(id, userId, b) {
   const v = validateEventInput(b, true);
+  const current = await one('SELECT category,meeting_access_mode,meeting_duration_min,meeting_entry_units FROM events WHERE id=$1 AND host_user_id=$2', [id, userId]);
+  if (!current) return null;
+  const mode = v.meeting_access_mode || current.meeting_access_mode || 'host_funded';
+  const category = v.category || current.category;
+  const duration = v.meeting_duration_min ?? current.meeting_duration_min;
+  const entry = v.meeting_entry_units ?? current.meeting_entry_units;
+  if (mode === 'paid_entry' && category !== 'meeting') { const e = new Error('Paid entry is available for meetings'); e.status = 400; throw e; }
+  if (mode === 'paid_entry' && (!duration || !entry)) { const e = new Error('Paid entry requires an advertised duration and entry price'); e.status = 400; throw e; }
   await clampSeats(userId, v);
   if (b.status && ['draft', 'scheduled', 'cancelled'].includes(b.status)) v.status = b.status;
   const keys = Object.keys(v);

@@ -11,6 +11,7 @@ async function open({userId=null,code,name,hostName,ownerId,now=Date.now()}) {
     if(userId!=null){
       await lockUser(c,userId);
       if ((await c.query("SELECT id FROM credit_billing_sessions WHERE user_id=$1 AND state<>'closed'",[userId])).rows[0]) throw fail(409,'You already have an open meeting. End it before opening another.');
+      if ((await c.query("SELECT code FROM paid_meeting_sessions WHERE host_user_id=$1 AND state='active'",[userId])).rows[0]) throw fail(409,'You already have an open meeting. End it before opening another.');
     }
     const historyId=(await c.query('INSERT INTO meeting_history(code,name,host_user_id,host_display_name,max_participants) VALUES($1,$2,$3,$4,1) RETURNING id',[code,name,userId,hostName])).rows[0].id;
     const media='b-'+crypto.randomBytes(16).toString('hex');

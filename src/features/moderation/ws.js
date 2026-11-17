@@ -158,6 +158,12 @@ module.exports = {
       if (actor.role === 'cohost' && (target.role === 'host' || target.role === 'cohost')) return;
 
       const preventRejoin = !!msg.preventRejoin;
+      let paidEntryKicked = false;
+      if (meeting.paidEntry && meeting.paidEntry.enabled && target.userId) {
+        try { paidEntryKicked = await require('../wallet/paid-entry').markKicked(meetingCode, target.userId); }
+        catch (e) { sendToParticipant(participantId, { type: 'error', error: 'Could not record the participant refund. Try removing them again.' }); return; }
+      }
+      if (paidEntryKicked) sendToParticipant(participantId, { type: 'toast', message: 'If they do not rejoin, the unused portion of their advertised time will be refunded after the meeting ends.' });
       blockParticipant(meeting, target, { preventRejoin });
       try {
         if (ctx.db) {
@@ -174,6 +180,7 @@ module.exports = {
         by: participantId,
         byName: actor.name,
         preventRejoin,
+        paidEntryRefundPending: paidEntryKicked,
       });
 
       const tws = ctx.getClient(targetId);
@@ -192,12 +199,24 @@ module.exports = {
     });
 
     // ----- Waiting room admit / decline -----
-    ctx.onWs('admit-participant', ({ msg, participantId, meeting, meetingCode }) => {
+    ctx.onWs('admit-participant', async ({ msg, participantId, meeting, meetingCode }) => {
       const actor = meeting.participants.get(participantId);
       if (!actor || !can(meeting, actor, 'manageWaiting')) return;
       const targetId = msg.targetId;
       const target = meeting.participants.get(targetId);
       if (!target || target.status !== 'WAITING') return;
+      let admission = null;
+      if (meeting.paidEntry && meeting.paidEntry.enabled) {
+        try {
+          admission = await require('../wallet/paid-entry').accept({ code: meetingCode, userId: target.userId, participantId: target.id });
+        } catch (e) {
+          const reason = e.status === 402 ? 'This participant does not have enough credits. They can add credits and ask you to accept them again.' : e.message || 'The participant could not be admitted.';
+          sendToParticipant(targetId, { type: 'admission-payment-failed', reason, status: e.status || 400 });
+          sendToParticipant(participantId, { type: 'admission-failed', targetId, participantName: target.name, reason });
+          return;
+        }
+        target.paidAdmissionApproved = true;
+      }
       target.status = 'ACTIVE';
       target.approvedAt = Date.now();
       if (meeting.venue) {
@@ -214,6 +233,7 @@ module.exports = {
           code: meetingCode,
           name: meeting.name,
           participantId: targetId,
+          paidEntry: admission ? { charged: admission.charged, credits: admission.credits } : null,
         },
         participants: getParticipantsList(meeting),
       });
@@ -250,25 +270,31 @@ module.exports = {
       });
     });
 
-    ctx.onWs('admit-all', ({ participantId, meeting, meetingCode }) => {
+    ctx.onWs('admit-all', async ({ participantId, meeting, meetingCode }) => {
       const actor = meeting.participants.get(participantId);
       if (!actor || !can(meeting, actor, 'manageWaiting')) return;
       const waiting = [...meeting.participants.values()].filter((p) => p.status === 'WAITING');
       for (const target of waiting) {
+        let admission = null;
+        if (meeting.paidEntry && meeting.paidEntry.enabled) {
+          try {
+            admission = await require('../wallet/paid-entry').accept({ code: meetingCode, userId: target.userId, participantId: target.id });
+          } catch (e) {
+            const reason = e.status === 402 ? 'You do not have enough credits to join. Add credits and ask the host to accept you again.' : e.message || 'You could not be admitted.';
+            sendToParticipant(target.id, { type: 'admission-payment-failed', reason, status: e.status || 400 });
+            continue;
+          }
+          target.paidAdmissionApproved = true;
+        }
         target.status = 'ACTIVE';
         target.approvedAt = Date.now();
         sendToParticipant(target.id, {
           type: 'admitted',
-          meeting: { code: meetingCode, name: meeting.name, participantId: target.id },
+          meeting: { code: meetingCode, name: meeting.name, participantId: target.id, paidEntry: admission ? { charged: admission.charged, credits: admission.credits } : null },
           participants: getParticipantsList(meeting),
         });
       }
       emitRoster(meetingCode, meeting);
-      broadcast(meetingCode, {
-        type: 'participants',
-        participants: getParticipantsList(meeting),
-        waiting: [],
-      });
     });
 
     ctx.onWs('decline-all', ({ participantId, meeting, meetingCode }) => {

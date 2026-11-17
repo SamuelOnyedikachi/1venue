@@ -57,7 +57,7 @@ export async function mount(view, { slug }) {
   const live = ev.status === 'live';
   const c1 = ev.theme?.accent || cc, c2 = ev.theme?.accent2 || 'var(--accent-2)';
   document.title = `${ev.title} · 1venue`;
-  const goLive = () => { sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, eventId: ev.id, name: ev.title, stage: ev.category !== 'meeting', speakerSeats: ev.speakerSeats, code: ev.code })); navigate(roomPath(ev.code)); };
+  const goLive = () => { sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, eventId: ev.id, name: ev.title, stage: ev.category !== 'meeting', speakerSeats: ev.speakerSeats, code: ev.code, meetingAccessMode: ev.meetingAccessMode, meetingDurationMin: ev.meetingDurationMin, meetingEntryPriceCredits: ev.meetingEntryPriceCredits })); navigate(roomPath(ev.code)); };
   const join = () => navigate(roomPath(ev.code));
   const rsvpBtns = [];
   const paintRsvp = () => {
@@ -146,6 +146,10 @@ export async function mount(view, { slug }) {
   const matsSlot = h('div');
   const ticketSlot = h('div');
   const replaySlot = h('div');
+  const meetingAccess = ev.category === 'meeting' && ev.meetingAccessMode === 'paid_entry'
+    ? h('div', { class: 'ev-card' }, sectionHead('Paid meeting entry', 'wallet'),
+      h('p', { class: 'small' }, `${ev.meetingEntryPriceCredits} credits · ${ev.meetingDurationMin} minutes advertised. Sign in and ask to join; credits are charged only when the host accepts you.`))
+    : null;
   const speakersBlock = speakers.length ? h('div', null, sectionHead('Speakers', 'stage'), h('div', { class: 'speaker-cards' }, speakers.map((sp) => h(sp.userId ? 'a' : 'div', { class: 'card speaker-card', href: sp.userId ? profilePath({ username: sp.username, id: sp.userId }) : null, 'data-link': sp.userId ? '' : null, style: { '--c1': c1, '--c2': c2 } },
     h('div', { class: 'band' }), avatar(sp.name, sp.avatarUrl, 'xl ring'), h('strong', null, sp.name), h('span', { class: 'muted small' }, sp.headline || 'Speaker'))))) : null;
 
@@ -153,6 +157,7 @@ export async function mount(view, { slug }) {
     hero,
     h('div', { class: 'ev-summary' }, factsCard()),
     hostMenu,
+    meetingAccess,
     ticketSlot,
     replaySlot,
     ev.description ? h('div', { class: 'card pad prose', html: md(ev.description) }) : null,

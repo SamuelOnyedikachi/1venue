@@ -80,6 +80,19 @@ async function history(userId, before) {
       FROM credit_ledger l
       WHERE l.user_id=$1 AND l.kind='welcome'
       UNION ALL
+      SELECT l.id,l.user_id,l.kind,l.delta_units,l.balance_after_units,NULL,b.code,m.name,l.created_at
+      FROM credit_ledger l JOIN paid_meeting_entries e ON e.id=l.paid_entry_id
+      JOIN paid_meeting_sessions b ON b.code=e.code LEFT JOIN meeting_history m ON m.id=b.history_id
+      WHERE l.user_id=$1 AND l.kind IN ('entry','entry_refund')
+      UNION ALL
+      SELECT l.id,l.user_id,l.kind,l.delta_units,l.balance_after_units,NULL,b.code,m.name,l.created_at
+      FROM credit_ledger l JOIN paid_meeting_extensions x ON x.id=l.paid_extension_id
+      JOIN paid_meeting_sessions b ON b.code=x.code LEFT JOIN meeting_history m ON m.id=b.history_id
+      WHERE l.user_id=$1 AND l.kind='extension'
+      UNION ALL
+      SELECT l.id,l.user_id,l.kind,l.delta_units,l.balance_after_units,NULL,NULL,NULL,l.created_at
+      FROM credit_ledger l WHERE l.user_id=$1 AND l.kind='earning_transfer'
+      UNION ALL
       SELECT l.id,l.user_id,l.kind,l.delta_units,l.balance_after_units,NULL,b.code,NULL,l.created_at
       FROM credit_ledger l LEFT JOIN credit_billing_sessions b ON b.id=l.billing_session_id
       WHERE l.user_id=$1 AND l.kind='usage' AND l.billing_session_id IS NULL
