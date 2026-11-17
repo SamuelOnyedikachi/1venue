@@ -1,9 +1,11 @@
 /**
  * Commerce routes.
  * Hosts:
- *   GET  /api/promote/quote?days=7          price for a self-serve promotion
- *   POST /api/promote   { eventId, days, placements }   Paystack checkout
- *   GET  /api/promote/mine                  my promotions with views, clicks, CTR
+ *   GET  /api/promote/quote?days=7&placements=feed,discover   server-side price: per-placement day rates x days,
+ *                                           duration discount, processing fee and the total in my display currency
+ *   POST /api/promote   { eventId, days, placements, extendId? }   Paystack checkout (extendId adds days to one of mine)
+ *   GET  /api/promote/mine                  my promotions: cover, placements, progress, views, clicks, CTR, state
+ *   POST /api/promote/:id/pause { paused }  pause or resume one of my approved promotions
  *   GET/PUT /api/events/:id/tickets/tiers   manage ticket tiers (Organisation plan by default)
  *   GET  /api/earnings                      balance, ledger, payouts      POST /api/earnings/payouts { amountKobo, bankDetails, note }
  * Buyers:
@@ -22,7 +24,11 @@ module.exports = function routes(route, { requireUser, getAuthUser, httpError, r
   const admin = async (ctx) => { const u = await requireUser(ctx.req, ctx.res); if (!u.isAdmin) throw httpError(403, 'Admins only'); return u; };
   const limited = (u) => { if (!rateLimit('commerce:' + u.id, 15)) throw httpError(429, 'Please wait before starting another payment'); };
 
-  route('GET', '/api/promote/quote', async (ctx) => svc.quotePromotion(ctx.url.searchParams.get('days') || 7));
+  route('GET', '/api/promote/quote', async (ctx) => {
+    const u = await getAuthUser(ctx.req, ctx.res); const sp = ctx.url.searchParams;
+    return svc.quotePromotion(sp.get('days') || 7, sp.get('placements') || undefined, u && u.id);
+  });
+  route('POST', '/api/promote/(\\d+)/pause', async (ctx, [id]) => { const u = await requireUser(ctx.req, ctx.res); return svc.pausePromotion(u.id, int(id), !!(await ctx.body()).paused); });
   route('POST', '/api/promote', async (ctx) => { const u = await requireUser(ctx.req, ctx.res); limited(u); return { $status: 201, $body: await svc.startPromotion(u, await ctx.body()) }; });
   route('GET', '/api/promote/mine', async (ctx) => ({ promotions: await svc.myPromotions((await requireUser(ctx.req, ctx.res)).id) }));
 

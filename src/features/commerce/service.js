@@ -46,26 +46,64 @@ async function ownEvent(userId, eventId) {
 }
 
 // ---------------------------------------------------------------- self-serve promotions
-const PLACEMENTS = ['discover', 'feed', 'venues', 'books'];
-async function quotePromotion(days) {
-  const p = await settings();
-  const d = parseInt(days, 10);
-  if (!Number.isInteger(d) || d < 1 || d > p.promoMaxDays) throw fail(400, `Choose 1 to ${p.promoMaxDays} days`);
-  return { days: d, priceKobo: d * p.promoDayKobo, dayKobo: p.promoDayKobo, approval: !!p.promoApproval };
+const PLACEMENTS = plans.PROMO_PLACEMENTS;
+/** Server-side price for days x placements (see plans.promoQuote), plus the processing fee in the payer's display currency. */
+async function quotePromotion(days, placements, userId) {
+  const q0 = plans.promoQuote(await plans.getSettings(), { days: parseInt(days, 10), placements });
+  const m = await require('../../lib/money').checkoutAmounts(userId || null, q0.priceKobo);
+  return { ...q0, processingFeeKobo: m.fee, feePercent: m.percent, totalKobo: m.total, displayCurrency: m.displayCurrency, displayTotalMinor: m.displayTotal };
 }
-async function startPromotion(user, { eventId, days, placements } = {}) {
+async function ownPromotion(userId, id) {
+  const p = await one('SELECT * FROM promotions WHERE id=$1', [id]);
+  if (!p || Number(p.owner_user_id) !== Number(userId)) throw fail(404, 'Promotion not found');
+  return p;
+}
+/**
+ * Start a paid promotion, or extend one of mine with { extendId } (same event; the extra days and the chosen
+ * placements are priced again on the server, then added on top of the current end date once paid).
+ */
+async function startPromotion(user, { eventId, days, placements, extendId } = {}) {
   await plans.requireFeature(user.id, 'selfPromo', 'Promotions');
+  let extend = null;
+  if (extendId != null) {
+    extend = await ownPromotion(user.id, parseInt(extendId, 10));
+    if (extend.review_status === 'rejected') throw fail(400, 'A rejected promotion cannot be extended');
+    if (extend.target_type !== 'event') throw fail(400, 'Only event promotions can be extended');
+    eventId = extend.event_id;
+    if (placements == null) placements = asPlacements(extend.placements);
+  }
   const ev = await ownEvent(user.id, parseInt(eventId, 10));
   if (ev.visibility !== 'public' || ['draft', 'cancelled'].includes(ev.status)) throw fail(400, 'Only public, published events can be promoted');
-  const quote = await quotePromotion(days);
-  const pl = (Array.isArray(placements) ? placements : []).filter((x) => PLACEMENTS.includes(x));
-  return initialize(user, { kind: 'promotion', hostUserId: user.id, eventId: ev.id, priceKobo: quote.priceKobo, detail: { days: quote.days, placements: pl.length ? [...new Set(pl)] : PLACEMENTS } }, '/host?tab=promote');
+  const quote = plans.promoQuote(await plans.getSettings(), { days: parseInt(days, 10), placements });
+  const detail = { days: quote.days, placements: quote.placements.map((l) => l.id), perDayKobo: quote.perDayKobo, grossKobo: quote.grossKobo, discountPercent: quote.discountPercent, discountKobo: quote.discountKobo };
+  if (extend) detail.extendPromotionId = Number(extend.id);
+  return initialize(user, { kind: 'promotion', hostUserId: user.id, eventId: ev.id, priceKobo: quote.priceKobo, detail }, '/host?tab=promote');
 }
+const asPlacements = (v) => { if (Array.isArray(v)) return v; if (typeof v === 'string') { try { const a = JSON.parse(v); if (Array.isArray(a)) return a; } catch (_) { /* PG text form */ } return v.replace(/[{}]/g, '').split(',').filter(Boolean); } return []; };
+const coverOf = (r) => r.cover_url || r.image_url || null;
 async function myPromotions(userId) {
-  const rows = await many(`SELECT p.*, e.title, e.slug FROM promotions p LEFT JOIN events e ON e.id=p.event_id WHERE p.owner_user_id=$1 ORDER BY p.id DESC LIMIT 100`, [userId]);
-  return rows.map((r) => ({ id: Number(r.id), eventId: r.event_id ? Number(r.event_id) : null, title: r.title, slug: r.slug, days: r.days, review: r.review_status, active: !!r.active, startsAt: r.starts_at, endsAt: r.ends_at,
-    views: Number(r.views), clicks: Number(r.clicks), ctr: r.views ? Math.round((r.clicks / r.views) * 1000) / 10 : 0,
-    live: !!r.active && new Date(r.starts_at) <= new Date() && (!r.ends_at || new Date(r.ends_at) > new Date()) }));
+  const rows = await many(`SELECT p.*, e.title, e.slug, e.starts_at AS event_starts_at, e.status AS event_status, e.cover_url FROM promotions p LEFT JOIN events e ON e.id=p.event_id WHERE p.owner_user_id=$1 ORDER BY p.id DESC LIMIT 100`, [userId]);
+  const now = Date.now();
+  return rows.map((r) => {
+    const start = r.starts_at ? new Date(r.starts_at).getTime() : null, end = r.ends_at ? new Date(r.ends_at).getTime() : null;
+    const live = !!r.active && r.review_status !== 'pending' && r.review_status !== 'rejected' && start != null && start <= now && (end == null || end > now);
+    const state = r.review_status === 'rejected' ? 'rejected' : r.review_status === 'pending' ? 'pending' : end != null && end <= now ? 'ended' : !r.active ? 'paused' : start != null && start > now ? 'scheduled' : 'live';
+    const totalDays = start != null && end != null ? Math.max(1, Math.round((end - start) / 86400000)) : Number(r.days || 0) || null;
+    const elapsed = start != null && end != null ? Math.min(totalDays, Math.max(0, (now - start) / 86400000)) : 0;
+    return { id: Number(r.id), eventId: r.event_id ? Number(r.event_id) : null, title: r.title, slug: r.slug, cover: coverOf(r), eventStartsAt: r.event_starts_at || null, eventStatus: r.event_status || null,
+      days: r.days, review: r.review_status, active: !!r.active, startsAt: r.starts_at, endsAt: r.ends_at, placements: asPlacements(r.placements), state,
+      totalDays, daysElapsed: Math.round(elapsed * 10) / 10, daysLeft: totalDays != null ? Math.max(0, Math.round((totalDays - elapsed) * 10) / 10) : null,
+      views: Number(r.views), clicks: Number(r.clicks), ctr: r.views ? Math.round((r.clicks / r.views) * 1000) / 10 : 0, live,
+      canPause: !!r.owner_user_id && r.review_status === 'approved' && state !== 'ended', canExtend: r.review_status !== 'rejected' && r.target_type === 'event' };
+  });
+}
+/** Owner pause/resume. Paused days still count down (the slot was paid for); resuming does not move the end date. */
+async function pausePromotion(userId, id, paused) {
+  const p = await ownPromotion(userId, id);
+  if (p.review_status !== 'approved') throw fail(409, 'This promotion is waiting for review');
+  if (p.ends_at && new Date(p.ends_at) <= new Date()) throw fail(409, 'This promotion has ended');
+  await q('UPDATE promotions SET active=$2 WHERE id=$1', [id, !paused]);
+  return (await myPromotions(userId)).find((x) => x.id === Number(id));
 }
 async function reviewPromotion(adminId, promoId, decision) {
   const p = await one('SELECT * FROM promotions WHERE id=$1', [promoId]);
@@ -227,7 +265,19 @@ async function settle(purchase, verified) {
       if (!r.rowCount) { status = 'review'; err = 'sold_out_refund_needed'; }
       else await issueTickets(c, { tierId: p.tier_id, eventId: p.event_id, userId: p.user_id, paymentId: p.id, quantity: Number(p.quantity) });
     }
-    if (p.kind === 'promotion') {
+    if (p.kind === 'promotion' && asJson(p.detail).extendPromotionId) {
+      const d = asJson(p.detail);
+      const cur = (await c.query('SELECT * FROM promotions WHERE id=$1', [d.extendPromotionId])).rows[0];
+      if (cur) {
+        // Extra days go on top of the current end (or from now if it already ended); approved promotions stay approved.
+        const base = cur.ends_at && new Date(cur.ends_at) > new Date() ? new Date(cur.ends_at) : new Date();
+        const ends = cur.review_status === 'pending' ? null : new Date(base.getTime() + d.days * 86400000);
+        const starts = cur.ends_at && new Date(cur.ends_at) <= new Date() ? new Date() : cur.starts_at;
+        await c.query('UPDATE promotions SET days=COALESCE(days,0)+$2, ends_at=COALESCE($3, ends_at), starts_at=$4, placements=$5, active=$6 WHERE id=$1',
+          [cur.id, d.days, ends, starts, d.placements || PLACEMENTS, cur.review_status === 'pending' ? !!cur.active : true]);
+        await c.query('UPDATE commerce_payments SET promotion_id=$2 WHERE id=$1', [p.id, cur.id]);
+      }
+    } else if (p.kind === 'promotion') {
       const d = asJson(p.detail);
       const approval = !!settingsNow.promoApproval;
       const now = new Date();
@@ -251,7 +301,21 @@ async function balance(hostId, c) {
   const run = c ? (s, a) => c.query(s, a) : q;
   return Number((await run('SELECT COALESCE(SUM(net_kobo),0) AS b FROM host_ledger WHERE host_user_id=$1', [hostId])).rows[0].b);
 }
+/**
+ * Best-effort split of older one-box payout details into bank / number / name. Idempotent: only rows with no
+ * structured fields yet; the original bank_details text is never changed. bank_parse = parsed | partial.
+ */
+async function backfillPayoutBanks(where = '', args = []) {
+  const { parseBankText } = require('../../lib/banks');
+  const rows = await many(`SELECT id, bank_details FROM payout_requests WHERE bank_parse IS NULL AND bank_name IS NULL AND account_number IS NULL AND bank_details IS NOT NULL ${where} LIMIT 500`, args).catch(() => []);
+  for (const r of rows) {
+    const b = parseBankText(r.bank_details);
+    await q('UPDATE payout_requests SET bank_name=$2, account_number=$3, account_name=$4, bank_parse=$5 WHERE id=$1 AND bank_parse IS NULL', [r.id, b.bankName, b.accountNumber, b.accountName, b.complete ? 'parsed' : 'partial']);
+  }
+  return rows.length;
+}
 async function earnings(hostId) {
+  await backfillPayoutBanks('AND host_user_id=$1', [hostId]);
   const [b, ledger, payouts, totals] = await Promise.all([
     balance(hostId),
     many(`SELECT l.*, cp.reference, cp.event_id, e.title FROM host_ledger l LEFT JOIN commerce_payments cp ON cp.id=l.payment_id LEFT JOIN events e ON e.id=cp.event_id WHERE l.host_user_id=$1 ORDER BY l.id DESC LIMIT 100`, [hostId]),
@@ -259,22 +323,37 @@ async function earnings(hostId) {
     one(`SELECT COALESCE(SUM(CASE WHEN kind IN ('sale','donation') THEN gross_kobo ELSE 0 END),0) AS gross, COALESCE(SUM(CASE WHEN kind IN ('sale','donation') THEN fee_kobo ELSE 0 END),0) AS fees FROM host_ledger WHERE host_user_id=$1`, [hostId]),
   ]);
   const p = await settings();
+  const last = payouts.find((r) => r.account_number && r.bank_name && r.bank_parse === 'entered') || payouts.find((r) => r.account_number && r.bank_name);
   return { balanceKobo: b, grossKobo: Number(totals.gross), feesKobo: Number(totals.fees), feeBps: p.feeBps, payoutMinKobo: p.payoutMinKobo,
+    banks: require('../../lib/banks').NAMES, lastBank: last ? { bankName: last.bank_name, accountNumber: last.account_number, accountName: last.account_name } : null,
     ledger: ledger.map((l) => ({ id: Number(l.id), kind: l.kind, grossKobo: Number(l.gross_kobo), feeKobo: Number(l.fee_kobo), netKobo: Number(l.net_kobo), event: l.title || null, reference: l.reference || null, at: l.created_at })),
     payouts: payouts.map(payoutOut) };
 }
-const payoutOut = (r) => ({ id: Number(r.id), hostUserId: r.host_user_id, amountKobo: Number(r.amount_kobo), status: r.status, bankDetails: r.bank_details, note: r.note, adminNote: r.admin_note, paidReference: r.paid_reference, requestedAt: r.requested_at, decidedAt: r.decided_at });
-async function requestPayout(hostId, { amountKobo, bankDetails, note } = {}) {
+const payoutOut = (r) => ({ id: Number(r.id), hostUserId: r.host_user_id, amountKobo: Number(r.amount_kobo), status: r.status, bankDetails: r.bank_details,
+  bank: { bankName: r.bank_name || null, accountNumber: r.account_number || null, accountName: r.account_name || null, source: r.bank_parse || null }, note: r.note, adminNote: r.admin_note, paidReference: r.paid_reference, requestedAt: r.requested_at, decidedAt: r.decided_at });
+/**
+ * { amountKobo, bankName, accountNumber, accountName } (separate fields, validated; NGN numbers are 10 digits).
+ * The older { bankDetails } free text still works and is split best-effort.
+ */
+async function requestPayout(hostId, { amountKobo, bankDetails, bankName, accountNumber, accountName, note } = {}) {
   const p = await settings();
   const amount = Number(amountKobo);
   if (!Number.isSafeInteger(amount) || amount < p.payoutMinKobo) throw fail(400, `The smallest payout is ₦${(p.payoutMinKobo / 100).toLocaleString('en-NG')}`);
-  const bank = String(bankDetails || '').trim().slice(0, 300);
-  if (bank.length < 6) throw fail(400, 'Add your bank name, account number and account name');
+  const banks = require('../../lib/banks');
+  let bank, fields;
+  if (bankName != null || accountNumber != null || accountName != null) {
+    fields = banks.cleanBankFields({ bankName, accountNumber, accountName }); bank = fields.bankDetails; fields.source = 'entered';
+  } else {
+    bank = String(bankDetails || '').trim().slice(0, 300);
+    if (bank.length < 6) throw fail(400, 'Add your bank name, account number and account name');
+    const b = banks.parseBankText(bank); fields = { ...b, source: b.complete ? 'parsed' : 'partial' };
+  }
   return tx(async (c) => {
     await c.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [hostId]);
     if ((await c.query("SELECT 1 FROM payout_requests WHERE host_user_id=$1 AND status='requested'", [hostId])).rows[0]) throw fail(409, 'You already have a payout request waiting');
     if (await balance(hostId, c) < amount) throw fail(409, 'That is more than your available balance');
-    const r = (await c.query('INSERT INTO payout_requests (host_user_id, amount_kobo, bank_details, note) VALUES ($1,$2,$3,$4) RETURNING *', [hostId, amount, bank, note ? String(note).slice(0, 300) : null])).rows[0];
+    const r = (await c.query('INSERT INTO payout_requests (host_user_id, amount_kobo, bank_details, note, bank_name, account_number, account_name, bank_parse) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
+      [hostId, amount, bank, note ? String(note).slice(0, 300) : null, fields.bankName || null, fields.accountNumber || null, fields.accountName || null, fields.source])).rows[0];
     await c.query("INSERT INTO host_ledger (host_user_id, kind, payout_id, net_kobo) VALUES ($1,'payout',$2,$3)", [hostId, r.id, -amount]);
     return payoutOut(r);
   });
@@ -291,6 +370,7 @@ async function decidePayout(adminId, id, { action, reference, note } = {}) {
   });
 }
 async function listPayouts(status) {
+  await backfillPayoutBanks();
   const rows = await many(`SELECT p.*, u.email, u.username FROM payout_requests p LEFT JOIN users u ON u.id=p.host_user_id ${status ? 'WHERE p.status=$1' : ''} ORDER BY p.id DESC LIMIT 200`, status ? [status] : []);
   return rows.map((r) => ({ ...payoutOut(r), email: r.email, username: r.username }));
 }
@@ -321,5 +401,5 @@ async function adminPayments({ status, kind } = {}) {
 }
 async function myPayments(userId) { return (await many('SELECT * FROM commerce_payments WHERE user_id=$1 ORDER BY id DESC LIMIT 50', [userId])).map(paymentOut); }
 
-module.exports = { paymentOut, getPayment, confirm, settle, validVerified, quotePromotion, startPromotion, myPromotions, reviewPromotion, tiers, saveTiers, publicTickets, getTicket, donate, canJoinEvent, myTickets,
-  balance, earnings, requestPayout, decidePayout, listPayouts, markRefunded, adminPayments, myPayments };
+module.exports = { paymentOut, getPayment, confirm, settle, validVerified, quotePromotion, startPromotion, myPromotions, pausePromotion, reviewPromotion, tiers, saveTiers, publicTickets, getTicket, donate, canJoinEvent, myTickets,
+  balance, earnings, requestPayout, backfillPayoutBanks, decidePayout, listPayouts, markRefunded, adminPayments, myPayments };

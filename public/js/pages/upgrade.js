@@ -4,6 +4,10 @@ import { h, api, toastErr } from '../ui.js';
 import { icon } from '../icons.js';
 import { state } from '../app.js';
 import { loadMoney, fmtMoney, checkoutSheet, moneyConfig } from '../money.js';
+import { addonCard as sharedAddonCard } from '../shortlinks.js';
+
+// Shorter venue links: the shared card (see ../shortlinks.js); its button goes to Billing.
+const addonCard = (addons, signedIn, releaseDays = 60) => sharedAddonCard(addons, { signedIn, releaseDays });
 
 const money = (kobo) => fmtMoney(kobo, { whole: true });
 const LABEL = { free: 'Free', premium: 'Premium', organisation: 'Organisation' };
@@ -21,24 +25,6 @@ const core = (p) => [
 ];
 const extras = (p) => [...FEATURES.filter(([k]) => p.features && p.features[k]).map(([, l]) => l),
   ...(p.features && p.features.orgMembers ? [`Organisation with ${p.features.orgMembers} members, roles and a shared library`] : [])];
-// Shorter venue links: a one-off add-on, shown as two price tiles and one accent button to Billing.
-function addonCard(addons, signedIn, releaseDays = 60) {
-  const tile = (len, sample, price) => h('div', { class: 'pr-addon-tile' },
-    h('span', { class: 'pr-addon-len' }, `${len}-character`),
-    h('code', { class: 'pr-addon-url' }, `1venue.live/v/`, h('b', null, sample)),
-    h('strong', { class: 'pr-addon-price' }, money(price)),
-    h('span', { class: 'pr-addon-once' }, 'one-off'));
-  const href = signedIn ? '/billing' : '/login?next=/billing';
-  return h('section', { class: 'pr-addons', 'aria-labelledby': 'pr-addons-h' },
-    h('div', { class: 'pr-addon-head' },
-      h('span', { class: 'pr-addon-ic', html: icon('link', { size: 20 }) }),
-      h('div', null, h('h2', { id: 'pr-addons-h' }, 'Shorter venue links'), h('p', { class: 'pr-addon-pitch' }, 'A link people remember. Yours to keep, for any venue on a paid plan.'))),
-    h('div', { class: 'pr-addon-tiles' }, tile(4, 'abcd', addons.slug4), tile(3, 'abc', addons.slug3)),
-    h('div', { class: 'pr-addon-foot' },
-      h('a', { class: 'btn primary pr-btn pr-addon-btn', href, 'data-link': '' }, h('span', { class: 'i', html: icon('arrowRight', { size: 16 }) }), 'Get a short link'),
-      signedIn ? h('a', { class: 'pr-addon-manage', href: '/billing', 'data-link': '' }, 'Manage billing') : null),
-    h('p', { class: 'pr-addon-note' }, `Kept while your plan is active; released ${releaseDays} days after it lapses.`));
-}
 const tick = (txt, cls = '') => h('li', { class: cls }, h('span', { class: 'pr-tick', html: icon('check', { size: 13 }) }), h('span', null, txt));
 
 export async function mount(view) {

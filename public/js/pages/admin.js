@@ -8,7 +8,7 @@ import { state, requireLogin } from '../app.js';
 // ---------------------------------------------------------------- navigation model (every section and subsection)
 const SECTIONS = [
   { id: 'demo', label: 'Demo data', icon: 'users' },
-  { id: 'plans', label: 'Plans & limits', icon: 'crown', children: [['plans-free', 'Free'], ['plans-premium', 'Premium'], ['plans-organisation', 'Organisation'], ['plans-ai', 'AI cost per use'], ['plans-addons', 'Short links & billing'], ['plans-features', 'Plan features'], ['plans-platform', 'Tickets, promos & payouts']] },
+  { id: 'plans', label: 'Plans & limits', icon: 'crown', children: [['plans-free', 'Free'], ['plans-premium', 'Premium'], ['plans-organisation', 'Organisation'], ['plans-ai', 'AI cost per use'], ['plans-addons', 'Short links & billing'], ['plans-promo', 'Promotion pricing'], ['plans-features', 'Plan features'], ['plans-platform', 'Tickets, promos & payouts']] },
   { id: 'fx', label: 'Currency & FX rates', icon: 'globe' },
   { id: 'users', label: 'User plans', icon: 'shield' },
   { id: 'promotions', label: 'Promotions', icon: 'sparkle', children: [['promo-new', 'New promotion'], ['promo-current', 'Current promotions']] },
@@ -198,7 +198,7 @@ function demoCard() {
 const PLAN_LABEL = { free: 'Free', premium: 'Premium', organisation: 'Organisation' };
 const FIELDS = [['venues', 'Venues'], ['audience', 'Stage audience'], ['meeting', 'Meeting size'], ['speakerSeats', 'Speaker seats'], ['aiDaily', 'AI points / day'], ['uploadMB', 'Uploads (MB)'], ['priceMonthKobo', 'Monthly (kobo)'], ['priceYearKobo', 'Annual (kobo)']];
 const FEATURE_FIELDS = [['branding', 'Branding'], ['recurring', 'Recurring'], ['reminders', 'Reminders'], ['whatsapp', 'WhatsApp reminders'], ['exports', 'Exports'], ['analytics', 'Analytics'], ['badge', 'Verified badge eligible'], ['selfPromo', 'Self-serve promotions'], ['ticketing', 'Tickets & donations'], ['replays', 'Cloud replays'], ['orgMembers', 'Org members (0 = no org)'], ['replayMB', 'Replay storage (MB)'], ['callVideo', '1:1 video calls'], ['groupMembers', 'Group chat members'], ['callParticipants', 'Call participants (2 = 1:1 only)'], ['historyDays', 'Message history days (0 = forever)']];
-const PLATFORM_FIELDS = [['feeBps', 'Platform fee (basis points, 500 = 5%)'], ['promoDayKobo', 'Promotion price per day (kobo)'], ['promoMaxDays', 'Promotion max days'], ['promoApproval', 'Approve promotions first (1/0)'], ['payoutMinKobo', 'Minimum payout (kobo)'], ['ticketMaxPerOrder', 'Tickets per order'], ['donationMinKobo', 'Minimum gift (kobo)'], ['reminderLeadA', 'First reminder (minutes before)'], ['reminderLeadB', 'Second reminder (minutes, 0 = off)'], ['whatsappEnabled', 'WhatsApp on (1/0, needs env keys)'], ['verifiedBoost', 'Verified Discover boost (1/0)'], ['replayUploadMB', 'Replay upload cap (MB)'], ['seriesMax', 'Max occurrences per series']];
+const PLATFORM_FIELDS = [['feeBps', 'Platform fee (basis points, 500 = 5%)'], ['promoMaxDays', 'Promotion max days'], ['promoApproval', 'Approve promotions first (1/0)'], ['payoutMinKobo', 'Minimum payout (kobo)'], ['ticketMaxPerOrder', 'Tickets per order'], ['donationMinKobo', 'Minimum gift (kobo)'], ['reminderLeadA', 'First reminder (minutes before)'], ['reminderLeadB', 'Second reminder (minutes, 0 = off)'], ['whatsappEnabled', 'WhatsApp on (1/0, needs env keys)'], ['verifiedBoost', 'Verified Discover boost (1/0)'], ['replayUploadMB', 'Replay upload cap (MB)'], ['seriesMax', 'Max occurrences per series']];
 const numIn = (value, name) => h('input', { class: 'input', type: 'number', min: '0', step: '1', value: String(value), name });
 function plansCard() {
   const out = h('div', { class: 'col', style: { gap: '1.1rem' } }, loading());
@@ -210,6 +210,11 @@ function plansCard() {
     const weights = sub('plans-ai', 'AI point cost per use', grid(...Object.keys(s.aiWeights).map((k) => field(`aiWeights.${k}`, k, s.aiWeights[k], d.aiWeights[k]))));
     const other = sub('plans-addons', 'Short links & billing', grid(field('slugAddons.slug4', '4-character link (kobo)', s.slugAddons.slug4, d.slugAddons.slug4), field('slugAddons.slug3', '3-character link (kobo)', s.slugAddons.slug3, d.slugAddons.slug3),
       field('graceDays', 'Grace days after failed renewal', s.graceDays, d.graceDays), field('aiGuestPerIpDaily', 'Guest AI points per IP / day', s.aiGuestPerIpDaily, d.aiGuestPerIpDaily)));
+    const pp = s.promoPricing || {}; const pd = d.promoPricing || {};
+    const promo = sub('plans-promo', 'Promotion pricing (per day per placement, then a duration discount)',
+      grid(...[['discover', 'Discover top (kobo/day)'], ['feed', 'Feed boost (kobo/day)'], ['venues', 'Venues sidebar (kobo/day)'], ['books', 'Books sidebar (kobo/day)']].map(([k, l]) => field(`promoPricing.${k}`, l, pp[k], pd[k]))),
+      grid(...[1, 2, 3].flatMap((n) => [field(`promoPricing.tier${n}Days`, `Discount ${n}: from days`, pp[`tier${n}Days`], pd[`tier${n}Days`]), field(`promoPricing.tier${n}Pct`, `Discount ${n}: % off`, pp[`tier${n}Pct`], pd[`tier${n}Pct`])])),
+      h('p', { class: 'tiny muted' }, 'A rate of 0 hides that placement. Days or % of 0 turns a discount off. The best discount the days reach applies. Hosts see the processing fee on top.'));
     const features = sub('plans-features', 'Plan features (1 = on, 0 = off)', ...Object.keys(PLAN_LABEL).map((p) => h('div', { class: 'col', style: { gap: '.35rem' } }, h('strong', { class: 'small' }, PLAN_LABEL[p]), grid(...FEATURE_FIELDS.map(([k, l]) => field(`features.${p}.${k}`, l, s.features[p][k], d.features[p][k]))))));
     const platformBlock = sub('plans-platform', 'Tickets, promotions, payouts, reminders and replays', grid(...PLATFORM_FIELDS.map(([k, l]) => field(`platform.${k}`, l, s.platform[k], d.platform[k]))));
     const save = h('button', { class: 'btn primary', type: 'button' }, 'Save settings');
@@ -224,7 +229,7 @@ function plansCard() {
       if (!(await confirmDlg('Reset every plan limit and price to the env defaults?', { ok: 'Reset' }))) return;
       try { paint(await api('/api/admin/billing/settings', { method: 'DELETE' })); toast('Reset to defaults', { icon: 'check' }); } catch (e) { toastErr(e); }
     };
-    out.replaceChildren(...planBlocks, weights, other, features, platformBlock, h('div', { class: 'admin-actions' }, reset, save));
+    out.replaceChildren(...planBlocks, weights, other, promo, features, platformBlock, h('div', { class: 'admin-actions' }, reset, save));
   };
   api('/api/admin/billing/settings').then(paint).catch((e) => out.replaceChildren(h('p', { class: 'small' }, e.message || 'Could not load')));
   return section('plans', 'crown', 'Plans & limits', 'Saved in the database and live within 30 seconds, no redeploy. Env values are only the defaults. Prices are in kobo (₦1 = 100). Server ceilings MAX_AUDIENCE and MAX_PARTICIPANTS still apply.', out);
@@ -435,7 +440,12 @@ function commerceCard() {
       h('button', { class: 'btn sm', type: 'button', onclick: act(() => api(`/api/admin/promotions/${p.id}/review`, { method: 'POST', body: { decision: 'reject' } })) }, 'Reject'))) : [emptyState('check', 'No paid promotions waiting for approval.')]));
     payouts.replaceChildren(...(po.payouts.length ? po.payouts.map((p) => {
       const ref = h('input', { class: 'input', placeholder: 'Transfer reference' });
-      return h('div', { class: 'col admin-line', style: { gap: '.35rem' } }, h('span', { class: 'small' }, `${naira(p.amountKobo)} to ${p.username || p.email || 'host ' + p.hostUserId} · ${p.bankDetails || ''}`),
+      const b = p.bank || {};
+      const kv = (k, v, mono) => h('div', null, h('span', { class: 'tiny muted' }, k), h(mono ? 'code' : 'strong', { class: 'small' }, v || '—'));
+      return h('div', { class: 'col admin-line', style: { gap: '.5rem' } }, h('div', { class: 'row wrap', style: { gap: '.5rem' } }, h('strong', null, naira(p.amountKobo)), h('span', { class: 'small muted grow' }, `to ${p.username ? '@' + p.username : p.email || 'host ' + p.hostUserId} · requested ${new Date(p.requestedAt).toLocaleString()}`),
+        b.source && b.source !== 'entered' ? h('span', { class: 'chip admin-state ' + (b.source === 'parsed' ? 'scheduled' : 'paused') }, b.source === 'parsed' ? 'Parsed from old text' : 'Check details') : null),
+        h('div', { class: 'admin-bank' }, kv('Bank', b.bankName), kv('Account number', b.accountNumber, true), kv('Account name', b.accountName)),
+        b.source && b.source !== 'entered' ? h('p', { class: 'tiny muted' }, `As entered: ${p.bankDetails || ''}`) : null,
         h('div', { class: 'row wrap', style: { gap: '.5rem' } }, ref,
           h('button', { class: 'btn sm primary', type: 'button', onclick: act(() => api(`/api/admin/payouts/${p.id}`, { method: 'POST', body: { action: 'paid', reference: ref.value } })) }, 'Mark paid'),
           h('button', { class: 'btn sm', type: 'button', onclick: act(() => api(`/api/admin/payouts/${p.id}`, { method: 'POST', body: { action: 'rejected', note: ref.value } })) }, 'Reject')));
