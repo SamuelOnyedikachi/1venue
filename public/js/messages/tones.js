@@ -25,7 +25,9 @@ function unlock() {
     return a.play().then(() => {
       a.pause();
       a.currentTime = 0;
-      a.muted = false;
+      // Keep the warm-up muted. Unmute only when an actual message or call
+      // tone is played; some mobile browsers can leak a brief sound when
+      // the element is unmuted immediately after this silent playback.
       return true;
     }).catch(() => {
       a.muted = false;
@@ -44,7 +46,7 @@ let lastMsg = 0;
 export function playMessageTone() {
   if (toneMuted('message') || Date.now() - lastMsg < 1500) return;
   lastMsg = Date.now();
-  const a = audio('message'); a.volume = 0.85; a.currentTime = 0;
+  const a = audio('message'); a.muted = false; a.volume = 0.85; a.currentTime = 0;
   a.play().catch(() => {});
 }
 
@@ -53,7 +55,7 @@ export function startRingtone() {
   let vib = null;
   const buzz = () => { try { navigator.vibrate && navigator.vibrate([400, 200, 400]); } catch { /* ignore */ } };
   buzz(); vib = setInterval(buzz, 2600);
-  const a = audio('ringtone'); a.loop = true; a.volume = 1; ringing = true;
+  const a = audio('ringtone'); a.muted = false; a.loop = true; a.volume = 1; ringing = true;
   if (!toneMuted('ring')) {
     a.currentTime = 0;
     a.play().then(() => { unlocked = true; }).catch(() => {});

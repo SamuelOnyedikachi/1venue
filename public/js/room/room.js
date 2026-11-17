@@ -109,7 +109,7 @@ class Room {
       !state.user ? h('p', { class: 'tiny muted' }, 'Joining as a guest. ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); requireLogin('Sign in to keep your history'); } }, 'Sign in'), ' to save transcripts and history.') : null,
       (creating && this.intent?.meetingAccessMode === 'paid_entry') || (this.meetingInfo?.paidEntry?.enabled) || (ev?.meetingAccessMode === 'paid_entry')
         ? h('p', { class: 'small muted' }, `Paid entry: ${this.intent?.meetingEntryPriceCredits || this.meetingInfo?.paidEntry?.entryCredits || ev?.meetingEntryPriceCredits} credits for ${this.intent?.meetingDurationMin || this.meetingInfo?.paidEntry?.durationMin || ev?.meetingDurationMin} minutes. Sign in; credits are charged when the host accepts you. Your payment covers rejoining this meeting.`)
-        : ((creating && !this.intent?.venue) || (ev?.isHost && !ev.live) ? h('p',{class:'small muted'},'The first 15 minutes are free. Sign in and use credits to continue after that. ',h('a',{href:'/wallet',target:'_blank',rel:'noopener'},'Open wallet')) : null),
+        : null,
       joinB,
       h('div', { class: 'row gap-s tiny muted center' }, h('span', { html: icon('lock', { size: 12 }) }), 'Recordings stay on your device. Captions are processed privately.'));
     this.view.replaceChildren(h('div', { class: 'prejoin' }, h('div', { class: 'pj-art', 'aria-hidden': 'true' }), pv, form));
@@ -217,26 +217,18 @@ Object.assign(Room.prototype, {
   async syncBilling() {
     if (!this.alive || !this.billingFreeUntil || this.me?.role !== 'host') return;
     const left = this.billingFreeUntil - Date.now();
-    if (left <= 2 * 60 * 1000 && this.billingNoticeEl && !this.billingWarned) {
+    if (left <= 2 * 60 * 1000 && !this.billingWarned) {
       this.billingWarned = true;
-      this.billingNoticeEl.hidden = false;
-      this.billingNoticeEl.className = 'credit-warning';
-      this.billingNoticeEl.replaceChildren(document.createTextNode('Your free 15 minutes end soon. Sign in and have credits ready to keep this meeting open. '));
-      const signin = h('a', { href: '#', onclick: (e) => { e.preventDefault(); requireLogin('Sign in before your free meeting time ends'); } }, 'Sign in');
-      const wallet = h('a', { href: '/wallet', target: '_blank', rel: 'noopener' }, 'Open wallet');
-      this.billingNoticeEl.append(signin, document.createTextNode(' · '), wallet);
+      toast('Your free 15 minutes end soon. Make sure your wallet has credits to continue.', { icon: 'wallet', group: 'billing', ms: 7000 });
     }
-    if (left <= 0 || this.billingClaimBusy) return;
+    if (left <= 0) { clearInterval(this.billingSyncTimer); return; }
+    if (this.billingClaimed || this.billingClaimBusy) return;
     this.billingClaimBusy = true;
     try {
       const claim = await api('/api/meeting/billing/claim', { method: 'POST', body: { code: this.code, participantId: this.me.id, wsCredential: this.wsCredential } });
       if (claim.claimed) {
         this.billingFreeUntil = Number(claim.freeUntilMs || this.billingFreeUntil);
-        this.billingNoticeEl?.replaceChildren(document.createTextNode('Your meeting will use credits after the free 15 minutes. '), h('a', { href: '/wallet', target: '_blank', rel: 'noopener' }, 'Open wallet'));
-        this.billingNoticeEl.hidden = false;
-        this.billingNoticeEl.className = 'credit-warning';
-        this.billingWarned = true;
-        clearInterval(this.billingSyncTimer);
+        this.billingClaimed = true;
       }
     } catch (_) { /* keep the room available; the timer still ends at the server deadline */ }
     finally { this.billingClaimBusy = false; }
@@ -289,8 +281,6 @@ Object.assign(Room.prototype, {
     this.registerCmds();
     this.tick = setInterval(() => this.paintHead(), 1000);
     if (this.me.role === 'host' && this.billingFreeUntil) {
-      this.billingNoticeEl = h('div', { class: 'small muted', hidden: true });
-      this.root.insertBefore(this.billingNoticeEl, this.main);
       this.billingSyncTimer = setInterval(() => this.syncBilling(), 8000);
       this.syncBilling();
     }
@@ -476,21 +466,22 @@ Object.assign(Room.prototype, {
 /* ======================================================================= chrome, commands, lifecycle */
 Object.assign(Room.prototype, {
   syncPaidEntry() {
-    if (!this.alive || !this.paidEntry?.enabled || !this.paidEntryNoticeEl) return;
+    if (!this.alive || !this.paidEntry?.enabled) return;
     const leftMs = Number(this.paidEntry.runtimeEndMs || this.paidEntry.advertisedEndMs) - Date.now();
     const leftMin = Math.max(0, Math.ceil(leftMs / 60000));
-    const status = this.paidEntryStatusEl;
-    if (status) status.textContent = leftMs <= 0 ? 'Ending now…' : `${leftMin} minute${leftMin === 1 ? '' : 's'} remaining.`;
+    if (leftMs <= 0) { clearInterval(this.paidEntrySyncTimer); return; }
     if (this.me?.role === 'host' && leftMs <= 10 * 60000 && leftMs > 0 && !this.paidEntryWarned) {
       this.paidEntryWarned = true;
-      toast(`This paid-entry meeting ends in about ${leftMin} minutes. Extend it to keep the room open.`, { icon: 'wallet', ms: 7000 });
+      toast(`This paid-entry meeting ends in about ${leftMin} minutes.`, {
+        icon: 'wallet', group: 'wallet', ms: 10000,
+        action: { label: 'Extend 15 min', run: () => this.extendPaidEntry() },
+      });
     }
   },
   async extendPaidEntry() {
     if (this.paidEntryExtending) return;
     if (!(await confirmDlg('Add 15 minutes to this meeting for 15 credits?', { ok: 'Extend meeting' }))) return;
     this.paidEntryExtending = true;
-    if (this.paidEntryExtendButton) this.paidEntryExtendButton.disabled = true;
     try {
       const result = await api('/api/meeting/paid-entry/extend', { method: 'POST', body: { code: this.code, participantId: this.me.id, wsCredential: this.wsCredential, minutes: 15 } });
       this.paidEntry.runtimeEndMs = Number(result.session.runtimeEndMs);
@@ -502,7 +493,6 @@ Object.assign(Room.prototype, {
       toast(error.message || 'Could not extend this meeting', { icon: 'alert', ms: 6000 });
     } finally {
       this.paidEntryExtending = false;
-      if (this.paidEntryExtendButton) this.paidEntryExtendButton.disabled = false;
     }
   },
   buildUi() {
@@ -515,15 +505,6 @@ Object.assign(Room.prototype, {
     this.root = h('div', { class: 'room', 'data-layout': this.layout }, h('div', { class: 'room-art', 'aria-hidden': 'true' }), this.headEl, this.creditControl.notice, this.netEl, this.main, this.peekHost);
     this.view.replaceChildren(this.root);
     if (this.paidEntry?.enabled) {
-      this.paidEntryStatusEl = h('span', { class: 'muted' });
-      this.paidEntryNoticeEl = h('div', { class: 'credit-warning small row gap-sm', style: 'align-items:center;flex-wrap:wrap' },
-        h('span', null, `Paid entry · ${this.paidEntry.entryCredits} credits · ${this.paidEntry.durationMin} minutes advertised. The room ends at the advertised time; unused time is refunded after the meeting ends. Host earnings are 80% of retained entry credits.`),
-        this.paidEntryStatusEl);
-      if (this.me?.role === 'host') {
-        this.paidEntryExtendButton = h('button', { class: 'btn sm', type: 'button', onclick: () => this.extendPaidEntry() }, 'Extend 15 minutes · 15 credits');
-        this.paidEntryNoticeEl.append(this.paidEntryExtendButton);
-      }
-      this.root.insertBefore(this.paidEntryNoticeEl, this.main);
       this.syncPaidEntry();
       this.paidEntrySyncTimer = setInterval(() => this.syncPaidEntry(), 10000);
     }
@@ -891,6 +872,7 @@ Object.assign(Room.prototype, {
     const s = sheet({ title: 'More', icon: 'more' });
     const it = (ic, label, g, run) => h('button', { class: 'tool-card', 'data-group': g, type: 'button', onclick: () => { s.close(); run(); } }, h('span', { class: 'ico-tile', 'data-group': g, html: icon(ic, { size: 20 }) }), h('b', null, label));
     s.body.append(h('div', { class: 'tool-grid' },
+      R.me.role === 'host' && R.paidEntry?.enabled ? it('clock', 'Extend 15 minutes · 15 credits', 'wallet', () => R.extendPaidEntry()) : null,
       it('captions', R.captioner.on ? 'Stop captions' : 'Captions', 'content', () => (R.captioner.on ? R.captioner.stop() : R.captioner.start(), R.changed())),
       it('record', 'Record', 'media', () => R.panel.open('tools', 'record')),
       it('pip', 'Mini window', 'media', () => R.pip()),

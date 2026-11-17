@@ -44,7 +44,13 @@ export async function mount(view) {
     tab = id; const my = ++seq;
     if (!keepQuery) history.replaceState(null, '', '/host?tab=' + id + (id === 'analytics' && rangeQs() ? '&' + rangeQs() : ''));
     nav.replaceChildren(...TABS.map(([t, l, ic]) => h('button', { type: 'button', role: 'tab', class: 'chip' + (t === tab ? ' on' : ''), 'aria-selected': String(t === tab), html: icon(ic, { size: 15 }) + `<span>${l}</span>`, onclick: () => show(t) })));
-    const on = nav.querySelector('.on'); if (on) nav.scrollLeft = on.offsetLeft - nav.clientWidth / 2 + on.clientWidth / 2;
+    const on = nav.querySelector('.on');
+    if (on) {
+      const navRect = nav.getBoundingClientRect();
+      const tabRect = on.getBoundingClientRect();
+      if (tabRect.left < navRect.left) nav.scrollLeft -= navRect.left - tabRect.left;
+      else if (tabRect.right > navRect.right) nav.scrollLeft += tabRect.right - navRect.right;
+    }
     body.replaceChildren(h('div', { class: 'ht-loading' }, h('span', { class: 'spinner' }), 'Loading…'));
     try {
       if (NEEDS[id] && !f[NEEDS[id]] && !(id === 'analytics' && f.exports)) { body.replaceChildren(locked(id)); return; }

@@ -29,7 +29,6 @@ export function openInstant({ onClose } = {}) {
   const accessMode = h('select', { class: 'input' },
     h('option', { value: 'host_funded' }, 'Host-funded'),
     h('option', { value: 'paid_entry' }, 'Paid entry'));
-  const billingNote = h('p', { class: 'small muted' }, 'The first 15 minutes are free. Sign in and use credits to keep the meeting going after that. ', h('a', { href: '/wallet', 'data-link': '' }, 'View wallet'));
   const duration = h('input', { class: 'input', type: 'number', min: 1, max: 720, step: 1, value: '60', inputmode: 'numeric' });
   const entryPrice = h('input', { class: 'input', type: 'number', min: 1, step: 1, value: '30', inputmode: 'numeric' });
   const paidEntry = h('div', { class: 'col', hidden: true },
@@ -40,11 +39,9 @@ export function openInstant({ onClose } = {}) {
   accessMode.onchange = () => {
     opts.accessMode = accessMode.value;
     paidEntry.hidden = opts.accessMode !== 'paid_entry';
-    billingNote.hidden = opts.accessMode === 'paid_entry';
   };
   const form = h('form', { class: 'au-form', novalidate: true },
     name.el,
-    billingNote,
     h('label', { class: 'field' }, h('span', { class: 'field-lab' }, 'Who pays for this meeting?'), accessMode),
     paidEntry,
     h('div', { class: 'im-opts' },

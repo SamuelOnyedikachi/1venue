@@ -34,8 +34,12 @@
   white-space: nowrap;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.35rem;
   cursor: pointer;
+}
+.ht-tabs .chip {
+  flex: 0 0 auto;
 }
 .ht-chips {
   --g: var(--accent);
@@ -1379,10 +1383,14 @@ a.ht-strong:hover {
 /* phones: tables become stacked card rows with the column label on each cell */
 @media (max-width: 640px) {
   .ht-tabs {
+    justify-content: flex-start;
     flex-wrap: nowrap;
     overflow-x: auto;
+    overflow-y: hidden;
     margin-inline: calc(-1 * var(--pad-x, 1rem));
     padding-inline: var(--pad-x, 1rem);
+    scroll-padding-inline: var(--pad-x, 1rem);
+    -webkit-overflow-scrolling: touch;
     top: var(--top-h, 54px);
   }
   .ht-panel-head,

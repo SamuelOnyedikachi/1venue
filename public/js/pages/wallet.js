@@ -34,7 +34,7 @@ export async function mount(view) {
   const meetingPending = h("strong");
   const meetingAvailable = h("strong");
   const transferAmount = h("input", { class: "input", type: "number", min: "0.1", step: "0.1", value: "0.8", inputmode: "decimal" });
-  const transferButton = h("button", { class: "btn primary", type: "button" }, icon("arrowRight", { size: 16 }), "Move to spending wallet");
+  const transferButton = h("button", { class: "btn primary", type: "button", html: icon("arrowRight", { size: 16 }) + "<span>Move to spending wallet</span>" });
   const amount = h("input", {
     class: "input",
     id: "wallet-credits",
