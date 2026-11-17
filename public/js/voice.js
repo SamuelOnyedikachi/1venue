@@ -1,4 +1,7 @@
-// Voice typing: every eligible text box listens while it is focused, and types what it hears.
+// Voice typing: hover or focus an eligible text box and a small mic appears at its edge; tap it to
+// start or stop dictation (toggle mode). While it listens the field stays fully editable: you can type,
+// delete and move the caret, and spoken words land at the caret. Nothing is made readonly and focus is
+// never taken away (important on iPhone, where a blur closes the keyboard).
 //
 // Engine: Whisper on Replicate (server, /api/stt?mode=dictate) is primary. Speech is cut into short
 // clips at natural pauses (simple energy VAD, ~0.6 s of silence or STT segment max), so silence is
@@ -124,13 +127,23 @@ export class Segmenter {
 let session = null;
 const SILENCE_MS = 12000;
 class Session {
-  constructor(el, kind, { manual = false, onEnd = null, silenceMs = SILENCE_MS } = {}) {
+  constructor(el, kind, { manual = false, keepTyping = false, onEnd = null, silenceMs = SILENCE_MS } = {}) {
     this.el = el; this.kind = kind; this.seq = 0; this.nextApply = 0; this.results = new Map(); this.inflight = 0; this.alive = true;
     this.anchor = null; this.interimLen = 0;
-    this.manual = manual; this.onEnd = onEnd; this.silenceMs = silenceMs; this.lastHeard = Date.now();
+    this.manual = manual; this.keepTyping = keepTyping; // keepTyping: like auto mode, Web Speech restarts itself until you tap stop this.onEnd = onEnd; this.silenceMs = silenceMs; this.lastHeard = Date.now();
     this.onUserInput = (e) => { if (!e.isTrusted) return; this.anchor = null; this.interimLen = 0; };
     el.addEventListener('input', this.onUserInput);
-    if (manual) {
+    if (keepTyping) {
+      // Mic toggle: typing never stops dictation. If grey interim words are showing when you type, they are
+      // lifted out first (the final words arrive moments later at your caret), so nothing you type is clobbered.
+      this.onTypeOver = (e) => { if (e.isTrusted) this.dropInterim(); };
+      el.addEventListener('beforeinput', this.onTypeOver);
+      el.addEventListener('compositionstart', this.onTypeOver);
+      this.watch = setInterval(() => {
+        if (!el.isConnected) return this.stop('gone');
+        if (!this.inflight && Date.now() - this.lastHeard > Math.max(this.silenceMs, 30000)) this.stop('silence');
+      }, 500);
+    } else if (manual) {
       // The user typing, deleting, pasting or dropping text ends tap-to-talk (voice inserts never fire beforeinput).
       this.onUserEdit = (e) => { if (e.isTrusted) this.stop('typing'); };
       el.addEventListener('beforeinput', this.onUserEdit);
@@ -245,6 +258,16 @@ class Session {
     try { el.setSelectionRange(caret, caret); } catch { /* */ }
     el.dispatchEvent(new Event('input', { bubbles: true }));
   }
+  /** Remove the interim (not yet final) words, keeping the user's caret / selection where it was. */
+  dropInterim() {
+    const el = this.el;
+    if (!this.interimLen || this.anchor == null) return;
+    const a = this.anchor, n = this.interimLen, ss = el.selectionStart, se = el.selectionEnd;
+    el.value = el.value.slice(0, a) + el.value.slice(a + n);
+    const fix = (p) => (p == null ? p : p >= a + n ? p - n : p > a ? a : p);
+    try { el.setSelectionRange(fix(ss), fix(se)); } catch { /* */ }
+    this.anchor = null; this.interimLen = 0;
+  }
   interim(t) { this.place(t, false); }
   final(t) { this.place(t, true); }
   async date(text) {
@@ -263,6 +286,7 @@ class Session {
     if (!this.alive) return; this.alive = false;
     this.el.removeEventListener('input', this.onUserInput);
     if (this.onUserEdit) this.el.removeEventListener('beforeinput', this.onUserEdit);
+    if (this.onTypeOver) { this.el.removeEventListener('beforeinput', this.onTypeOver); this.el.removeEventListener('compositionstart', this.onTypeOver); }
     clearInterval(this.watch);
     this.seg && this.seg.stop(); this.seg = null;
     if (this.clone) { this.clone.stop(); this.clone = null; }
@@ -284,17 +308,18 @@ export async function listenOn(el, opts = {}) { return begin(el, opts); }
 export const isListening = (el) => !!(session && session.alive && (!el || session.el === el));
 export function stopListening(el, reason = 'user') { if (session && (!el || session.el === el)) session.stop(reason); }
 async function begin(el, opts = {}) {
-  const manual = !!opts.manual;
-  const kind = manual ? (el && /^(TEXTAREA|INPUT)$/.test(el.tagName) && !el.disabled && !el.readOnly ? 'text' : null) : voiceKind(el);
-  if (!kind || (!manual && !voicePrefs.enabled)) return false;
-  if (session && session.el === el && session.manual === manual) return true;
+  const manual = !!opts.manual, toggle = !!opts.keepTyping;
+  const kind = toggle ? voiceKind(el) : manual ? (el && /^(TEXTAREA|INPUT)$/.test(el.tagName) && !el.disabled && !el.readOnly ? 'text' : null) : voiceKind(el);
+  if (!kind || (!manual && !toggle && !voicePrefs.enabled)) return false;
+  if (session && session.el === el && session.manual === manual && !!session.keepTyping === toggle) return true;
   stop();
+  if (toggle) write({ consent: true }); // tapping the mic is the consent
   if (!voicePrefs.consented) { askConsent(el, opts); return false; }
   const s = session = new Session(el, kind, opts);
   const ok = await s.start().catch(() => false);
   if (!ok) {
     if (session === s) s.stop('failed');
-    if (manual && !engine()) toast('Voice typing isn’t available in this browser', { icon: 'micOff' });
+    if ((manual || toggle) && !engine()) toast('Voice typing isn’t available in this browser', { icon: 'micOff' });
     return false;
   }
   try { opts.onStart && opts.onStart(); } catch { /* */ }
@@ -324,13 +349,87 @@ function askConsent(el, opts = {}) {
   document.body.append(box);
 }
 
+/* ---------- the mic toggle: appears on hover / focus of an eligible field ---------- */
+// One floating button for the whole app, positioned at the field's right edge (inputs: centred;
+// textareas: bottom corner). pointerdown / mousedown / touchend are cancelled so tapping it never
+// blurs the field or closes the phone keyboard.
+const micEligible = (el) => !!(el && el.nodeType === 1 && voicePrefs.enabled && voiceKind(el) && !el.classList.contains('no-vmic') && el.offsetParent !== null);
+let micBtn = null, micFor = null, hideT = 0, hovering = false;
+function micPaint() {
+  if (!micBtn) return;
+  const on = !!(micFor && isListening(micFor));
+  micBtn.classList.toggle('on', on);
+  micBtn.setAttribute('aria-pressed', String(on));
+  micBtn.setAttribute('aria-label', on ? 'Stop voice typing' : 'Start voice typing');
+  micBtn.dataset.tip = on ? 'Stop voice typing' : 'Voice typing';
+}
+function micPlace() {
+  if (!micBtn || !micFor || micBtn.hidden) return;
+  if (!micFor.isConnected) { micHide(true); return; }
+  const r = micFor.getBoundingClientRect();
+  if (r.bottom < 0 || r.top > innerHeight || !r.width) { micBtn.style.visibility = 'hidden'; return; }
+  micBtn.style.visibility = '';
+  const size = 28, pad = 6;
+  const ta = micFor.tagName === 'TEXTAREA' && r.height > 56;
+  micBtn.style.top = `${Math.round(ta ? r.bottom - size - pad : r.top + (r.height - size) / 2)}px`;
+  micBtn.style.left = `${Math.round(r.right - size - pad)}px`;
+}
+function micShow(el) {
+  clearTimeout(hideT);
+  if (micFor !== el) { micFor?.classList.remove('has-vmic'); micFor = el; el.classList.add('has-vmic'); }
+  micBtn.hidden = false; micPlace(); micPaint();
+  requestAnimationFrame(() => micBtn.classList.add('in'));
+}
+function micHide(now = false) {
+  clearTimeout(hideT);
+  const go = () => {
+    if (!micFor) return;
+    if (!now && (isListening(micFor) || document.activeElement === micFor || hovering)) return;
+    micBtn.classList.remove('in'); micBtn.hidden = true; micFor.classList.remove('has-vmic'); micFor = null;
+  };
+  if (now) go(); else hideT = setTimeout(go, 220);
+}
+function micToggle() {
+  const el = micFor; if (!el) return;
+  if (isListening(el)) { stopListening(el, 'user'); micPaint(); return; }
+  if (document.activeElement !== el) { try { el.focus({ preventScroll: true }); } catch { el.focus(); } }
+  listenOn(el, { keepTyping: true, onStart: micPaint, onEnd: () => { micPaint(); if (document.activeElement !== el) micHide(); } }).then(micPaint);
+}
+function initMic() {
+  micBtn = document.createElement('button');
+  micBtn.type = 'button'; micBtn.className = 'vmic'; micBtn.hidden = true; micBtn.tabIndex = -1;
+  micBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4"/></svg>';
+  micPaint();
+  const keep = (e) => e.preventDefault();
+  micBtn.addEventListener('pointerdown', keep); micBtn.addEventListener('mousedown', keep);
+  let touched = 0;
+  micBtn.addEventListener('touchend', (e) => { e.preventDefault(); touched = Date.now(); micToggle(); }); // iOS: no synthetic click, no blur
+  micBtn.addEventListener('click', () => { if (Date.now() - touched > 600) micToggle(); });
+  micBtn.addEventListener('mouseenter', () => { hovering = true; clearTimeout(hideT); });
+  micBtn.addEventListener('mouseleave', () => { hovering = false; micHide(); });
+  document.body.append(micBtn);
+  const hoverable = matchMedia('(hover: hover)');
+  document.addEventListener('mouseover', (e) => { if (!hoverable.matches) return; const el = e.target; if (micEligible(el)) { hovering = true; micShow(el); } });
+  document.addEventListener('mouseout', (e) => { if (e.target === micFor && e.relatedTarget !== micBtn) { hovering = false; micHide(); } });
+  document.addEventListener('focusin', (e) => { if (micEligible(e.target)) micShow(e.target); });
+  document.addEventListener('focusout', (e) => { if (e.target === micFor) micHide(); });
+  // Keyboard: Alt+M toggles dictation in the focused field.
+  document.addEventListener('keydown', (e) => { if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'm' || e.key === 'µ') && micFor && document.activeElement === micFor) { e.preventDefault(); micToggle(); } });
+  addEventListener('scroll', micPlace, { passive: true, capture: true });
+  addEventListener('resize', micPlace, { passive: true });
+  window.visualViewport?.addEventListener('resize', micPlace, { passive: true });
+  window.addEventListener('voice-prefs', () => { if (!voicePrefs.enabled) micHide(true); });
+}
+
 let inited = false;
 export function initVoice() {
   if (inited) return; inited = true;
   if (!navigator.mediaDevices?.getUserMedia && !SpeechRec) return;
-  document.addEventListener('focusin', (e) => { const el = e.target; if (voiceKind(el)) begin(el); });
+  initMic();
+  // Moving to another field ends dictation in the previous one (it never types somewhere you are not).
+  document.addEventListener('focusin', (e) => { if (session && session.keepTyping && e.target !== session.el && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) session.stop('moved'); });
   document.addEventListener('focusout', (e) => {
-    if (!session || e.target !== session.el) return;
+    if (!session || e.target !== session.el || session.keepTyping) return; // the mic toggle survives brief blurs (e.g. a picker)
     const s = session;
     setTimeout(() => { if (session === s && document.activeElement !== s.el) s.stop(); }, 120);
   });

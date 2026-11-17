@@ -190,7 +190,7 @@ export function createStage(R) {
       canStop ? closeBtn('Stop', () => R.confirmStopContent()) : null);
     const body = h('div', { class: 'present-body' });
     present.append(head, body);
-    R.applyMediaSync = null; R.applyPage = null; R.applySlideshow = null;
+    R.applyMediaSync = null; R.applyPage = null; R.applySlideshow = null; R.applyScroll = null;
     if (c.type === 'youtube' && c.videoId) {
       body.classList.add('yt-wrap');
       const tap = h('button', { class: 'btn sm glass yt-tap', type: 'button', hidden: true, html: icon('volume', { size: 14 }) + '<span>Tap for sound</span>' });
@@ -246,7 +246,14 @@ export function createStage(R) {
       return;
     }
     if (c.type === 'image' && c.url) { body.append(h('img', { src: c.url, alt: c.title || '', class: 'present-img' })); return; }
-    body.append(h('div', { class: 'empty-card' }, I('presentation'), h('b', null, 'This content type isn’t supported any more'), h('div', { class: 'tiny muted' }, 'Ask the presenter to share YouTube, slides or an image.')));
+    if (c.type === 'doc' && c.url) {
+      const canControl = R.canControlContent();
+      let undo = () => {};
+      import('./docview.js').then((m) => { if (present.contains(body)) undo = m.mountDoc(body, { R, c, canControl }); });
+      presentCleanup = () => undo();
+      return;
+    }
+    body.append(h('div', { class: 'empty-card' }, I('presentation'), h('b', null, 'This content type isn’t supported any more'), h('div', { class: 'tiny muted' }, 'Ask the presenter to share YouTube, slides, a document or an image.')));
   }
   function buildTimeline() {
     const tl = R.timeline; const i = Math.min(tl.selected || 0, tl.items.length - 1); const it = tl.items[i];

@@ -25,6 +25,9 @@ async function settle(id,{now=Date.now(),endReason=null,ownerId=null}={}) {
     const row=(await c.query('SELECT * FROM credit_billing_sessions WHERE id=$1 FOR UPDATE',[id])).rows[0];
     if (row.state==='active' && ownerId && row.owner_id!==ownerId) throw fail(409,'This meeting is reconnecting to another server');
     return settleLocked(c,row,now,endReason);
+  }).then((out)=>{ // a debit happened: maybe auto top-up (async, single-flight, see autotopup.js)
+    if(out&&original.user_id!=null)require('./autotopup').maybeAfterDebit(Number(original.user_id),null);
+    return out;
   });
 }
 async function settleLocked(c,row,now,endReason=null) {

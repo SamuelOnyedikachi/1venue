@@ -49,6 +49,10 @@ function connect() {
       const mine = m.message && m.message.fromUserId === userId;
       if (!mine && !(document.visibilityState === 'visible' && Number(active) === Number(m.conversationId))) {
         refreshUnread();
+        if (m.message.kind !== 'call' && m.message.kind !== 'system' && !m.muted) {
+          import('./tones.js').then((t) => t.playMessageTone()).catch(() => {});
+          if (document.visibilityState !== 'visible') import('./notify.js').then((n) => n.localNotify({ title: m.message.fromName, body: m.message.text || 'Sent an attachment', url: `/messages/${m.conversationId}`, tag: `conv-${m.conversationId}` })).catch(() => {});
+        }
         if (!location.pathname.startsWith('/messages') && m.message.kind !== 'call') toast(`${m.message.fromName}: ${m.message.text || 'sent an attachment'}`.slice(0, 120), { icon: 'chat', group: 'people', action: { label: 'Open', run: () => import('../app.js').then((a) => a.navigate(`/messages/${m.conversationId}`)) } });
       }
     } else if (m.type === 'unread' || m.type === 'read' || m.type === 'conversation-updated') refreshUnread();

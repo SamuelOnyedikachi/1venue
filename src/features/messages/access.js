@@ -2,9 +2,10 @@
  * Who may message whom (plan section 7). A may start a DM with B when they are not blocked either
  * way and any of these hold:
  *   1. they already have a DM thread (including one that started in a meeting);
- *   2. B's setting is "everyone";
- *   3. B's setting is "contacts" (the default) and they follow each other, share an organisation,
+ *   2. B's setting is "everyone" (the default: anyone on 1venue can start a chat by username or email);
+ *   3. B's setting is "contacts" and they follow each other, share an organisation,
  *      were in the same meeting, or are in the same group chat.
+ * New chats are rate-limited per hour (service.newChatCap) and per minute for username / email lookups.
  * "nobody" only allows existing threads. Blocks override everything and are symmetric in effect.
  */
 const { one, many, q } = require('../../core/db');
@@ -18,7 +19,7 @@ async function prefs(userId) {
   let x = r && r.extra;
   if (typeof x === 'string') { try { x = JSON.parse(x); } catch (_) { x = {}; } }
   x = x && typeof x === 'object' ? x : {};
-  return { dmPolicy: POLICIES.includes(x.dmPolicy) ? x.dmPolicy : 'contacts', hidePresence: !!x.hidePresence, raw: x };
+  return { dmPolicy: POLICIES.includes(x.dmPolicy) ? x.dmPolicy : 'everyone', hidePresence: !!x.hidePresence, notifyPrompt: x.notifyPrompt && typeof x.notifyPrompt === 'object' ? x.notifyPrompt : null, raw: x };
 }
 async function savePrefs(userId, patch = {}) {
   const cur = await prefs(userId);
@@ -28,6 +29,10 @@ async function savePrefs(userId, patch = {}) {
     next.dmPolicy = patch.dmPolicy;
   }
   if (patch.hidePresence !== undefined) next.hidePresence = !!patch.hidePresence;
+  if (patch.notifyPrompt !== undefined) {
+    const n = patch.notifyPrompt && typeof patch.notifyPrompt === 'object' ? patch.notifyPrompt : {};
+    next.notifyPrompt = { asks: Math.min(50, Math.max(0, Number(n.asks) || 0)), next: Number(n.next) || 0, state: ['granted', 'denied', 'dismissed', 'default'].includes(n.state) ? n.state : 'default' };
+  }
   await q(`INSERT INTO user_prefs (user_id, extra, updated_at) VALUES ($1, $2, NOW())
     ON CONFLICT (user_id) DO UPDATE SET extra=EXCLUDED.extra, updated_at=NOW()`, [userId, JSON.stringify(next)]);
   return prefs(userId);

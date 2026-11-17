@@ -15,10 +15,11 @@ function kindOf(mime) {
   if (m === 'application/pdf') return 'pdf';
   if (m.startsWith('audio/')) return 'audio';
   if (m.startsWith('video/')) return 'video';
+  if (m === 'application/x-mwb') return 'board';
   return 'other';
 }
-const LIMIT = { image: 'maxImageBytes', pdf: 'maxPdfBytes', audio: 'maxAudioBytes', video: 'maxVideoBytes', other: 'maxOtherBytes' };
-const LABEL = { image: 'Images', pdf: 'PDFs', audio: 'Audio files', video: 'Videos', other: 'Files' };
+const LIMIT = { image: 'maxImageBytes', pdf: 'maxPdfBytes', audio: 'maxAudioBytes', video: 'maxVideoBytes', board: 'maxBoardBytes', other: 'maxOtherBytes' };
+const LABEL = { image: 'Images', pdf: 'PDFs', audio: 'Audio files', video: 'Videos', board: 'Whiteboard files', other: 'Files' };
 const fmtMB = (b) => { const v = b / 1048576; return (v >= 10 ? Math.round(v) : Math.round(v * 10) / 10) + ' MB'; };
 function limitFor(mime) { return Math.min(U[LIMIT[kindOf(mime)]], config.STORAGE.maxUploadBytes); }
 const err = (status, message) => Object.assign(new Error(message), { status, expose: true });
@@ -62,7 +63,7 @@ async function quota(data, { size, userId, ownerKey, roomCode }) {
 
 function publicLimits() {
   return {
-    image: limitFor('image/png'), pdf: limitFor('application/pdf'), audio: limitFor('audio/webm'), video: limitFor('video/mp4'), other: limitFor('application/octet-stream'),
+    image: limitFor('image/png'), pdf: limitFor('application/pdf'), audio: limitFor('audio/webm'), video: limitFor('video/mp4'), board: limitFor('application/x-mwb'), other: limitFor('application/octet-stream'),
     userQuota: U.userQuotaBytes, meetingCap: U.meetingCapBytes, perMinute: U.perMinute,
   };
 }

@@ -1,0 +1,80 @@
+/* Money: coin glyph for credits, price breakdown, payment status icons. */
+.credits {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.credits-coin,
+.coin {
+  display: inline-flex;
+  color: #d4a017;
+  flex: none;
+}
+.credits-coin svg {
+  display: block;
+}
+.money-breakdown {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.mb-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.mb-row.total {
+  padding-top: 0.4rem;
+  border-top: 1px dashed var(--line-2);
+  color: var(--text);
+  font-weight: 700;
+  font-size: 1rem;
+}
+.mb-note {
+  margin: 0.15rem 0 0;
+}
+.checkout-sheet {
+  display: grid;
+  gap: 0.7rem;
+}
+.pay-st {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  color: var(--muted);
+}
+.pay-st.ok {
+  color: #16a34a;
+}
+.pay-st.wait {
+  color: #d97706;
+}
+.pay-st.bad {
+  color: #dc2626;
+}
+.pay-st.ref {
+  color: #2563eb;
+}
+.input-suffix {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.input-suffix > .input {
+  padding-right: 2.2rem;
+}
+.input-suffix > span {
+  position: absolute;
+  right: 0.7rem;
+  display: inline-flex;
+  pointer-events: none;
+}

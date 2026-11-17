@@ -11,7 +11,7 @@ const CAPTION_LANGS = [['', 'Auto-detect'], ['en', 'English (Nigerian)'], ['yo',
 export async function mount(view) {
   view.classList.add('settings-view');
   const P = () => state.prefs;
-  const row = (ic, g, title, hint, control, id) => h('div', { class: 'set-row', id }, h('span', { class: 'ico', style: { '--g': `var(--g-${g})` }, html: icon(ic) }), h('div', { class: 'grow' }, h('div', { style: { fontWeight: 650 } }, title), hint ? h('div', { class: 'tiny faint' }, hint) : null), control);
+  const row = (ic, g, title, hint, control, id, cls = '') => h('div', { class: ('set-row ' + cls).trim(), id }, h('span', { class: 'ico', style: { '--g': `var(--g-${g})` }, html: icon(ic) }), h('div', { class: 'grow' }, h('div', { style: { fontWeight: 650 } }, title), hint ? h('div', { class: 'tiny faint' }, hint) : null), control);
   const seg = (opts, get, set) => { const s = h('div', { class: 'seg' }); const paint = () => s.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === String(get()))); opts.forEach(([v, l, ic]) => s.append(h('button', { 'data-v': String(v), html: (ic ? icon(ic, { size: 15 }) : '') + esc(l), onclick: () => { set(v); paint(); } }))); paint(); return s; };
   const toggle = (get, set) => { const i = h('input', { type: 'checkbox', checked: !!get() }); i.onchange = () => set(i.checked); return h('label', { class: 'switch' }, i, h('span')); };
   const swatches = h('div', { class: 'swatches' }, ACCENTS.map(([n, a, a2]) => h('button', { class: `swatch${P().accent === a ? ' on' : ''}`, 'data-tip': n, 'aria-label': n, style: { background: `linear-gradient(135deg, ${a}, ${a2})` }, onclick: (e) => { setPrefs({ accent: a, accent2: a2 }); swatches.querySelectorAll('.swatch').forEach((s) => s.classList.remove('on')); e.currentTarget.classList.add('on'); } })));
@@ -24,10 +24,10 @@ export async function mount(view) {
   const capSel = h('select', { class: 'input sm' }, CAPTION_LANGS.map(([v, l]) => h('option', { value: v, selected: (P().captionLang || '') === v }, l)));
   capSel.onchange = () => { setPrefs({ captionLang: capSel.value || null }); toast('Speech language saved', { icon: 'captions', group: 'ai' }); };
   const card = (title, ic, ...kids) => h('section', { class: 'card pad layer set-card' }, h('h2', { class: 'set-h', html: icon(ic, { size: 20 }) + esc(title) }), ...kids);
-  view.append(h('div', { class: 'page-head' }, h('h1', { html: icon('settings', { size: 28 }) + 'Settings' }), h('p', { class: 'muted' }, state.user ? 'Saved to your account and synced across devices.' : 'Saved on this device. Sign in to sync.')),
+  view.append(h('div', { class: 'page-head' }, h('h1', { html: icon('settings', { size: 28 }) + 'Settings' })),
     h('div', { class: 'set-grid' },
       card('Appearance', 'palette',
-        row('sun', 'settings', 'Theme', 'Light, dark or follow your device', seg([['light', 'Light', 'sun'], ['dark', 'Dark', 'moon'], ['system', 'Auto', 'sliders']], () => P().theme, (v) => setPrefs({ theme: v }))),
+        row('sun', 'settings', 'Theme', 'Light, dark or follow your device', seg([['light', 'Light', 'sun'], ['dark', 'Dark', 'moon'], ['system', 'Auto', 'sliders']], () => P().theme, (v) => setPrefs({ theme: v })), 'theme', 'set-row-stack'),
         row('palette', 'settings', 'Accent colour', 'Used for buttons, highlights, your QR codes and events', custom),
         swatches,
         row('activity', 'settings', 'Reduce motion', 'Calmer transitions and fewer animations', toggle(() => P().reduceMotion, (v) => setPrefs({ reduceMotion: v })))),
@@ -38,18 +38,19 @@ export async function mount(view) {
       card('Bible', 'bookOpen',
         row('languages', 'faith', 'Default translation', 'Used in the reader and for scripture shown during events', translationSelect(P().bibleTranslation || 'eng_kjv', (v) => { setPrefs({ bibleTranslation: v }); toast('Translation saved', { icon: 'bookOpen', group: 'faith' }); }, { compact: true }), 'bible')),
       card('Voice & captions', 'captions',
-        row('mic', 'ai', 'Voice typing', 'Text boxes and the / bar listen while you’re in them and type what you say (Whisper on Replicate, or your browser’s speech service). Never in password, email, phone or code fields. This device only.', toggle(() => voicePrefs.enabled, (v) => { voicePrefs.set(v); toast(v ? 'Voice typing on' : 'Voice typing off', { icon: v ? 'mic' : 'micOff', group: 'ai' }); }), 'voice'),
+        row('mic', 'ai', 'Voice typing', 'A small mic appears when you hover or tap into a text box. Tap it to dictate, tap again to stop; you can keep typing while it listens (Whisper on Replicate, or your browser’s speech service). Never in password, email, phone or code fields. This device only.', toggle(() => voicePrefs.enabled, (v) => { voicePrefs.set(v); toast(v ? 'Voice typing on' : 'Voice typing off', { icon: v ? 'mic' : 'micOff', group: 'ai' }); }), 'voice'),
         row('captions', 'ai', 'Speech language', 'A hint for voice typing and captions. Auto-detect works for most people; pick one if words come out in the wrong language.', capSel, 'captions'),
         row('download', 'content', 'Recordings', 'Recordings stay on your device — they are never uploaded', h('span', { class: 'chip' }, 'Local only'))),
       card('App', 'install',
         row('install', 'nav', 'Install 1venue', canInstall() ? 'Full-screen, faster, works offline' : 'Already installed or not supported in this browser', h('button', { class: 'btn sm', onclick: promptInstall }, 'Install')),
         row('keyboard', 'nav', 'Command bar', 'Press / or Ctrl K anywhere — every feature and setting is searchable', h('span', { class: 'kbd' }, '/'))),
-      state.user ? null : card('Account', 'user', row('login', 'nav', 'Not signed in', 'Sign in to sync your settings across devices', h('a', { class: 'btn sm primary', href: loginUrl('/settings'), 'data-link': '' }, 'Sign in'))),
+      state.user ? null : card('Account', 'user', row('login', 'nav', 'Not signed in', 'Sign in to use your account here', h('a', { class: 'btn sm primary', href: loginUrl('/settings'), 'data-link': '' }, 'Sign in'))),
       card('About', 'info',
         row('shield', 'admin', 'Privacy policy', 'How 1venue uses your information', h('a', { class: 'btn sm', href: '/privacy' }, 'Read')),
         row('file', 'admin', 'Terms of service', 'The rules for using 1venue', h('a', { class: 'btn sm', href: '/terms' }, 'Read')))));
   if (state.user) {
-    view.querySelector('.set-grid').append(card('Credits', 'creditCard', h('p', { class: 'small muted' }, 'View your balance, buy credits and check your payments.'), h('a', { class: 'btn sm', href: '/wallet', 'data-link': '' }, 'Open credit wallet')));
+    const { autoTopupCard, billingProfileCard } = await import('./settings-billing.js');
+    view.querySelector('.set-grid').append(autoTopupCard(card, row), billingProfileCard(card, row));
     await accountCard(card, row).then((sec) => view.querySelector('.set-grid').append(sec)).catch(() => {});
     await deleteAccountCard(card).then((sec) => { if (sec) view.querySelector('.set-grid').append(sec); }).catch(() => {});
   }

@@ -11,7 +11,7 @@ const randSlug = () => Array.from(crypto.randomBytes(7), (b) => SLUG_CH[b % SLUG
 const codes = require('../../lib/codes');
 const randCode = () => codes.randCode(6); // same 6-char lowercase format as meeting codes
 const venueOut = (r) => r && ({ id: r.id, slug: r.slug, code: r.code, name: r.name, ownerUserId: r.owner_user_id, createdAt: r.created_at, meetings: r.meetings != null ? Number(r.meetings) : undefined, lastHeld: r.last_held || null, openedAt: r.opened_at || null, activeHistoryId: r.active_history_id || null, isCustom: !!r.is_custom,
-  slugTier: r.slug_tier || 'none', reservedSlug: r.reserved_slug || null, archivedAt: r.archived_at || null, archived: !!r.archived_at,
+  slugTier: effectiveTier(r), reservedSlug: r.reserved_slug || null, linkReleaseAt: r.reserved_slug && r.link_parked_at ? require('../billing/shortlinks').releaseAt(r.link_parked_at).toISOString() : null, archivedAt: r.archived_at || null, archived: !!r.archived_at,
   orgId: r.org_id || null, brand: { logoUrl: r.brand_logo_url || null, coverUrl: r.brand_cover_url || null, accent: r.brand_accent || null, accent2: r.brand_accent2 || null, about: r.brand_about || null } });
 const plans = require('../../lib/plans');
 const httpErr = (status, message) => Object.assign(new Error(message), { status });
@@ -21,6 +21,8 @@ async function slugTaken(slug, exceptId) {
   return !!(await one('SELECT 1 FROM venues WHERE (lower(slug)=lower($1) OR lower(reserved_slug)=lower($1)) AND id IS DISTINCT FROM $2 LIMIT 1', [slug, exceptId || null]));
 }
 /** Validate a requested custom slug for this user's plan (and the venue's add-on); throws 400/409. */
+/** A venue's short-link tier: slug_addon, else the original slug_tier column. */
+const effectiveTier = (r) => (r && plans.SLUG_TIERS.includes(r.slug_addon) ? r.slug_addon : r && plans.SLUG_TIERS.includes(r.slug_tier) ? r.slug_tier : 'none');
 async function resolveCustomSlug(userId, input, opts = {}, exceptId, slugTier = 'none') {
   const { slug } = codes.customSlug(input, plans.slugRights(await getUserPlan(userId), slugTier), opts);
   if (await slugTaken(slug, exceptId)) { const e = new Error(`/v/${slug} is taken — try another`); e.status = 409; throw e; }
@@ -54,10 +56,10 @@ async function getVenueBySlug(slug) { return venueOut(await one('SELECT * FROM v
 async function getVenueById(id) { return venueOut(await one('SELECT * FROM venues WHERE id=$1', [id])); }
 async function getVenueByCode(code) { return venueOut(await one('SELECT * FROM venues WHERE lower(code)=lower($1)', [String(code || '')])); }
 async function setVenueSlug(id, userId, input, opts) {
-  const v = await one('SELECT slug_tier FROM venues WHERE id=$1 AND owner_user_id=$2', [id, userId]);
+  const v = await one('SELECT slug_tier, slug_addon FROM venues WHERE id=$1 AND owner_user_id=$2', [id, userId]);
   if (!v) return null;
-  const slug = await resolveCustomSlug(userId, input, opts, id, v.slug_tier);
-  return venueOut(await one('UPDATE venues SET slug=$3, is_custom=true, reserved_slug=NULL WHERE id=$1 AND owner_user_id=$2 RETURNING *', [id, userId, slug]));
+  const slug = await resolveCustomSlug(userId, input, opts, id, effectiveTier(v));
+  return venueOut(await one('UPDATE venues SET slug=$3, is_custom=true, reserved_slug=NULL, link_parked_at=NULL, link_notice_days=NULL WHERE id=$1 AND owner_user_id=$2 RETURNING *', [id, userId, slug]));
 }
 
 // ---------------------------------------------------------------- plan changes (downgrade / re-upgrade)
@@ -74,8 +76,10 @@ async function fallbackSlug(base, exceptId) {
 }
 /**
  * Bring a user's venues in line with a plan: keep the oldest `limit` venues open and archive the rest
- * (read-only, hidden, restored later). On Free, clean/short custom links are kept reserved for the
- * owner but switch to a -venue fallback. On a paid plan, archived venues and reserved links come back.
+ * (read-only, hidden, restored later). On Free, clean/short custom links are parked for the owner and
+ * the venue switches to a -venue fallback. On a paid plan, archived venues and parked links come back.
+ * Short links (3/4-character add-ons) parked longer than SHORT_LINK_RELEASE_DAYS are released by
+ * billing/shortlinks.js.
  */
 async function applyPlanToVenues(userId, plan, limit) {
   const rows = await many('SELECT * FROM venues WHERE owner_user_id=$1 ORDER BY created_at ASC, id ASC', [userId]);
@@ -88,18 +92,18 @@ async function applyPlanToVenues(userId, plan, limit) {
     } else if (!r.archived_at) {
       await q('UPDATE venues SET archived_at=NOW(), opened_at=NULL, active_history_id=NULL WHERE id=$1', [r.id]); changes.archived++;
     }
-    const rights = plans.slugRights(plan, r.slug_tier);
+    const rights = plans.slugRights(plan, effectiveTier(r));
     if (!rights.clean && r.is_custom && !/-venue$/.test(r.slug)) {
-      await q('UPDATE venues SET reserved_slug=$2, slug=$3 WHERE id=$1', [r.id, r.slug, await fallbackSlug(r.slug, r.id)]); changes.linksParked++;
+      await q('UPDATE venues SET reserved_slug=$2, slug=$3, link_parked_at=NOW(), link_notice_days=NULL WHERE id=$1', [r.id, r.slug, await fallbackSlug(r.slug, r.id)]); changes.linksParked++;
     } else if (rights.clean && r.reserved_slug) {
       try { codes.customSlug(r.reserved_slug, rights); } catch (_) { continue; } // e.g. short link without its add-on
-      await q('UPDATE venues SET slug=$2, reserved_slug=NULL WHERE id=$1', [r.id, r.reserved_slug]); changes.linksRestored++;
+      await q('UPDATE venues SET slug=$2, reserved_slug=NULL, link_parked_at=NULL, link_notice_days=NULL WHERE id=$1', [r.id, r.reserved_slug]); changes.linksRestored++;
     }
   }
   return changes;
 }
 async function setVenueSlugTier(venueId, tier) {
-  return venueOut(await one('UPDATE venues SET slug_tier=$2 WHERE id=$1 RETURNING *', [venueId, tier]));
+  return venueOut(await one("UPDATE venues SET slug_addon=$2, slug_tier=CASE WHEN $2='slug3' THEN 'slug3' ELSE 'none' END WHERE id=$1 RETURNING *", [venueId, tier]));
 }
 async function renameVenue(id, userId, name) { return venueOut(await one('UPDATE venues SET name=$3 WHERE id=$1 AND owner_user_id=$2 RETURNING *', [id, userId, name])); }
 async function deleteVenue(id, userId) { return (await q('DELETE FROM venues WHERE id=$1 AND owner_user_id=$2', [id, userId])).rowCount > 0; }

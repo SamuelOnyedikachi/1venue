@@ -19,6 +19,13 @@ function normalizeAttachment(a) {
     if (!reference || !text) return null;
     return { kind: 'passage', reference, text, translation: clip(a.translation, 40).replace(/[^\w-]/g, ''), short: clip(a.short, 16) };
   }
+  if (a.kind === 'board' || /\.mwb$/i.test(String(a.name || '')) || a.mime === 'application/x-mwb') { // 1venue whiteboard file
+    const url = String(a.url || '');
+    if (!url || !allowedUrl(url)) return null;
+    const preview = typeof a.preview === 'string' && allowedUrl(a.preview) ? a.preview : null;
+    let name = String(a.name || 'Whiteboard.mwb').replace(/[\u0000-\u001f]/g, '').slice(0, 120); if (!/\.mwb$/i.test(name)) name += '.mwb';
+    return { kind: 'board', name, mime: 'application/x-mwb', size: Math.max(0, Number(a.size) || 0), url, preview, pages: Math.max(1, Math.min(50, Math.round(Number(a.pages)) || 1)) };
+  }
   const kind = a.kind === 'image' ? 'image' : a.kind === 'voice' ? 'voice' : 'file';
   const name = String(a.name || (kind === 'voice' ? 'voice.webm' : 'file')).slice(0, 120);
   const mime = String(a.mime || (kind === 'voice' ? 'audio/webm' : 'application/octet-stream')).slice(0, 120);

@@ -1,4 +1,5 @@
 'use strict';
+process.env.PROCESSING_FEE_PERCENT = '0'; // these suites pin the original price maths; the fee is covered in test/settings-wallet.test.js
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');

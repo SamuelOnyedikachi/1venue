@@ -7,7 +7,7 @@
 const svc = require('./service');
 
 module.exports = function routes(route, { requireUser, httpError, data, int }) {
-  route('PUT', '/api/branding/venues/([A-Za-z0-9]{2,16}(?:-venue)?)', async (ctx, [slug]) => {
+  route('PUT', '/api/branding/venues/([A-Za-z0-9]{3,16}(?:-venue)?)', async (ctx, [slug]) => {
     const u = await requireUser(ctx.req, ctx.res);
     const v = await data.getVenueBySlug(slug.toLowerCase());
     const out = await svc.saveBranding(u, v, await ctx.body(16 * 1024));

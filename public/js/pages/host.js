@@ -4,8 +4,9 @@
 import { h, api, toast, toastErr, confirmDlg, uploadFile } from '../ui.js';
 import { icon } from '../icons.js';
 import { state, requireLogin } from '../app.js';
+import { loadMoney, fmtMoney, withFee, checkoutSheet } from '../money.js';
 
-const naira = (k) => '₦' + (Number(k || 0) / 100).toLocaleString('en-NG', { maximumFractionDigits: 2 });
+const naira = (k) => fmtMoney(k);
 const when = (d) => (d ? new Date(d).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '');
 const TABS = [['analytics', 'Analytics', 'chart'], ['branding', 'Branding', 'palette'], ['recurring', 'Recurring', 'calendar'], ['promote', 'Promote', 'megaphone'],
   ['tickets', 'Tickets', 'ticket'], ['earnings', 'Earnings', 'wallet'], ['org', 'Organisation', 'users'], ['replays', 'Replays', 'play']];
@@ -25,7 +26,7 @@ const locked = (what) => h('p', { class: 'small' }, `${what} is not on your plan
 export async function mount(view, params = {}) {
   if (!state.user) { requireLogin(); return; }
   const q = new URLSearchParams(location.search);
-  const me = await api('/api/billing');
+  const [me] = await Promise.all([api('/api/billing'), loadMoney()]);
   const f = me.features || {};
   let tab = q.get('tab') || 'analytics';
   const body = h('div');
@@ -149,13 +150,13 @@ const SECTIONS = {
     const ev = sel(upcoming.map((e) => [String(e.id), e.title]), upcoming[0] && String(upcoming[0].id));
     const days = inp({ type: 'number', min: 1, max: plansTable.platform ? plansTable.platform.promoMaxDays : 30, value: 7 });
     const quote = h('strong');
-    const requote = async () => { try { const r = await api('/api/promote/quote?days=' + days.value); quote.textContent = `${naira(r.priceKobo)} for ${r.days} days`; } catch (_) { quote.textContent = ''; } };
+    const requote = async () => { try { const r = await api('/api/promote/quote?days=' + days.value); await loadMoney(); quote.textContent = `${naira(withFee(r.priceKobo).total)} for ${r.days} days, fee included`; quote.dataset.kobo = r.priceKobo; } catch (_) { quote.textContent = ''; } };
     days.oninput = requote; requote();
     return [
       card('Promote an event', upcoming.length ? null : h('p', { class: 'small muted' }, 'You need an upcoming public event.'),
         h('div', { class: 'row wrap', style: { gap: '.6rem' } }, lbl('Event', ev), lbl('Days', days)), quote,
         h('p', { class: 'tiny muted' }, 'Shown in Discover, Feed and Venues. Paid through Paystack. New promotions may wait for a quick review before they run.'),
-        btn('Pay and promote', async () => { const r = await api('/api/promote', { method: 'POST', body: { eventId: Number(ev.value), days: Number(days.value) } }); location.assign(r.authorizationUrl); }, true)),
+        btn('Pay and promote', async () => { await checkoutSheet({ title: 'Promote an event', what: `${days.value} days in Discover, Feed and Venues.`, subtotalKobo: Number(quote.dataset.kobo || 0), start: () => api('/api/promote', { method: 'POST', body: { eventId: Number(ev.value), days: Number(days.value) } }) }); }, true)),
       card('Your promotions', promotions.length ? null : h('p', { class: 'small muted' }, 'None yet.'),
         ...promotions.map((p) => h('div', { class: 'row wrap small', style: { gap: '.5rem' } }, h('span', { class: 'grow' }, `${p.title || 'Event'} · ${p.days || '?'} days · ${p.review}${p.live ? ' · running' : ''}`),
           h('span', { class: 'muted' }, `${p.views} views · ${p.clicks} clicks · ${p.ctr}%`)))),

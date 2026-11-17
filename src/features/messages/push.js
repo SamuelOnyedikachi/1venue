@@ -45,7 +45,7 @@ async function notify(userId, payload) {
   let sent = 0;
   for (const s of subs) {
     try {
-      await lib.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload), { TTL: payload.kind === 'call' ? 45 : 3600, urgency: payload.kind === 'call' ? 'high' : 'normal' });
+      await lib.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload), { TTL: payload.kind === 'call' ? 45 : payload.kind === 'call-end' ? 300 : 3600, urgency: /^call/.test(payload.kind || '') ? 'high' : 'normal' });
       sent++;
       q('UPDATE push_subscriptions SET last_used_at=NOW() WHERE id=$1', [s.id]).catch(() => {});
     } catch (e) {

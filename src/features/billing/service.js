@@ -14,7 +14,8 @@ const DAY = 86400000;
 
 // ---------------------------------------------------------------- shapes
 const paymentOut = (p) => ({ reference: p.reference, kind: p.kind, plan: p.plan || null, interval: p.billing_interval || null, slugTier: p.slug_tier || null, venueId: p.venue_id || null,
-  priceKobo: Number(p.price_kobo), currency: p.currency, status: p.status, createdAt: p.created_at, paidAt: p.paid_at, authorizationUrl: p.authorization_url || null });
+  priceKobo: Number(p.price_kobo), subtotalKobo: Number(p.subtotal_kobo ?? p.price_kobo), feeKobo: Number(p.processing_fee_kobo || 0), feePercent: p.fee_percent == null ? 0 : Number(p.fee_percent),
+  displayCurrency: p.display_currency || p.currency, displayTotalMinor: p.display_total_minor == null ? Number(p.price_kobo) : Number(p.display_total_minor), currency: p.currency, status: p.status, createdAt: p.created_at, paidAt: p.paid_at, authorizationUrl: p.authorization_url || null });
 function subOut(sub, now = Date.now()) {
   if (!sub) return null;
   return { plan: sub.plan, effectivePlan: plans.effectivePlan(sub, now), interval: sub.billing_interval, status: sub.status, source: sub.source,
@@ -39,8 +40,10 @@ function notify(userId, title, intro) {
 // ---------------------------------------------------------------- checkout
 async function createPayment(user, f, mode) {
   const ref = '1vb-' + crypto.randomBytes(16).toString('hex');
-  return one(`INSERT INTO billing_payments (reference,user_id,kind,plan,billing_interval,venue_id,slug_tier,payer_email,price_kobo,provider_mode)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`, [ref, user.id, f.kind, f.plan || null, f.interval || null, f.venueId || null, f.slugTier || null, String(user.email).toLowerCase(), f.priceKobo, mode]);
+  // price_kobo = amount charged: the plan / add-on price plus the processing fee (PROCESSING_FEE_PERCENT).
+  const m = await require('../../lib/money').checkoutAmounts(user.id, f.priceKobo);
+  return one(`INSERT INTO billing_payments (reference,user_id,kind,plan,billing_interval,venue_id,slug_tier,payer_email,price_kobo,provider_mode,subtotal_kobo,processing_fee_kobo,fee_percent,display_currency,display_total_minor,fx_rate)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`, [ref, user.id, f.kind, f.plan || null, f.interval || null, f.venueId || null, f.slugTier || null, String(user.email).toLowerCase(), m.total, mode, m.subtotal, m.fee, m.percent, m.displayCurrency, m.displayTotal, m.fxRate]);
 }
 function callbackUrl(s) { return new URL('/billing', s.callback).href; }
 async function initialize(user, fields) {
@@ -68,7 +71,7 @@ async function startCheckout(user, { plan, interval } = {}) {
   return initialize(user, { kind: 'subscription', plan, interval, priceKobo: plans.priceFor(settings, plan, interval) });
 }
 async function startSlugAddon(user, { venueSlug, tier } = {}) {
-  if (!['slug3', 'slug2'].includes(tier)) throw fail(400, 'Choose the slug3 or slug2 add-on');
+  if (!plans.SLUG_FOR_SALE.includes(tier)) throw fail(400, 'Choose the 4-character or 3-character add-on');
   const venues = require('../venues/data');
   const v = await venues.getVenueBySlug(String(venueSlug || '').toLowerCase());
   if (!v || v.ownerUserId !== user.id) throw fail(404, 'Venue not found');
@@ -76,8 +79,7 @@ async function startSlugAddon(user, { venueSlug, tier } = {}) {
   const settings = await plans.getSettings();
   const ent = await plans.entitlements(user.id, { settings });
   if (!plans.PAID.includes(ent.plan)) throw fail(403, 'Short links need a Premium or Organisation plan');
-  const rank = { none: 0, slug3: 1, slug2: 2 };
-  if (rank[v.slugTier] >= rank[tier]) throw fail(409, 'This venue already has that add-on');
+  if ((plans.SLUG_RANK[v.slugTier] || 0) >= plans.SLUG_RANK[tier]) throw fail(409, 'This venue already has that add-on');
   return initialize(user, { kind: 'slug_addon', venueId: v.id, slugTier: tier, priceKobo: settings.slugAddons[tier] });
 }
 
@@ -91,7 +93,7 @@ function validVerified(payment, result) {
   const idOk = typeof result.id === 'number' ? Number.isSafeInteger(result.id) && result.id > 0 : typeof result.id === 'string' && /^[1-9]\d{0,29}$/.test(result.id);
   const fees = result.fees == null ? 0 : result.fees;
   return idOk && Number.isSafeInteger(result.amount) && Number.isSafeInteger(fees) && fees >= 0
-    && requested === Number(payment.price_kobo) && result.amount - fees >= Number(payment.price_kobo)
+    && requested === Number(payment.price_kobo) && require('../../lib/money').paidEnough(result.amount, fees, payment)
     && result.currency === payment.currency && result.domain === payment.provider_mode
     && typeof result.customer?.email === 'string' && result.customer.email.toLowerCase() === payment.payer_email
     && meta.billing_reference === payment.reference && String(meta.user_id) === String(payment.user_id);
@@ -149,7 +151,8 @@ async function settle(purchase, verified, now = new Date()) {
       return { payment: paid, plan: p.plan };
     }
     if (p.kind === 'slug_addon') {
-      const r = await c.query("UPDATE venues SET slug_tier=$3 WHERE id=$1 AND owner_user_id=$2 AND (slug_tier='none' OR $3='slug2')", [p.venue_id, user.id, p.slug_tier]);
+      const r = await c.query(`UPDATE venues SET slug_addon=$3, slug_tier=CASE WHEN $3='slug3' THEN 'slug3' ELSE slug_tier END WHERE id=$1 AND owner_user_id=$2
+        AND (COALESCE(slug_addon, slug_tier)='none' OR (COALESCE(slug_addon, slug_tier)='slug4' AND $3='slug3'))`, [p.venue_id, user.id, p.slug_tier]);
       if (!r.rowCount) await c.query("UPDATE billing_payments SET last_error='venue_unavailable' WHERE id=$1", [p.id]);
       await c.query('INSERT INTO plan_audit (user_id, actor_user_id, action, detail) VALUES ($1,NULL,$2,$3)', [user.id, 'slug_addon', JSON.stringify({ venueId: p.venue_id, tier: p.slug_tier, reference: p.reference })]);
     }
@@ -239,7 +242,10 @@ let timer = null;
 function startWorker() {
   if (timer || process.env.BILLING_WORKER === 'false') return null;
   const every = Math.max(60000, Number(process.env.BILLING_RENEW_INTERVAL_MS) || 10 * 60000);
-  timer = setInterval(() => { processDue().catch((e) => console.error('[billing] worker', e.message)); }, every);
+  timer = setInterval(() => {
+    processDue().catch((e) => console.error('[billing] worker', e.message))
+      .then(() => require('./shortlinks').sweep()).catch((e) => console.error('[billing] short links', e.message));
+  }, every);
   timer.unref();
   return timer;
 }
@@ -311,14 +317,16 @@ async function adminUser(userId) {
   const u = await one('SELECT id, email, username, display_name FROM users WHERE id=$1', [userId]);
   if (!u) throw fail(404, 'User not found');
   const ent = await plans.entitlements(userId);
-  const [payments, auditRows, venueRows] = await Promise.all([
+  const [payments, auditRows, venueRows, creditRows] = await Promise.all([
     q('SELECT * FROM billing_payments WHERE user_id=$1 ORDER BY id DESC LIMIT 30', [userId]),
     q('SELECT * FROM plan_audit WHERE user_id=$1 ORDER BY id DESC LIMIT 30', [userId]),
-    q('SELECT id, slug, name, slug_tier, reserved_slug, archived_at FROM venues WHERE owner_user_id=$1 ORDER BY created_at', [userId]),
+    q('SELECT id, slug, name, slug_tier, slug_addon, reserved_slug, archived_at FROM venues WHERE owner_user_id=$1 ORDER BY created_at', [userId]),
+    q('SELECT * FROM credit_payments WHERE user_id=$1 ORDER BY id DESC LIMIT 30', [userId]),
   ]);
-  return { user: { id: u.id, email: u.email, username: u.username, name: u.display_name }, plan: ent.plan, limits: ent.limits, overrides: ent.overrides, subscription: subOut(ent.subscription),
+  const creditPayments = creditRows.rows.map((r) => ({ reference: r.reference, credits: Number(r.credit_units) / 60000, priceKobo: Number(r.price_kobo), subtotalKobo: r.subtotal_kobo == null ? Number(r.price_kobo) : Number(r.subtotal_kobo), feeKobo: Number(r.processing_fee_kobo || 0), feePercent: r.fee_percent == null ? 0 : Number(r.fee_percent), source: r.source || 'checkout', status: r.status, createdAt: r.created_at }));
+  return { creditPayments, user: { id: u.id, email: u.email, username: u.username, name: u.display_name }, plan: ent.plan, limits: ent.limits, overrides: ent.overrides, subscription: subOut(ent.subscription),
     payments: payments.rows.map(paymentOut), audit: auditRows.rows.map((r) => ({ action: r.action, actorId: r.actor_user_id, detail: r.detail ? JSON.parse(r.detail) : null, at: r.created_at })),
-    venues: venueRows.rows.map((v) => ({ id: v.id, slug: v.slug, name: v.name, slugTier: v.slug_tier, reservedSlug: v.reserved_slug, archived: !!v.archived_at })) };
+    venues: venueRows.rows.map((v) => ({ id: v.id, slug: v.slug, name: v.name, slugTier: v.slug_addon || v.slug_tier || 'none', reservedSlug: v.reserved_slug, archived: !!v.archived_at })) };
 }
 
 // ---------------------------------------------------------------- summaries

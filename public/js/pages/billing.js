@@ -2,8 +2,9 @@
 import { h, api, toast, toastErr, timeAgo, confirmDlg } from '../ui.js';
 import { icon } from '../icons.js';
 import { requireLogin } from '../app.js';
+import { loadMoney, fmtMoney, checkoutSheet } from '../money.js';
 
-const money = (kobo) => new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(kobo / 100);
+const money = (kobo) => fmtMoney(kobo, { whole: true });
 const LABEL = { free: 'Free', premium: 'Premium', organisation: 'Organisation' };
 const day = (d) => (d ? new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 const STATUS = { paid: 'Paid', pending: 'Awaiting confirmation', failed: 'Not completed', review: 'Needs review' };
@@ -19,7 +20,7 @@ export async function mount(view) {
   const act = (fn) => async (e) => { const b = e.currentTarget; b.disabled = true; try { await fn(); await refresh(); } catch (err) { toastErr(err); } finally { b.disabled = false; } };
 
   async function refresh() {
-    const [me, table, venues] = await Promise.all([api('/api/billing'), api('/api/plans'), api('/api/venues').catch(() => ({ venues: [] }))]);
+    const [, me, table, venues] = await Promise.all([loadMoney(), api('/api/billing'), api('/api/plans'), api('/api/venues').catch(() => ({ venues: [] }))]);
     if (!alive) return;
     const s = me.subscription;
     const lines = [];
@@ -43,18 +44,18 @@ export async function mount(view) {
       actions);
     const paid = me.plan !== 'free';
     const addon = h('section', { class: 'card pad col', style: { gap: '.5rem' } }, h('h2', null, 'Shorter venue links'),
-      h('p', { class: 'small muted' }, paid ? `One-off, per venue: 3 characters ${money(table.slugAddons.slug3)}, 2 characters ${money(table.slugAddons.slug2)}.` : 'Short links need a Premium or Organisation plan.'),
+      h('p', { class: 'small muted' }, paid ? `One-off, per venue: 4 characters ${money(table.slugAddons.slug4)}, 3 characters ${money(table.slugAddons.slug3)}.` : 'Short links need a Premium or Organisation plan.'),
       ...(paid ? venues.venues.filter((v) => !v.archived).map((v) => h('div', { class: 'wallet-item' },
-        h('div', { class: 'grow' }, h('strong', null, v.name), h('div', { class: 'tiny muted' }, `/v/${v.slug}${v.slugTier !== 'none' ? ' · ' + v.slugTier + ' add-on' : ''}`)),
-        h('div', { class: 'wallet-actions' }, ...['slug3', 'slug2'].filter((t) => (v.slugTier === 'none') || (v.slugTier === 'slug3' && t === 'slug2')).map((t) => h('button', { class: 'btn sm', type: 'button', disabled: !me.purchasesEnabled, onclick: act(async () => {
-          const r = await api('/api/billing/slug-addon', { method: 'POST', body: { venueSlug: v.slug, tier: t } }); location.assign(r.authorizationUrl);
-        }) }, t === 'slug3' ? '3-char' : '2-char'))))) : []),
+        h('div', { class: 'grow' }, h('strong', null, v.name), h('div', { class: 'tiny muted' }, `/v/${v.slug}${v.reservedSlug && v.linkReleaseAt ? ` · /v/${v.reservedSlug} is parked until ${day(v.linkReleaseAt)}, then released; renew to keep it` : ''}${v.slugTier !== 'none' ? ' · ' + (v.slugTier === 'slug4' ? '4-character' : '3-character') + ' link' : ''}`)),
+        h('div', { class: 'wallet-actions' }, ...['slug4', 'slug3'].filter((t) => (v.slugTier === 'none') || (v.slugTier === 'slug4' && t === 'slug3')).map((t) => h('button', { class: 'btn sm', type: 'button', disabled: !me.purchasesEnabled, onclick: act(async () => {
+          await checkoutSheet({ title: 'Shorter venue link', what: `${t === 'slug4' ? '4' : '3'}-character link for ${v.name}. One-off.`, subtotalKobo: table.slugAddons[t], start: () => api('/api/billing/slug-addon', { method: 'POST', body: { venueSlug: v.slug, tier: t } }) });
+        }) }, t === 'slug4' ? '4-character' : '3-character'))))) : []),
       venues.venues.some((v) => v.archived) ? h('p', { class: 'tiny muted' }, 'Archived venues are kept safe and come back when you upgrade.') : null);
     const list = h('section', { class: 'card pad' }, h('h2', null, 'Payments'),
       me.payments.length ? null : h('p', { class: 'small muted' }, 'No plan payments yet.'),
       ...me.payments.map((p) => h('div', { class: 'wallet-item' },
-        h('div', { class: 'grow' }, h('strong', null, `${KIND[p.kind]}${p.plan ? ' · ' + LABEL[p.plan] + (p.interval === 'year' ? ' (annual)' : ' (monthly)') : p.slugTier ? ' · ' + p.slugTier : ''}`),
-          h('div', { class: 'tiny muted' }, `${money(p.priceKobo)} · ${timeAgo(p.createdAt)}`), h('div', { class: 'tiny' }, STATUS[p.status] || p.status)),
+        h('div', { class: 'grow' }, h('strong', null, `${KIND[p.kind]}${p.plan ? ' · ' + LABEL[p.plan] + (p.interval === 'year' ? ' (annual)' : ' (monthly)') : p.slugTier ? ' · ' + (p.slugTier === 'slug4' ? '4-character link' : '3-character link') : ''}`),
+          h('div', { class: 'tiny muted' }, `${fmtMoney(p.priceKobo)}${p.feeKobo ? ` (incl. ${fmtMoney(p.feeKobo)} fee)` : ''} · ${timeAgo(p.createdAt)}`), h('div', { class: 'tiny' }, STATUS[p.status] || p.status)),
         p.status === 'paid' ? h('span', { class: 'chip' }, 'Complete') : h('div', { class: 'wallet-actions' },
           p.status === 'pending' && p.authorizationUrl ? h('a', { class: 'btn sm', href: p.authorizationUrl }, 'Open checkout') : null,
           h('button', { class: 'btn sm', type: 'button', onclick: act(() => check(p.reference)) }, 'Check payment')))));

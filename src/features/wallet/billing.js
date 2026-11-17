@@ -56,6 +56,7 @@ async function recoverSession(row,now=Date.now()) {
     await data.settle(row.id,{now:cutoff,endReason:'restart-expired'});
     return;
   }
+  if(now-new Date(snapshot.created_at).getTime()<config.RESTART.adoptGraceMs)return; // let reconnecting clients restore it first
   const meeting=await require('../../rooms/snapshot').getOrRestoreMeeting(row.code);
   if(meeting&&String(meeting.billingId)===String(row.id)) {
     return;

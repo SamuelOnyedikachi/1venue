@@ -1,0 +1,151 @@
+/* Image lightbox (public/js/lightbox.js). The backdrop is a deliberate near-black photo scrim in both
+   themes (images read best on dark); controls, focus rings and the counter follow the theme accent. */
+img[data-lightbox],
+img.msg-img,
+img.feed-post-img,
+img.mat-page-img {
+  cursor: zoom-in;
+}
+.lb {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  background: rgb(6 8 14 / 0.94);
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  transition: opacity 0.18s var(--ease);
+  padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
+  touch-action: none;
+}
+.lb.in {
+  opacity: 1;
+}
+.lb.reduce,
+.lb.reduce * {
+  transition: none !important;
+  animation: none !important;
+}
+.lb-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 0.9rem;
+  gap: 1rem;
+}
+.lb-count {
+  color: rgb(255 255 255 / 0.85);
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 0.3rem 0.7rem;
+  border-radius: var(--r-pill);
+  background: rgb(255 255 255 / 0.1);
+}
+.lb-count:empty {
+  visibility: hidden;
+}
+.lb-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  padding: 0 clamp(0.5rem, 6vw, 5rem);
+}
+.lb-img {
+  max-width: 100%;
+  max-height: calc(100dvh - 9rem);
+  object-fit: contain;
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-3);
+  user-select: none;
+  -webkit-user-drag: none;
+  transition: transform 0.2s var(--ease);
+}
+.lb-img.from-r {
+  animation: lbInR 0.22s var(--ease);
+}
+.lb-img.from-l {
+  animation: lbInL 0.22s var(--ease);
+}
+@keyframes lbInR {
+  from {
+    opacity: 0.2;
+    transform: translateX(28px);
+  }
+}
+@keyframes lbInL {
+  from {
+    opacity: 0.2;
+    transform: translateX(-28px);
+  }
+}
+.lb-btn {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  background: rgb(255 255 255 / 0.1);
+  color: #fff;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    transform 0.15s var(--ease);
+}
+.lb-btn:hover {
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
+}
+.lb-btn:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+.lb-prev,
+.lb-next {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 52px;
+  height: 52px;
+}
+.lb-prev {
+  left: max(0.75rem, var(--safe-l));
+}
+.lb-next {
+  right: max(0.75rem, var(--safe-r));
+}
+.lb-prev:active,
+.lb-next:active {
+  transform: translateY(-50%) scale(0.94);
+}
+.lb-cap {
+  color: rgb(255 255 255 / 0.8);
+  text-align: center;
+  font-size: 0.9rem;
+  padding: 0.6rem 1rem 1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .lb-prev,
+  .lb-next {
+    top: auto;
+    bottom: calc(0.75rem + var(--safe-b));
+    transform: none;
+    width: 46px;
+    height: 46px;
+  }
+  .lb-prev:active,
+  .lb-next:active {
+    transform: scale(0.94);
+  }
+  .lb-cap {
+    padding-bottom: 4.5rem;
+  }
+  .lb-stage {
+    padding: 0 0.25rem;
+  }
+}

@@ -1,0 +1,213 @@
+/* Materials picker (public/js/material-picker.js): searchable multi-select with an upload action. */
+.mp {
+  position: relative;
+  display: grid;
+  gap: 0.55rem;
+}
+.mp.open {
+  z-index: 210;
+}
+.mp-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  min-height: 46px;
+  padding: 0.55rem 0.8rem;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-2);
+  background: var(--s1);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.mp-trigger:hover,
+.mp.open .mp-trigger {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line-2));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.mp-trigger-ico {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-xs);
+  color: var(--g-content);
+  background: color-mix(in srgb, var(--g-content) 12%, transparent);
+}
+.mp-trigger-label {
+  color: var(--muted);
+  font-weight: 500;
+}
+.mp-count {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-pill);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+.mp-caret {
+  display: flex;
+  color: var(--faint);
+  transition: transform 0.18s var(--ease);
+}
+.mp.open .mp-caret {
+  transform: rotate(180deg);
+}
+.mp-panel {
+  position: absolute;
+  top: 52px;
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.5rem;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-2);
+  background: var(--s1);
+  box-shadow: var(--shadow-3);
+  animation: mpIn 0.16s var(--ease);
+  z-index: 20;
+}
+.mp-panel[hidden] {
+  display: none;
+}
+@keyframes mpIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.mp-search-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  color: var(--faint);
+}
+.mp-search-row > svg {
+  position: absolute;
+  left: 0.7rem;
+  pointer-events: none;
+}
+.mp-search-row .mp-search {
+  padding-left: 2.1rem;
+  width: 100%;
+}
+.mp-upload,
+.mp-opt {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.5rem 0.55rem;
+  border-radius: var(--r-sm);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mp-upload {
+  border: 1px dashed color-mix(in srgb, var(--g-content) 45%, var(--line-2));
+  background: color-mix(in srgb, var(--g-content) 6%, transparent);
+}
+.mp-upload:hover {
+  background: color-mix(in srgb, var(--g-content) 12%, transparent);
+}
+.mp-upload.busy {
+  cursor: progress;
+  opacity: 0.8;
+}
+.mp-up-status:empty {
+  display: none;
+}
+.mp-list {
+  max-height: min(320px, 46vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  gap: 2px;
+}
+.mp-opt:hover,
+.mp-opt.active {
+  background: var(--s2);
+}
+.mp-opt[aria-selected="true"] {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.mp-opt-text {
+  display: grid;
+  min-width: 0;
+}
+.mp-thumb {
+  flex: none;
+  width: 44px;
+  height: 32px;
+  border-radius: var(--r-xs);
+  object-fit: cover;
+  background: var(--s2);
+}
+.mp-ico {
+  display: grid;
+  place-items: center;
+  color: var(--g-content);
+  background: color-mix(in srgb, var(--g-content) 12%, transparent);
+}
+.mp-ico[data-kind="sheet"] {
+  color: var(--g-settings);
+  background: color-mix(in srgb, var(--g-settings) 12%, transparent);
+}
+.mp-ico[data-kind="doc"],
+.mp-ico[data-kind="pdf"] {
+  color: var(--g-media);
+  background: color-mix(in srgb, var(--g-media) 12%, transparent);
+}
+.mp-check {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  border: 1.5px solid var(--line-2);
+  color: var(--accent-ink);
+}
+.mp-opt[aria-selected="true"] .mp-check {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.mp-empty {
+  padding: 0.8rem 0.6rem;
+}
+.chip-mat-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  object-fit: cover;
+}
+.chip-mat .chip-mat-thumb.mp-ico {
+  display: inline-grid;
+}
+.chip-mat .ellipsis {
+  max-width: 180px;
+}
+@media (max-width: 640px) {
+  .mp-panel {
+    position: static;
+    box-shadow: var(--shadow-2);
+  }
+  .mp-opt,
+  .mp-upload {
+    min-height: 48px;
+  }
+}

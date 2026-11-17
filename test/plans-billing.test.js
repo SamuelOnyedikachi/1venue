@@ -1,4 +1,5 @@
 'use strict';
+process.env.PROCESSING_FEE_PERCENT = '0'; // these suites pin the original price maths; the fee is covered in test/settings-wallet.test.js
 // Plans, limits, AI pool, plan gating, subscription checkout, renewals, grace and admin plan tools.
 const secretKey = 'sk_test_billing_fixture';
 Object.assign(process.env, { PAYSTACK_SECRET_KEY: secretKey, PAYSTACK_PASS_FEES_CONFIRMED: 'true', PUBLIC_URL: 'http://127.0.0.1:9', NODE_ENV: 'test' });
@@ -68,16 +69,17 @@ test('venue link rights for every plan and short-link add-on', () => {
   const no = (input, rights, re) => assert.throws(() => codes.customSlug(input, rights), re);
   const r = (plan, tier) => plans.slugRights(plan, tier);
   ok('faith', r('free'), 'faith-venue'); no('abcd', r('free'), /5 letters/);
-  ok('faith', r('free', 'slug2'), 'faith-venue'); // add-ons need a paid plan: Free still gets -venue
+  ok('faith', r('free', 'slug3'), 'faith-venue'); // add-ons need a paid plan: Free still gets -venue
   for (const p of ['premium', 'organisation']) {
-    ok('faith', r(p), 'faith'); no('abcd', r(p), /slug3/); no('abc', r(p), /slug3/); no('ab', r(p), /slug2/);
-    ok('abcd', r(p, 'slug3'), 'abcd'); ok('abc', r(p, 'slug3'), 'abc'); no('ab', r(p, 'slug3'), /slug2/);
-    ok('ab', r(p, 'slug2'), 'ab');
+    ok('faith', r(p), 'faith'); no('abcd', r(p), /4-character/); no('abc', r(p), /3-character/); no('ab', r(p), /at least 3/);
+    ok('abcd', r(p, 'slug4'), 'abcd'); no('abc', r(p, 'slug4'), /3-character/); no('ab', r(p, 'slug4'), /at least 3/);
+    ok('abcd', r(p, 'slug3'), 'abcd'); ok('abc', r(p, 'slug3'), 'abc'); no('ab', r(p, 'slug3'), /at least 3/);
+    assert.equal(r(p, 'slug2').tier, 'none', 'no 2-character tier');
     assert.equal(codes.customSlug('faith', r(p), { suffix: true }).slug, 'faith-venue');
   }
   no('admin', r('premium'), /reserved/); no('billing', r('premium'), /reserved/);
   // legacy plan names still resolve
-  ok('ab', 'slug2', 'ab'); ok('faith', 'premium', 'faith'); ok('faith', 'free', 'faith-venue');
+  ok('abc', 'slug3', 'abc'); ok('faith', 'premium', 'faith'); ok('faith', 'free', 'faith-venue');
 });
 
 // ---------------------------------------------------------------- integration (real server + mock Paystack)
@@ -191,11 +193,18 @@ test('subscription checkout verifies with Paystack, saves the card and lifts lim
   assert.equal(p.status, 200, JSON.stringify(p.body)); assert.equal(p.body.slug, clean);
   assert.equal((await alice.post('/api/billing/checkout', { plan: 'premium', interval: 'month' })).status, 409, 'already on this plan');
   // short-link add-on checkout is wired with its own price
-  const addon = await alice.post('/api/billing/slug-addon', { venueSlug: clean, tier: 'slug3' });
-  assert.equal(addon.status, 201, JSON.stringify(addon.body)); assert.equal(txs.get(addon.body.reference).requested_amount, 1000000);
+  assert.equal((await alice.post('/api/billing/slug-addon', { venueSlug: clean, tier: 'slug2' })).status, 400, 'no 2-character tier');
+  const addon = await alice.post('/api/billing/slug-addon', { venueSlug: clean, tier: 'slug4' });
+  assert.equal(addon.status, 201, JSON.stringify(addon.body)); assert.equal(txs.get(addon.body.reference).requested_amount, 1000000, '4-character = ₦10,000');
   pay(addon.body.reference);
   assert.equal((await alice.post(`/api/billing/payments/${addon.body.reference}/verify`)).body.status, 'paid');
-  assert.equal((await alice.get(`/api/venues/${clean}`)).body.slugTier, 'slug3');
+  assert.equal((await alice.get(`/api/venues/${clean}`)).body.slugTier, 'slug4');
+  assert.equal((await alice.post('/api/billing/slug-addon', { venueSlug: clean, tier: 'slug4' })).status, 409, 'already has it');
+  const up = await alice.post('/api/billing/slug-addon', { venueSlug: clean, tier: 'slug3' });
+  assert.equal(up.status, 201); assert.equal(txs.get(up.body.reference).requested_amount, 2500000, '3-character = ₦25,000');
+  pay(up.body.reference);
+  assert.equal((await alice.post(`/api/billing/payments/${up.body.reference}/verify`)).body.status, 'paid');
+  assert.equal((await alice.get(`/api/venues/${clean}`)).body.slugTier, 'slug3', 'upgrade from 4 to 3 characters');
   assert.equal((await alice.get('/api/billing')).body.plan, 'premium', 'add-on does not change the plan');
 });
 
@@ -208,7 +217,7 @@ test('a mismatched verification is held for review and grants nothing; Free user
   assert.equal((await bob.get('/api/billing')).body.plan, 'free');
   assert.equal((await bob.get('/api/billing')).body.payments[0].status, 'review');
   const v = await bob.post('/api/venues', { name: 'Bob venue' });
-  assert.equal((await bob.post('/api/billing/slug-addon', { venueSlug: v.body.slug, tier: 'slug2' })).status, 403);
+  assert.equal((await bob.post('/api/billing/slug-addon', { venueSlug: v.body.slug, tier: 'slug3' })).status, 403);
 });
 
 test('renewal charges the saved authorization and extends from the old period end', { skip, timeout: 30000 }, async () => {
@@ -281,8 +290,9 @@ test('admin edits plan settings and grants a plan with overrides, restoring arch
   assert.equal(venues.filter((v) => v.archived).length, 0, 'archived venue restored');
   assert.ok(venues.every((v) => !v.reservedSlug), 'clean link restored');
   assert.ok(g.body.audit.some((a) => a.action === 'admin_plan'));
-  const vt = await admin.post(`/api/admin/billing/venues/${venues[0].id}`, { slugTier: 'slug2', reason: 'gift' });
-  assert.equal(vt.status, 200); assert.equal(vt.body.slugTier, 'slug2');
+  const vt = await admin.post(`/api/admin/billing/venues/${venues[0].id}`, { slugTier: 'slug4', reason: 'gift' });
+  assert.equal(vt.status, 200); assert.equal(vt.body.slugTier, 'slug4');
+  assert.equal((await admin.post(`/api/admin/billing/venues/${venues[0].id}`, { slugTier: 'slug2', reason: 'gift' })).status, 400);
   const back = await admin.post(`/api/admin/billing/users/${aliceId}`, { plan: 'free', overrides: null, reason: 'trial over' });
   assert.equal(back.body.plan, 'free'); assert.deepEqual(back.body.overrides, {});
 });

@@ -3,6 +3,8 @@
 import { h, api, toast, toastErr, avatar } from '../ui.js';
 import { icon } from '../icons.js';
 import { loadLiveKit } from '../room/media.js';
+import { startRingtone } from './tones.js';
+import { startCallAlert, stopCallAlert } from './call-alert.js';
 
 let cur = null;      // { call, room, el, video, muted, camOn, t0, timer, title }
 let ringing = null;  // { call, el, stop }
@@ -10,17 +12,8 @@ const ib = (ic, label, run, cls = '') => h('button', { class: `icon-btn ${cls}`,
 const me = () => import('../app.js').then((a) => a.state.user);
 export const inCall = () => !!cur;
 
-function ringtone() {
-  let ctx, iv;
-  try {
-    ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const beep = () => { const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = 520; g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.5); o.connect(g).connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.55); };
-    beep(); iv = setInterval(beep, 1600);
-  } catch { /* autoplay blocked: the sheet is still visible */ }
-  try { navigator.vibrate && navigator.vibrate([300, 200, 300]); } catch { /* ignore */ }
-  return () => { clearInterval(iv); try { ctx && ctx.close(); } catch { /* ignore */ } };
-}
-function dismissRing() { if (!ringing) return; ringing.stop(); ringing.el.remove(); ringing = null; }
+const ringtone = () => startRingtone();
+function dismissRing() { if (!ringing) return; ringing.stop(); ringing.el.remove(); stopCallAlert(ringing.call.id); ringing = null; }
 
 /** Incoming call (from the user socket). */
 export function incoming(call) {
@@ -35,6 +28,20 @@ export function incoming(call) {
       h('button', { class: 'call-btn accept', type: 'button', 'aria-label': 'Accept', html: icon(call.kind === 'video' ? 'video' : 'phone', { size: 22 }), onclick: () => accept(call) })));
   document.body.append(el);
   ringing = { call, el, stop: ringtone() };
+  startCallAlert(call, { onAnswer: () => accept(call), onDecline: () => decline(call) }); // background tab: notification, title, PiP
+}
+/** Answer straight away (from the notification's Answer button). */
+export function answerCall(call) { return accept(call); }
+
+// Answer / Decline / click on the system notification (relayed by the service worker).
+if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    const d = e.data || {};
+    if (d.type !== 'call-action' || !ringing || ringing.call.id !== d.callId) return;
+    if (d.action === 'answer') accept(ringing.call);
+    else if (d.action === 'decline') decline(ringing.call);
+    else stopCallAlert(d.callId); // a plain click focused the tab: the ring sheet takes over
+  });
 }
 async function decline(call) { dismissRing(); await api(`/api/messages/calls/${call.id}/decline`, { method: 'POST' }).catch(() => {}); }
 async function accept(call) {

@@ -3,7 +3,8 @@ import { h, api, esc, toast, toastErr, uploadFile, avatar, debounce, sheet, repo
 import { state, navigate, requireLogin, CATS, ACCENTS } from '../app.js';
 import { catOf } from '../components.js';
 import { isRichInput } from '../event-draft.js';
-import { listenOn } from '../voice.js';
+import { listenOn, isListening, stopListening } from '../voice.js';
+import { materialPicker } from '../material-picker.js';
 
 const field = (label, ic, el, actions) => h('div', { class: 'field-row' },
   h('div', { class: 'field-lab' },
@@ -114,38 +115,8 @@ export async function mount(view, params) {
   speakerInput.addEventListener('input', searchSpeakers);
   speakerInput.addEventListener('blur', () => setTimeout(() => { speakerSug.hidden = true; }, 180));
 
-  // Materials autosuggest
-  const matChips = h('div', { class: 'row wrap', style: { gap: '.4rem' } });
-  const matInput = h('input', { class: 'input', placeholder: 'Search your materials…', autocomplete: 'off' });
-  const matSug = h('div', { class: 'suggest-list', hidden: true });
-  let allMats = [];
-  const paintMats = () => {
-    const selected = allMats.filter((m) => materialIds.includes(m.id));
-    matChips.replaceChildren(...selected.map((m) => {
-      const th = m.kind === 'youtube' && m.payload?.videoId ? `https://i.ytimg.com/vi/${m.payload.videoId}/mqdefault.jpg`
-        : m.kind === 'image' && m.payload?.url ? m.payload.url
-        : (m.payload?.pages && m.payload.pages[0]) || null;
-      return h('span', { class: 'chip-mat' },
-        th ? h('img', { src: th, alt: '', style: { width: '22px', height: '22px', borderRadius: '5px', objectFit: 'cover' } }) : null,
-        m.title,
-        h('button', { class: 'rm', type: 'button', 'aria-label': 'Remove', onclick: () => { materialIds = materialIds.filter((id) => id !== m.id); paintMats(); } }, '−'));
-    }));
-  };
-  api('/api/materials').then((r) => { allMats = r.materials || []; paintMats(); }).catch(() => {});
-  matInput.addEventListener('input', debounce(() => {
-    const q = matInput.value.trim().toLowerCase();
-    const list = allMats.filter((m) => !materialIds.includes(m.id) && (!q || m.title.toLowerCase().includes(q))).slice(0, 8);
-    matSug.replaceChildren(...list.map((m) => {
-      const th = m.kind === 'youtube' && m.payload?.videoId ? `https://i.ytimg.com/vi/${m.payload.videoId}/mqdefault.jpg`
-        : m.kind === 'image' && m.payload?.url ? m.payload.url
-        : (m.payload?.pages && m.payload.pages[0]) || null;
-      return h('button', { type: 'button', onclick: () => {
-        materialIds.push(m.id); matInput.value = ''; matSug.hidden = true; paintMats();
-      } }, th ? h('img', { class: 'sug-thumb', src: th, alt: '' }) : h('span', { class: 'ico-tile sm', html: icon(m.kind === 'youtube' ? 'youtube' : 'presentation', { size: 14 }) }), h('b', { class: 'grow' }, m.title));
-    }));
-    matSug.hidden = !list.length;
-  }, 180));
-  matInput.addEventListener('blur', () => setTimeout(() => { matSug.hidden = true; }, 180));
+  // Materials: searchable picker with "Upload materials" inside it.
+  const matPicker = materialPicker({ selected: materialIds, onChange: (ids) => { materialIds = ids; } });
 
   const setTheme = (a, a2, { touched = true } = {}) => { acc = a; acc2 = a2; if (touched) themeTouched = true; swatches.querySelectorAll('.swatch').forEach((sw, i) => sw.classList.toggle('on', ACCENTS[i][1] === a)); preview(); };
   const swatches = h('div', { class: 'swatches' }, ACCENTS.map(([n, a, a2]) => h('button', { type: 'button', class: `swatch${acc === a ? ' on' : ''}`, 'data-tip': n, style: { background: `linear-gradient(135deg, ${a}, ${a2})` }, 'aria-label': n, onclick: () => setTheme(a, a2) })));
@@ -230,11 +201,12 @@ export async function mount(view, params) {
       let done = false;
       const s = sheet({ title: 'Tell us about your event', icon: 'sparkles', group: 'ai', onClose: () => { if (!done) resolve(null); } });
       s.el.previousElementSibling?.classList.add('heavy');
-      const box = h('textarea', { class: 'textarea tell-notes', rows: 8, maxlength: 4000, placeholder: "What's it about, who's it for, when and where, who's speaking, anything special?" });
+      const box = h('textarea', { class: 'textarea tell-notes no-vmic', rows: 8, maxlength: 4000, placeholder: "What's it about, who's it for, when and where, who's speaking, anything special?" });
       box.value = seed;
       const mic = h('button', { type: 'button', class: 'icon-btn tell-mic', 'aria-label': 'Voice typing', 'data-tip': 'Voice typing', html: icon('mic', { size: 18 }) });
       mic.addEventListener('mousedown', (e) => e.preventDefault());
-      mic.onclick = () => { box.focus(); listenOn(box); };
+      const paintMic = () => mic.classList.toggle('on', isListening(box));
+      mic.onclick = () => { if (isListening(box)) { stopListening(box, 'user'); paintMic(); return; } box.focus(); listenOn(box, { keepTyping: true, onStart: paintMic, onEnd: paintMic }); };
       const go = () => {
         const t = box.value.trim();
         if (!t) return toast('Tell us a little about the event first', { icon: 'info' });
@@ -374,7 +346,7 @@ export async function mount(view, params) {
       const r = editing
         ? await api(`/api/events/${editing.id}`, { method: 'PATCH', body: body() })
         : await api('/api/events', { method: 'POST', body: body() });
-      if (materialIds.length) {
+      if (materialIds.length || editing) {
         await api(`/api/events/${r.id}/materials`, { method: 'PUT', body: { materialIds } }).catch((e) => reportClientError('event-materials', new Error(`Event saved, but its materials could not be attached: ${e.message || 'unknown error'}`), { step: 'attach', pages: materialIds.length }));
       }
       if (speakers.length && !editing) {
@@ -408,11 +380,7 @@ export async function mount(view, params) {
       field('Cover', 'image', h('div', { class: 'col cover-step', style: { gap: '.6rem' } },
         h('div', { class: 'row wrap', style: { gap: '.5rem' } }, coverBtn, genBtn, coverIn),
         coverOpts, coverNote)),
-      field('Materials', 'folder', h('div', { class: 'col', style: { gap: '.5rem' } },
-        h('div', { class: 'suggest-box' }, matInput, matSug),
-        matChips,
-        h('a', { class: 'btn sm', href: '/materials', target: '_blank', rel: 'noopener', html: icon('folder', { size: 14 }) + 'Open materials library' }),
-      ))),
+      field('Materials', 'folder', matPicker.el)),
     h('div', { class: 'row wrap', style: { gap: '.6rem' } }, submit, liveNow));
 
   view.append(

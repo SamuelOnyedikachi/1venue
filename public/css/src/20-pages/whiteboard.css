@@ -305,3 +305,29 @@
     width: 76px;
   }
 }
+
+/* Viewing a shared .mwb file (from Messages) */
+.wb-banner { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; padding: .5rem .75rem; margin: 0 0 .5rem; border-radius: var(--r-md); font-size: .86rem; background: color-mix(in srgb, var(--accent) 9%, var(--s1)); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); }
+.wb-banner[hidden] { display: none; }
+.wb-banner > span { display: inline-flex; align-items: center; gap: .4rem; min-width: 0; }
+
+/* AI "Refine page" sheet */
+.wb-ai-compare { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+.wb-ai-compare figure { margin: 0; display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
+.wb-ai-compare figcaption { text-align: center; }
+.wb-ai-img { aspect-ratio: 16 / 10; border-radius: 12px; overflow: hidden; background: #fff; border: 1px solid var(--line); display: grid; place-items: center; }
+.wb-ai-img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.wb-ai-img.empty, .wb-ai-img.busy { background: color-mix(in srgb, var(--accent) 5%, var(--s1)); border-style: dashed; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: .5rem; padding: .5rem; text-align: center; }
+.wb-ai-form { display: flex; flex-direction: column; gap: .5rem; margin-top: .8rem; }
+.wb-ai-presets { display: flex; flex-wrap: wrap; gap: .35rem; }
+.wb-ai-hint { margin: 0; }
+.wb-ai-prompt { width: 100%; resize: vertical; min-height: 2.6rem; font-size: 16px; }
+.wb-ai-keep { display: flex; align-items: center; gap: .5rem; font-size: .88rem; cursor: pointer; }
+.wb-ai-keep[hidden] { display: none; }
+.wb-ai-swatches { display: inline-flex; gap: 3px; margin-left: auto; }
+.wb-ai-swatches i { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--line-2); }
+.wb-ai-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; margin-top: .9rem; }
+@media (max-width: 560px) {
+  .wb-ai-compare { grid-template-columns: 1fr; }
+  .wb-ai-actions .btn { flex: 1 1 auto; }
+}

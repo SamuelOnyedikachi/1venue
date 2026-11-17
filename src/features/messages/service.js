@@ -60,6 +60,7 @@ function parseLegacy(body) {
 function slim(a) {
   if (!a || typeof a !== 'object') return null;
   if (a.kind === 'passage') return a;
+  if (a.kind === 'board') return { kind: 'board', name: a.name || 'Whiteboard.mwb', mime: 'application/x-mwb', size: Number(a.size) || 0, url: a.url || null, preview: a.preview || null, pages: Number(a.pages) || 1 };
   return { kind: a.kind || 'file', name: a.name || 'file', mime: a.mime || '', size: Number(a.size) || 0, url: a.url || null, dataUrl: a.url ? null : (a.dataUrl || null) };
 }
 function msgOut(row, c, me = null) {
@@ -71,17 +72,19 @@ function msgOut(row, c, me = null) {
     id: Number(row.id), conversationId: Number(c.id), fromUserId: num(row.sender_user_id), fromName: row.sender_name || ANON,
     text: deleted ? '' : text, attachment: deleted ? null : slim(attachment), kind: row.kind || 'text', payload: deleted ? null : json(row.payload),
     createdAt: row.created_at, editedAt: row.edited_at || null, deleted, mine: me != null && num(row.sender_user_id) === Number(me), meetingCode: row.meeting_code || null,
+    replyToId: num(row.reply_to_id) || null,
   };
 }
 function preview({ text, attachment, kind, payload }) {
   if (kind === 'card' && payload) return ({ meeting: 'Meeting: ', schedule: 'Scheduled: ', venue: 'Venue: ' }[payload.type] || '') + (payload.title || '');
   if (text) return String(text).slice(0, 140);
-  if (attachment) return attachment.kind === 'voice' ? 'Voice note' : attachment.kind === 'image' ? 'Photo' : attachment.kind === 'passage' ? attachment.reference : `File: ${attachment.name || 'file'}`;
+  if (attachment) return attachment.kind === 'voice' ? 'Voice note' : attachment.kind === 'image' ? 'Photo' : attachment.kind === 'passage' ? attachment.reference : attachment.kind === 'board' ? `Whiteboard: ${String(attachment.name || 'board').replace(/\.mwb$/i, '')}` : `File: ${attachment.name || 'file'}`;
   return '';
 }
 
 // ---------------------------------------------------------------- conversation rows
 const CONV_SELECT = `SELECT c.*, m.role, m.last_read_message_id, m.muted, m.archived, m.pinned, m.cleared_before, m.left_at,
+    m.starred, m.follow_up, m.closed, m.snoozed_until, m.labels,
     t.user_a_id, t.user_b_id, mh.code AS mh_code, mh.ended_at AS mh_ended_at, g.meeting_code AS g_code
   FROM conversation_members m JOIN conversations c ON c.id=m.conversation_id
   LEFT JOIN dm_threads t ON t.id=c.dm_thread_id
@@ -154,6 +157,8 @@ async function decorate(rows, me, { unread = true } = {}) {
       lastMessageAt: c.last_message_at || c.created_at, lastPreview: c.last_preview || '',
       unread: unread ? await unreadCount(c, me, cutoff) : 0,
       muted: !!c.muted, archived: !!c.archived, pinned: !!c.pinned, role: c.role,
+      starred: !!c.starred, followUp: !!c.follow_up, closed: !!c.closed, labels: labelsOf(c.labels),
+      snoozedUntil: c.snoozed_until && new Date(c.snoozed_until).getTime() > Date.now() ? new Date(c.snoozed_until).toISOString() : null,
       memberCount: c.type === 'dm' ? 2 : counts.get(c.id) || 0,
       live, meetingCode: c.type === 'meeting' ? c.mh_code : c.group_id ? c.g_code : null,
       canSend: st.canSend, readOnly: st.readOnly, reason: st.reason || null,
@@ -205,14 +210,23 @@ async function syncProjections(me, { force = false } = {}) {
     (SELECT id FROM conversations WHERE org_id IS NOT NULL AND org_id NOT IN (SELECT org_id FROM org_members WHERE user_id=$1))`, [me]).catch(() => {});
 }
 
-async function listConversations(me, { filter = 'all', archived = false } = {}) {
+async function listConversations(me, { filter = 'all', archived = false, type = '' } = {}) {
   await syncProjections(me);
   const rows = await many(`${CONV_SELECT} WHERE m.user_id=$1 AND m.left_at IS NULL ORDER BY m.pinned DESC, COALESCE(c.last_message_at, c.created_at) DESC, c.id DESC LIMIT 200`, [me]);
   let list = await decorate(rows, me);
   list = list.filter((c) => (archived ? c.archived : !c.archived));
-  if (filter === 'dm') list = list.filter((c) => c.type === 'dm');
-  else if (filter === 'groups') list = list.filter((c) => c.type === 'group');
-  else if (filter === 'meetings') list = list.filter((c) => c.type === 'meeting' || c.subtype === 'meeting-group');
+  // Cooby-style tabs. "all" / "inbox" hide closed chats and chats snoozed until later.
+  if (filter === 'all' || filter === 'inbox') list = list.filter((c) => !c.closed && !c.snoozedUntil);
+  else if (filter === 'starred') list = list.filter((c) => c.starred);
+  else if (filter === 'unread') list = list.filter((c) => c.unread > 0);
+  else if (filter === 'followup') list = list.filter((c) => c.followUp);
+  else if (filter === 'snoozed') list = list.filter((c) => c.snoozedUntil);
+  else if (filter === 'closed') list = list.filter((c) => c.closed);
+  else if (filter.startsWith('label:')) { const want = filter.slice(6).toLowerCase(); list = list.filter((c) => c.labels.some((l) => l.name.toLowerCase() === want)); }
+  const kind = ['dm', 'groups', 'meetings'].includes(type) ? type : ['dm', 'groups', 'meetings'].includes(filter) ? filter : '';
+  if (kind === 'dm') list = list.filter((c) => c.type === 'dm');
+  else if (kind === 'groups') list = list.filter((c) => c.type === 'group');
+  else if (kind === 'meetings') list = list.filter((c) => c.type === 'meeting' || c.subtype === 'meeting-group');
   return list;
 }
 async function unreadSummary(me) {
@@ -230,12 +244,26 @@ async function getConversation(me, id) {
     const [mine, theirs] = await Promise.all([access.prefs(me), access.prefs(out.peer.id)]);
     out.presence = mine.hidePresence || theirs.hidePresence ? null : { online: socket.isOnline(out.peer.id), lastSeenAt: await socket.lastSeen(out.peer.id) };
     const pr = await one('SELECT last_read_message_id FROM conversation_members WHERE conversation_id=$1 AND user_id=$2', [c.id, out.peer.id]);
-    out.peerReadId = pr ? Number(pr.last_read_message_id) : 0;
+    // WhatsApp-style rule: "read" shows only once the other person has replied in this chat at least
+    // once. Until then the sender only sees "delivered", so a cold message never leaks read state.
+    out.peerReplied = await hasSent(c, out.peer.id);
+    out.peerReadId = out.peerReplied && pr ? Number(pr.last_read_message_id) : 0;
   } else if (c.type !== 'dm') {
     out.members = (await many(`SELECT u.id, u.username, u.display_name, u.avatar_url, m.role FROM conversation_members m JOIN users u ON u.id=m.user_id
       WHERE m.conversation_id=$1 AND m.left_at IS NULL ORDER BY m.role, m.joined_at LIMIT 200`, [c.id])).map((u) => ({ id: Number(u.id), username: u.username, name: u.display_name || u.username, avatarUrl: u.avatar_url || null, role: u.role }));
   }
+  out.pins = await require('./power').listPins(c, me).catch(() => []);
   return out;
+}
+/** Has this user written a real (non-system) message in the conversation? */
+async function hasSent(c, userId) {
+  if (!userId) return false;
+  const s = src(c);
+  return !!(await one(`SELECT 1 AS x FROM ${s.table} WHERE ${s.col}=$1${s.extra} AND sender_user_id=$2 AND (kind IS NULL OR kind NOT IN ('system','call')) LIMIT 1`, [s.key, userId]));
+}
+function labelsOf(v) {
+  const a = json(v);
+  return Array.isArray(a) ? a.filter((l) => l && l.name).slice(0, 8).map((l) => ({ name: String(l.name).slice(0, 24), color: /^#[0-9a-f]{6}$/i.test(l.color) ? l.color : '#7c5cff' })) : [];
 }
 
 // ---------------------------------------------------------------- DMs
@@ -273,16 +301,16 @@ async function openDm(user, peerId) {
 }
 
 // ---------------------------------------------------------------- sending
-async function insertMessage(c, { senderUserId, senderName, text, attachment = null, kind = 'text', payload = null, meetingCode = null, participantId = null }) {
+async function insertMessage(c, { senderUserId, senderName, text, attachment = null, kind = 'text', payload = null, meetingCode = null, participantId = null, replyToId = null }) {
   const att = attachment ? JSON.stringify(attachment) : null; const pl = payload ? JSON.stringify(payload) : null;
   let row;
   if (c.type === 'dm') {
-    row = await one(`INSERT INTO dm_messages (thread_id, sender_user_id, sender_participant_id, sender_name, body, meeting_code, attachments, kind, payload)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`, [c.dm_thread_id, senderUserId || null, participantId, senderName || 'User', text || '', meetingCode, att, kind, pl]);
+    row = await one(`INSERT INTO dm_messages (thread_id, sender_user_id, sender_participant_id, sender_name, body, meeting_code, attachments, kind, payload, reply_to_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`, [c.dm_thread_id, senderUserId || null, participantId, senderName || 'User', text || '', meetingCode, att, kind, pl, replyToId || null]);
     await q('UPDATE dm_threads SET last_message_at=NOW() WHERE id=$1', [c.dm_thread_id]);
   } else if (!isMeetingScoped(c)) {
-    row = await one(`INSERT INTO chat_messages (conversation_id, sender_id, sender_name, sender_user_id, body, attachments, kind, payload)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`, [c.id, senderUserId ? `user:${senderUserId}` : null, senderName || 'User', senderUserId || null, text || null, att, kind, pl]);
+    row = await one(`INSERT INTO chat_messages (conversation_id, sender_id, sender_name, sender_user_id, body, attachments, kind, payload, reply_to_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`, [c.id, senderUserId ? `user:${senderUserId}` : null, senderName || 'User', senderUserId || null, text || null, att, kind, pl, replyToId || null]);
   } else throw fail(400, 'Meeting chats are written through the room');
   await q('UPDATE conversations SET last_message_at=NOW(), last_preview=$2 WHERE id=$1', [c.id, preview({ text, attachment, kind, payload })]);
   return row;
@@ -290,10 +318,12 @@ async function insertMessage(c, { senderUserId, senderName, text, attachment = n
 /** Fan a saved row out to every member's sockets and push it to members who are away. */
 async function deliver(c, row, { senderId = null, notify = true } = {}) {
   const message = msgOut(row, c);
+  if (message.replyToId) await attachReplies([message], c);
+  if (senderId && row.kind !== 'system') await q('UPDATE conversation_members SET closed=FALSE WHERE conversation_id=$1 AND user_id <> $2 AND closed', [c.id, senderId]).catch(() => {});
   const ids = await memberIds(c.id);
-  for (const uid of ids) socket.sendToUser(uid, { type: 'message', conversationId: Number(c.id), message });
-  if (!notify || !push.enabled()) return message;
   const muted = new Set((await many('SELECT user_id FROM conversation_members WHERE conversation_id=$1 AND muted', [c.id])).map((r) => Number(r.user_id)));
+  for (const uid of ids) socket.sendToUser(uid, { type: 'message', conversationId: Number(c.id), message, muted: muted.has(uid) });
+  if (!notify || !push.enabled()) return message;
   const title = c.type === 'dm' ? message.fromName : `${message.fromName} · ${c.title || 'Group'}`;
   for (const uid of ids) {
     if (uid === Number(senderId) || muted.has(uid) || socket.hasVisible(uid)) continue;
@@ -314,9 +344,27 @@ async function sendMessage(user, convId, body) {
   if (!st.canSend) throw fail(403, st.reason || 'You can’t send messages here');
   const { text, attachment } = cleanInput(body);
   if (isMeetingScoped(c)) return sendToLiveRoom(user, c, text, attachment);
-  const row = await insertMessage(c, { senderUserId: user.id, senderName: nameOf(user), text, attachment });
+  const replyToId = await validReply(c, body.replyToId);
+  const row = await insertMessage(c, { senderUserId: user.id, senderName: nameOf(user), text, attachment, replyToId });
   const out = await deliver(c, row, { senderId: user.id });
   return { ...out, mine: true };
+}
+/** A reply target must be a message in the same conversation; anything else is silently dropped. */
+async function validReply(c, id) {
+  id = Number(id) || 0;
+  if (!id) return null;
+  const s = src(c);
+  const r = await one(`SELECT id FROM ${s.table} WHERE id=$1 AND ${s.col}=$2${s.extra}`, [id, s.key]);
+  return r ? id : null;
+}
+/** Quoted bubble data for replies: { id, fromName, text, kind, attachmentKind, deleted }. */
+async function attachReplies(messages, c) {
+  const ids = [...new Set(messages.map((m) => m.replyToId).filter(Boolean))];
+  if (!ids.length) return;
+  const s = src(c);
+  const rows = await many(`SELECT * FROM ${s.table} WHERE ${s.col}=$1 AND id = ANY($2::int[])`, [s.key, ids]);
+  const by = new Map(rows.map((r) => { const m = msgOut(r, c); return [m.id, { id: m.id, fromName: m.fromName, fromUserId: m.fromUserId, text: m.text.slice(0, 160), attachmentKind: m.attachment ? m.attachment.kind : null, deleted: m.deleted }]; }));
+  for (const m of messages) if (m.replyToId) m.replyTo = by.get(m.replyToId) || { id: m.replyToId, missing: true };
 }
 /** Live meeting chat from /messages: same in-memory history, room broadcast and chat_messages row as the room. */
 async function sendToLiveRoom(user, c, text, attachment) {
@@ -388,6 +436,7 @@ async function listMessages(me, convId, { before = null, limit = 50 } = {}) {
   const rows = (await many(`SELECT * FROM ${s.table} WHERE ${s.col}=$1${extra} AND id > $2 ORDER BY id DESC LIMIT $${p.length}`, p)).reverse();
   const messages = rows.map((r) => msgOut(r, c, me));
   await attachReactions(messages, s.kind, me);
+  await attachReplies(messages, c);
   const hasMore = rows.length === p[p.length - 1];
   // Tell the client about hidden history only when something older really exists.
   const hidden = cutoff && !hasMore ? await one(`SELECT id FROM ${s.table} WHERE ${s.col}=$1${s.extra} AND id > $2 AND created_at < $3 LIMIT 1`, [s.key, Number(c.cleared_before) || 0, cutoff]) : null;
@@ -415,7 +464,12 @@ async function markRead(me, convId, messageId) {
   const target = messageId ? Math.min(Number(messageId) || 0, top) : top;
   const r = await q('UPDATE conversation_members SET last_read_message_id=$3, last_read_at=NOW() WHERE conversation_id=$1 AND user_id=$2 AND last_read_message_id < $3', [c.id, me, target]);
   if (r.rowCount) {
-    for (const uid of await memberIds(c.id)) socket.sendToUser(uid, uid === Number(me) ? { type: 'unread' } : { type: 'read', conversationId: c.id, userId: Number(me), messageId: target });
+    // Others only learn I read their messages once I have replied in this chat (see getConversation).
+    const replied = await hasSent(c, me);
+    for (const uid of await memberIds(c.id)) {
+      if (uid === Number(me)) socket.sendToUser(uid, { type: 'unread' });
+      else if (replied) socket.sendToUser(uid, { type: 'read', conversationId: c.id, userId: Number(me), messageId: target });
+    }
   }
   return { ok: true, lastReadId: target };
 }
@@ -468,7 +522,18 @@ async function toggleReaction(me, convId, mid, emoji) {
 async function updateMember(me, convId, b = {}) {
   const c = await convRow(me, convId);
   const sets = []; const p = [c.id, me];
-  for (const k of ['muted', 'archived', 'pinned']) if (b[k] !== undefined) { p.push(!!b[k]); sets.push(`${k}=$${p.length}`); }
+  for (const k of ['muted', 'archived', 'pinned', 'starred', 'closed']) if (b[k] !== undefined) { p.push(!!b[k]); sets.push(`${k}=$${p.length}`); }
+  if (b.followUp !== undefined) { p.push(!!b.followUp); sets.push(`follow_up=$${p.length}`); }
+  if (b.snoozedUntil !== undefined) {
+    const t = b.snoozedUntil ? new Date(b.snoozedUntil) : null;
+    if (t && (Number.isNaN(t.getTime()) || t.getTime() < Date.now() - 60000)) throw fail(400, 'Pick a time in the future');
+    if (t && t.getTime() > Date.now() + 366 * 86400000) throw fail(400, 'Snooze for up to a year');
+    p.push(t); sets.push(`snoozed_until=$${p.length}`);
+  }
+  if (b.labels !== undefined) {
+    const list = labelsOf(Array.isArray(b.labels) ? b.labels : []);
+    p.push(list.length ? JSON.stringify(list) : null); sets.push(`labels=$${p.length}`);
+  }
   if (sets.length) await q(`UPDATE conversation_members SET ${sets.join(', ')} WHERE conversation_id=$1 AND user_id=$2`, p);
   socket.sendToUser(me, { type: 'conversation-updated', conversationId: c.id });
   return getConversation(me, c.id);
@@ -584,7 +649,7 @@ async function reviewReport(adminId, id, b = {}) {
 }
 
 module.exports = {
-  ANON, src, msgOut, preview, retentionCutoff, ent, convRow, sendState, memberIds,
+  ANON, src, msgOut, hasSent, attachReplies, validReply, labelsOf, cleanInput, nameOf, preview, retentionCutoff, ent, convRow, sendState, memberIds,
   syncProjections, listConversations, unreadSummary, getConversation, openDm, ensureDmConversation,
   insertMessage, deliver, sendMessage, persistRoomChat, onRoomChat, saveRoomDm, postSystem,
   listMessages, markRead, editMessage, deleteMessage, toggleReaction, updateMember, clearHistory, relayTyping,

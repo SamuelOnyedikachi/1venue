@@ -1,22 +1,21 @@
 import { refreshCredits } from "../credits.js";
 import { h, api, timeAgo } from "../ui.js";
 import { icon } from "../icons.js";
+import { loadMoney, fmtMoney, fmtCredits, creditsEl, breakdownEl, moneyConfig } from "../money.js";
 
-const credits = (n) =>
-  new Intl.NumberFormat("en-NG", { maximumFractionDigits: 4 }).format(n);
-const money = (kobo) =>
-  new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency: "NGN",
-    maximumFractionDigits: 2,
-  }).format(kobo / 100);
-const statusLabel = (s) =>
-  ({
-    paid: "Credits added",
-    pending: "Awaiting confirmation",
-    failed: "Not completed",
-    review: "Needs review",
-  })[s] || s;
+const credits = fmtCredits;
+// Purchase status → icon (each with a title and an aria-label).
+const STATUS = {
+  paid: ["checkCircle", "ok", "Completed"],
+  pending: ["hourglass", "wait", "Pending"],
+  review: ["hourglass", "wait", "Being reviewed"],
+  failed: ["xCircle", "bad", "Declined"],
+  refunded: ["returnArrow", "ref", "Refunded"],
+};
+const statusIcon = (p) => {
+  const [ic, cls, label] = STATUS[p.refunded ? "refunded" : p.status] || ["clock", "wait", p.status];
+  return h("span", { class: `pay-st ${cls}`, title: label, html: icon(ic, { size: 20, label }) });
+};
 
 export async function mount(view) {
   let alive = true;
@@ -24,6 +23,7 @@ export async function mount(view) {
   let quoteVersion = 0;
   let buying = false;
   let wallet = await api("/api/wallet");
+  await loadMoney();
   const page = h("div", { class: "wallet-page" });
   const message = h("p", {
     class: "small",
@@ -42,7 +42,7 @@ export async function mount(view) {
     required: true,
     autocomplete: "off",
   });
-  const price = h("p", { class: "wallet-price", "aria-live": "polite" });
+  const price = h("div", { class: "wallet-price", "aria-live": "polite" });
   const checkout = h(
     "button",
     { class: "btn primary", type: "submit" },
@@ -74,7 +74,7 @@ export async function mount(view) {
     message.classList.toggle("wallet-error", error);
   };
   function renderBalance() {
-    balance.textContent = credits(wallet.balanceCredits) + " credits";
+    balance.replaceChildren(creditsEl(wallet.balanceCredits, { size: 26 }));
     checkout.disabled = !wallet.purchasesEnabled || buying;
   }
   function renderEntries(list, append = false) {
@@ -112,12 +112,12 @@ export async function mount(view) {
             h(
               "strong",
               null,
-              (entry.credits > 0 ? "+" : "") + credits(entry.credits),
+              h("span", { class: "credits" }, (entry.credits > 0 ? "+" : "") + credits(entry.credits), h("span", { class: "credits-coin", html: icon("coin", { size: 14, label: "credits" }) })),
             ),
             h(
               "div",
               { class: "tiny muted" },
-              credits(entry.balanceAfter) + " balance",
+              credits(entry.balanceAfter) + " left",
             ),
           ),
         ),
@@ -173,15 +173,16 @@ export async function mount(view) {
           h(
             "div",
             { class: "grow" },
-            h("strong", null, credits(payment.credits) + " credits"),
+            h("strong", null, creditsEl(payment.credits)),
             h(
               "div",
               { class: "tiny muted" },
-              money(payment.priceKobo) +
-                " + processing fee · " +
+              fmtMoney(payment.priceKobo) +
+                (payment.feeKobo ? ` (incl. ${fmtMoney(payment.feeKobo)} fee)` : "") +
+                (payment.source === "auto_topup" ? " · auto top-up" : "") +
+                " · " +
                 timeAgo(payment.createdAt),
             ),
-            h("div", { class: "tiny" }, statusLabel(payment.status)),
           ),
           payment.status !== "paid"
             ? h(
@@ -196,7 +197,8 @@ export async function mount(view) {
                   : null,
                 check,
               )
-            : h("span", { class: "chip" }, "Complete"),
+            : null,
+          statusIcon(payment),
         ),
       );
     }
@@ -236,7 +238,7 @@ export async function mount(view) {
         body: { credits: count },
       });
       if (!alive || version !== quoteVersion) return;
-      price.textContent = money(result.priceKobo) + " + Processing fee";
+      price.replaceChildren(breakdownEl(result.subtotalKobo ?? result.priceKobo, { label: `${credits(count)} credits` }));
       checkout.disabled = !wallet.purchasesEnabled || buying;
     } catch (e) {
       if (alive && version === quoteVersion) price.textContent = e.message;
@@ -257,8 +259,8 @@ export async function mount(view) {
             updateQuote();
           },
         },
-        h("strong", null, credits(bundle.credits) + " credits"),
-        h("span", { class: "small muted" }, money(bundle.priceKobo)),
+        h("strong", null, creditsEl(bundle.credits, { size: 18 })),
+        h("span", { class: "small muted" }, fmtMoney(bundle.priceKobo)),
       ),
     );
   amount.oninput = () => {
@@ -311,11 +313,6 @@ export async function mount(view) {
       amount,
     ),
     price,
-    // h(
-    //   "p",
-    //   { class: "tiny muted" },
-    //   "Paystack shows the final processing fee before you pay. Fees do not buy extra credits.",
-    // ),
     checkout,
   );
   olderPurchases.onclick = async () => {
@@ -356,7 +353,7 @@ export async function mount(view) {
       h(
         "p",
         { class: "muted" },
-        "₦500 per credit. Purchased credits never expire.",
+        `${fmtMoney(wallet.pricePerCreditKobo)} per credit. Purchased credits never expire.`,
       ),
     ),
     h(
@@ -366,7 +363,8 @@ export async function mount(view) {
       balance,
     ),
     message,
-    h("section", { class: "card pad" }, h("h2", null, "Buy credits"), form),
+    h("section", { class: "card pad" }, h("h2", null, "Buy credits"), form,
+      h("a", { class: "tiny wallet-auto", href: "/settings#auto-topup", "data-link": "", html: icon("zap", { size: 14 }) + "Auto top-up when my balance runs low" })),
     h(
       "section",
       { class: "card pad" },

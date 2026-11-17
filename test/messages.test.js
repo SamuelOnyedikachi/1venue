@@ -33,6 +33,7 @@ test('messages end to end', { skip, timeout: 120000 }, async (t) => {
   const unread = async (c) => (await c.get('/api/messages/unread')).body.total;
 
   await t.test('DM allow-list: strangers cannot start a thread, even through /api/dm/with-user', async () => {
+    await B.put('/api/messages/settings', { dmPolicy: 'contacts' }); // default is now "everyone"; test the opt-in allow-list
     assert.equal((await A.post('/api/messages/dm', { userId: B.me.id })).status, 403);
     assert.equal((await A.get(`/api/dm/with-user?userId=${B.me.id}`)).status, 403);
     assert.equal((await A.get(`/api/messages/can?userId=${B.me.id}`)).body.ok, false);

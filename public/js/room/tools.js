@@ -7,6 +7,7 @@ import { createBoard, boardToolbar } from '../pages/whiteboard.js';
 import { SpeechRec } from './captions.js';
 import { SOUNDS, playSound, soundsMuted, setSoundsMuted } from './sounds.js';
 import { ytId } from './youtube.js';
+import { add } from '../safe-text.js';
 
 const btn = (ic, label, run, { group = '', cls = '', disabled } = {}) => h('button', { class: `btn ${cls}`, 'data-group': group, type: 'button', disabled: !!disabled, onclick: run, html: icon(ic, { size: 16 }) + (label ? `<span>${esc(label)}</span>` : '') });
 
@@ -29,14 +30,14 @@ async function fillMaterialsInline(R, root) {
     }
     host.replaceChildren();
     list.slice(0, 12).forEach((m) => {
-      const sub = m.kind === 'youtube' ? 'YouTube' : m.kind === 'image' ? 'Image' : `${(m.payload?.pages || []).length || 0} pages`;
+      const sub = m.kind === 'youtube' ? 'YouTube' : m.kind === 'image' ? 'Image' : m.kind === 'doc' ? 'Word document' : m.kind === 'sheet' ? 'Spreadsheet' : `${(m.payload?.pages || []).length || 0} pages`;
       const th = m.kind === 'youtube' && m.payload?.videoId ? `https://i.ytimg.com/vi/${m.payload.videoId}/mqdefault.jpg`
         : m.kind === 'image' && m.payload?.url ? m.payload.url
         : (m.payload?.pages && m.payload.pages[0]) || null;
       host.append(h('button', {
         class: 'list-item', type: 'button',
         onclick: () => presentMaterial(R, m),
-      }, th ? h('img', { class: 'sug-thumb', src: th, alt: '' }) : h('span', { class: 'ico-tile sm', 'data-group': 'content', html: icon(m.kind === 'youtube' ? 'youtube' : m.kind === 'image' ? 'image' : 'presentation', { size: 16 }) }),
+      }, th ? h('img', { class: 'sug-thumb', src: th, alt: '' }) : h('span', { class: 'ico-tile sm', 'data-group': 'content', html: icon(m.kind === 'youtube' ? 'youtube' : m.kind === 'image' ? 'image' : m.kind === 'sheet' ? 'grid' : m.kind === 'doc' ? 'file' : 'presentation', { size: 16 }) }),
         h('div', { class: 'grow' }, h('b', null, m.title), h('div', { class: 'tiny muted' }, sub)),
         h('span', { html: icon('play', { size: 14 }) })));
     });
@@ -55,12 +56,12 @@ const startContent = (R, payload) => {
 };
 let contentInput = null;
 function pickContentFile(R) {
-  if (!contentInput) { contentInput = h('input', { type: 'file', accept: 'application/pdf,image/*,.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation', multiple: true, hidden: true }); document.body.append(contentInput); }
+  if (!contentInput) { contentInput = h('input', { type: 'file', accept: 'application/pdf,image/*,.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation,.doc,.docx,.csv,.xls,.xlsx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', multiple: true, hidden: true }); document.body.append(contentInput); }
   contentInput.onchange = () => {
     const files = Array.from(contentInput.files); contentInput.value = '';
     if (!files.length) return;
     if (files.length > 1) {
-      if (!files.every((f) => f.type.startsWith('image/'))) return toast('Select multiple images, or one PDF/PPTX at a time', { icon: 'alert' });
+      if (!files.every((f) => f.type.startsWith('image/'))) return toast('Select multiple images, or one document at a time', { icon: 'alert' });
       if (files.length > 200) return toast('Select up to 200 images', { icon: 'alert' });
       return shareContentImages(R, files);
     } else return shareContentFile(R, files[0]);
@@ -106,8 +107,20 @@ export async function shareContentFile(R, f) {
         fileMeta: { name: f.name, size: f.size, mime: f.type },
       });
       if (data.truncated) toast(`Only the first ${data.pages.length} of ${data.total} pages were shared`, { icon: 'alert' });
-    } else throw new Error(`“${f.name}” isn’t a PDF, PPTX or image${f.type ? ` (${f.type})` : ''}`);
+    } else if (kind === 'doc') {
+      step = 'upload document'; setBusy('Uploading document…');
+      const up = await uploadFile(f, { purpose: 'content', headers: R.headers() });
+      step = 'prepare document'; setBusy('Preparing document…');
+      await shareDocUrl(R, { url: up.url, name: f.name, mime: f.type, title: name });
+    } else throw new Error(`“${f.name}” isn’t a PDF, PPTX, Word, spreadsheet or image${f.type ? ` (${f.type})` : ''}`);
   } catch (e) { reportClientError('present', e, { step, file: f.name, mime: f.type || '(none)', size: f.size }); } finally { setBusy(''); }
+}
+/** Word / CSV / Excel: the server extracts it into a paged doc; then present it like slides. */
+async function shareDocUrl(R, { url, name, mime, title }) {
+  const res = await fetch('/api/convert/doc', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', ...R.headers() }, body: JSON.stringify({ url, name, mime, title }) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Could not prepare the document (${res.status})`);
+  startContent(R, { contentType: 'doc', url: data.url, docKind: data.docKind, pageCount: data.pageCount, title: data.title || title || 'Document', fileMeta: data.fileMeta });
 }
 async function shareContentImages(R, files, { append = false } = {}) {
   const setBusy = (t) => { presentBusy = t || ''; R.panel.refresh('tools'); };
@@ -148,6 +161,13 @@ async function presentMaterial(R, m) {
   }
   if (m.kind === 'image' && m.payload?.url) {
     startContent(R, { contentType: 'image', url: m.payload.url, title: m.title || 'Image' });
+    return;
+  }
+  if ((m.kind === 'doc' || m.kind === 'sheet') && m.payload?.sourceUrl) {
+    presentBusy = 'Preparing document…'; R.panel.refresh('tools');
+    try { await shareDocUrl(R, { url: m.payload.sourceUrl, name: m.payload.sourceName || m.title, mime: m.payload.sourceMime || '', title: m.title }); }
+    catch (e) { reportClientError('present', e, { step: 'present material doc', file: m.payload.sourceName || m.title }); }
+    finally { presentBusy = ''; R.panel.refresh('tools'); }
     return;
   }
   const pages = m.payload?.pages;
@@ -412,8 +432,8 @@ export function buildTools(R) {
         lkOk ? null : note('Screen sharing needs the audio/video server, which isn’t connected right now.'),
         h('div', { class: 'sec-sub', style: { marginTop: '1rem' } }, 'Watch together'),
         h('div', { class: 'row gap-s' }, h('div', { class: 'grow' }, yurl), btn('youtube', 'Play', goYT, { group: 'content' })),
-        h('div', { class: 'sec-sub', style: { marginTop: '1rem' } }, 'Slides & images'),
-        h('div', { class: 'row gap-s wrap' }, btn('upload', 'Upload PDF, PPTX or images', () => pickContentFile(R), { group: 'content', disabled: !!presentBusy })),
+        h('div', { class: 'sec-sub', style: { marginTop: '1rem' } }, 'Slides, documents & images'),
+        h('div', { class: 'row gap-s wrap' }, btn('upload', 'Upload PDF, slides, Word, Excel or images', () => pickContentFile(R), { group: 'content', disabled: !!presentBusy })),
         h('div', { class: 'sec-sub', style: { marginTop: '1rem' } }, 'Materials'),
         h('div', { class: 'tiny muted', style: { marginBottom: '.4rem' } }, 'Preloaded decks and links — present instantly without re-uploading.'),
         h('div', { class: 'materials-inline', 'data-materials': '1' }),
@@ -436,7 +456,7 @@ export function buildTools(R) {
     sounds() {
       const box = h('div', { class: 'stack' });
       const off = R.security.sounds === false && !R.isMod();
-      box.append(h('div', { class: 'sound-grid' }, SOUNDS.map((sd) => h('div', { class: 'sound-card' },
+      add(box, h('div', { class: 'sound-grid' }, SOUNDS.map((sd) => h('div', { class: 'sound-card' },
         h('button', { class: 'sound-play', type: 'button', disabled: off, 'aria-label': `Play ${sd.label} for everyone`, onclick: () => R.playRoomSound(sd.id) }, h('span', { class: 'em' }, sd.emoji), h('b', null, sd.label)),
         h('button', { class: 'icon-btn sm', type: 'button', 'data-tip': 'Preview just for me', 'aria-label': `Preview ${sd.label}`, onclick: () => playSound(sd.id, { force: true }), html: icon('headphones', { size: 14 }) })))),
         row(soundsMuted() ? 'volumeX' : 'volume', 'Mute sounds for me', 'Others still hear them', sw(soundsMuted(), (v) => { setSoundsMuted(v); R.panel.render(); })),
