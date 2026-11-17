@@ -84,18 +84,18 @@ export async function mount(view) {
         h(
           "p",
           { class: "small muted" },
-          "No credit transactions yet. Completed purchases will appear here.",
+          "Credit additions and meeting usage will appear here.",
         ),
       );
     for (const entry of list) {
       const title =
         entry.type === "usage"
           ? entry.meetingName || entry.meetingCode || "Meeting usage"
-          : "Credit purchase";
+          : entry.type === "welcome" ? "Welcome credits" : "Credit purchase";
       const detail =
         entry.type === "usage"
           ? `Meeting usage · ${timeAgo(entry.createdAt)}`
-          : timeAgo(entry.createdAt);
+          : entry.type === "welcome" ? `New account bonus · ${timeAgo(entry.createdAt)}` : timeAgo(entry.createdAt);
       entries.append(
         h(
           "div",

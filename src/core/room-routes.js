@@ -265,6 +265,7 @@ module.exports = async function handle(req, res, parsed) {
         stage: stage.state(meeting),
         eventSlug: meeting.eventSlug || null,
         venue: meeting.venue || null,
+        freeUntilMs: openedBilling?.session.free_until_ms || null,
       });
     } catch (e) {
       if (openedBilling) {
@@ -487,6 +488,7 @@ module.exports = async function handle(req, res, parsed) {
         code,
         name: meeting.name,
         venue: meeting.venue || null,
+        freeUntilMs: meeting.billingId ? (await require('../features/wallet/billing-data').get(meeting.billingId))?.free_until_ms || null : null,
         participantId: pid,
         wsCredential: signWsCredential({ participantId: pid, code }),
         role: participant.role,
@@ -528,7 +530,30 @@ module.exports = async function handle(req, res, parsed) {
       eventSlug: meeting.eventSlug || null,
       requiresKey: meeting.inviteAccess === 'approval' || meeting.requireInviteKey === true,
       guestAccess: !(meeting.settings && meeting.settings.guestAccess === false),
+      freeUntilMs: meeting.billingId ? (await require('../features/wallet/billing-data').get(meeting.billingId))?.free_until_ms || null : null,
     });
+  }
+
+  if (urlPath === '/api/meeting/billing/claim' && req.method === 'POST') {
+    try {
+      const body = await parseBody(req);
+      const code = normCode(body.code);
+      const meeting = meetings.get(code) || (isCode(code) ? await getOrRestoreMeeting(code) : null);
+      if (!meeting?.billingId) return sendJSON(res, 404, { error: 'Meeting not found' });
+      const participant = meeting.participants.get(body.participantId);
+      if (!participant || participant.id !== meeting.hostId || participant.role !== 'host') return sendJSON(res, 403, { error: 'Only this meeting’s host can connect a wallet' });
+      if (!body.wsCredential || !require('../lib/wsCredential').verifyWsCredential(body.wsCredential, { participantId: participant.id, code }).ok) return sendJSON(res, 403, { error: 'Invalid room credential' });
+      const user = await getAuthUser(req, res);
+      if (!user) return sendJSON(res, 200, { claimed: false, authenticated: false });
+      const row = await require('../features/wallet/billing-data').claimHost(meeting.billingId, user);
+      participant.userId = user.id;
+      participant.username = user.username;
+      meeting.hostUserId = user.id;
+      await db.upsertMembership({ code, userId: user.id, participantId: participant.id, displayName: participant.name, role: 'host', status: 'ACTIVE', email: user.email || null }).catch(() => {});
+      return sendJSON(res, 200, { claimed: true, freeUntilMs: row.free_until_ms });
+    } catch (e) {
+      return sendJSON(res, e.status || 400, { error: publicErr(e, 'Could not connect your wallet') });
+    }
   }
 
   // Regenerate secure invite token (host only)

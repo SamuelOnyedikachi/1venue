@@ -101,12 +101,12 @@ class Room {
       joinB.disabled = true; joinB.classList.add('loading');
       stopPrev();
       try { await this.join({ name: n, mic, cam, creating }); }
-      catch (err) { if (err.status === 401) requireLogin(); if (err.status === 402) toast('Top up your wallet to at least 30 credits before opening a meeting.', {icon:'creditCard',ms:8000}); joinB.disabled = false; joinB.classList.remove('loading'); toastErr(err); preview(); }
+      catch (err) { if (err.status === 401) requireLogin(); joinB.disabled = false; joinB.classList.remove('loading'); toastErr(err); preview(); }
     } }, h('div', { class: 'eyebrow' }, creating ? 'You’re hosting' : ev ? (ev.live ? '● Live now' : 'Event') : 'Joining'), h('h1', { class: 'pj-title' }, title),
       ev && ev.host ? h('div', { class: 'row gap-s muted small' }, avatar(ev.host.name, ev.host.avatarUrl, 'xs'), `Hosted by ${ev.host.name}`) : null,
       h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Display name'), name),
       !state.user ? h('p', { class: 'tiny muted' }, 'Joining as a guest. ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); requireLogin('Sign in to keep your history'); } }, 'Sign in'), ' to save transcripts and history.') : null,
-      (creating && !this.intent?.venue) || (ev?.isHost && !ev.live) ? h('p',{class:'small muted'},'1 credit per minute while open. Minimum 30 credits to start. ',h('a',{href:'/wallet',target:'_blank',rel:'noopener'},'Open wallet')) : null,
+      (creating && !this.intent?.venue) || (ev?.isHost && !ev.live) ? h('p',{class:'small muted'},'The first 15 minutes are free. Sign in and use credits to continue after that. ',h('a',{href:'/wallet',target:'_blank',rel:'noopener'},'Open wallet')) : null,
       joinB,
       h('div', { class: 'row gap-s tiny muted center' }, h('span', { html: icon('lock', { size: 12 }) }), 'Recordings stay on your device. Captions are processed privately.'));
     this.view.replaceChildren(h('div', { class: 'prejoin' }, h('div', { class: 'pj-art', 'aria-hidden': 'true' }), pv, form));
@@ -147,6 +147,7 @@ class Room {
       if (this.params.key) this.inviteKey = this.params.key;
     }
     this.joinRes = r;
+    this.billingFreeUntil = Number(r.freeUntilMs || 0) || null;
     this.me = { id: r.participantId, name, role: r.role || 'participant' };
     this.wsCredential = r.wsCredential;
     saveRoom(this.code, { participantId: r.participantId, wsCredential: r.wsCredential, name });
@@ -206,10 +207,38 @@ export { Room, fmtCode, ibtn, lsGet, lsSet, deviceKind };
 
 /* ======================================================================= in-room state & layout */
 Object.assign(Room.prototype, {
+  async syncBilling() {
+    if (!this.alive || !this.billingFreeUntil || this.me?.role !== 'host') return;
+    const left = this.billingFreeUntil - Date.now();
+    if (left <= 2 * 60 * 1000 && this.billingNoticeEl && !this.billingWarned) {
+      this.billingWarned = true;
+      this.billingNoticeEl.hidden = false;
+      this.billingNoticeEl.className = 'credit-warning';
+      this.billingNoticeEl.replaceChildren(document.createTextNode('Your free 15 minutes end soon. Sign in and have credits ready to keep this meeting open. '));
+      const signin = h('a', { href: '#', onclick: (e) => { e.preventDefault(); requireLogin('Sign in before your free meeting time ends'); } }, 'Sign in');
+      const wallet = h('a', { href: '/wallet', target: '_blank', rel: 'noopener' }, 'Open wallet');
+      this.billingNoticeEl.append(signin, document.createTextNode(' · '), wallet);
+    }
+    if (left <= 0 || this.billingClaimBusy) return;
+    this.billingClaimBusy = true;
+    try {
+      const claim = await api('/api/meeting/billing/claim', { method: 'POST', body: { code: this.code, participantId: this.me.id, wsCredential: this.wsCredential } });
+      if (claim.claimed) {
+        this.billingFreeUntil = Number(claim.freeUntilMs || this.billingFreeUntil);
+        this.billingNoticeEl?.replaceChildren(document.createTextNode('Your meeting will use credits after the free 15 minutes. '), h('a', { href: '/wallet', target: '_blank', rel: 'noopener' }, 'Open wallet'));
+        this.billingNoticeEl.hidden = false;
+        this.billingNoticeEl.className = 'credit-warning';
+        this.billingWarned = true;
+        clearInterval(this.billingSyncTimer);
+      }
+    } catch (_) { /* keep the room available; the timer still ends at the server deadline */ }
+    finally { this.billingClaimBusy = false; }
+  },
   enter(r) {
     this.creditControl?.unsubscribe();
     this.cleanupPrejoin && this.cleanupPrejoin();
     this.inRoom = true;
+    this.billingFreeUntil = Number(r.freeUntilMs || this.billingFreeUntil || 0) || null;
     this.roomName = r.name || fmtCode(this.code);
     this.data = { chat: [], dms: [], groups: new Map(), polls: [], questions: [], comments: [], captions: [], activity: [] };
     this.unread = { chat: 0, dm: 0, engage: 0, comments: 0 };
@@ -252,6 +281,12 @@ Object.assign(Room.prototype, {
     this.connectMedia().then(() => this.applyWant());
     this.registerCmds();
     this.tick = setInterval(() => this.paintHead(), 1000);
+    if (this.me.role === 'host' && this.billingFreeUntil) {
+      this.billingNoticeEl = h('div', { class: 'small muted', hidden: true });
+      this.root.insertBefore(this.billingNoticeEl, this.main);
+      this.billingSyncTimer = setInterval(() => this.syncBilling(), 8000);
+      this.syncBilling();
+    }
     this.onKey = (e) => this.shortcut(e); window.addEventListener('keydown', this.onKey);
     this.onUnload = () => { navigator.sendBeacon && navigator.sendBeacon('/api/leave', new Blob([JSON.stringify({ code: this.code, participantId: this.me.id })], { type: 'application/json' })); };
     window.addEventListener('pagehide', this.onUnload);
@@ -620,7 +655,7 @@ Object.assign(Room.prototype, {
     const s = roomsStore(); delete s[this.code]; localStorage.setItem('venue.rooms', JSON.stringify(s));
     this.destroy();
     refreshCredits();
-    toast(m.reason === 'credits-exhausted' ? 'The meeting ended because the host ran out of credits.' : 'The session has ended', { icon: 'phoneOff', ms: 7000 });
+    toast(m.reason === 'credits-exhausted' ? 'The meeting ended because the host ran out of credits.' : m.reason === 'credits-required' ? 'The free 15 minutes ended. Sign in and use credits before starting another meeting.' : 'The session has ended', { icon: 'phoneOff', ms: 7000 });
     if (m.reason === 'credits-exhausted' && this.me?.role === 'host') { navigate('/wallet'); return; }
     navigate(m.historyId ? '/session/' + m.historyId : m.eventSlug ? '/e/' + m.eventSlug : '/'); setTimeout(() => maybeShowBanner('after-room'), 1500);
   },
@@ -632,7 +667,7 @@ Object.assign(Room.prototype, {
     if (!this.alive) return; this.alive = false;
     this.creditControl?.unsubscribe();
     this.cleanupPrejoin && this.cleanupPrejoin();
-    clearInterval(this.tick); window.removeEventListener('keydown', this.onKey); window.removeEventListener('pagehide', this.onUnload); window.removeEventListener('resize', this.onResize);
+    clearInterval(this.tick); clearInterval(this.billingSyncTimer); window.removeEventListener('keydown', this.onKey); window.removeEventListener('pagehide', this.onUnload); window.removeEventListener('resize', this.onResize);
     try { this.ws && this.ws.close(); } catch { /* */ }
     this.captioner && this.captioner.stop(); this.media && this.media.disconnect().catch(() => {});
     setRoomBridge(null);
