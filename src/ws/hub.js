@@ -65,7 +65,15 @@ function attachWebSocket(server) {
   const ctx = createPluginContext();
   loadAll(ctx, featureRegistry.isEnabled);
 
-  const wss = new WebSocketServer({ server, path: '/' });
+  // Two sockets share the HTTP server: the meeting hub at "/" and the signed-in user socket at
+  // "/ws/me" (Messages: inbox, unread, ringing). Upgrades are routed by path.
+  const wss = new WebSocketServer({ noServer: true });
+  server.on('upgrade', (req, socket, head) => {
+    const pathname = String(req.url || '/').split('?')[0];
+    if (pathname === '/ws/me') { require('../features/messages/socket').handleUpgrade(req, socket, head).catch(() => socket.destroy()); return; }
+    if (pathname !== '/') { try { socket.write('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n'); } catch (_) {} socket.destroy(); return; }
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+  });
   metrics.setWss(wss);
 
   // Heartbeat: browsers answer pings automatically; sockets that miss one round are dead (sleeping

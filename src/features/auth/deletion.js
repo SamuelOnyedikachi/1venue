@@ -11,9 +11,11 @@
  *     links, profile, posts and likes, follows, events they host (with RSVPs), venues they own,
  *     materials, whiteboards, scheduled meetings, preferences;
  *   - their uploaded files, from the database and from storage (disk or R2/S3);
- *   - their comments, private notes, DM threads, room memberships.
+ *   - their comments, private notes, threads with meeting guests, room memberships, inbox state
+ *     (conversation memberships, blocks, push subscriptions, reactions).
  * What stays, anonymised, so other people's records still make sense: messages and questions in
- * shared rooms ("Deleted user"), poll/question votes (counts only, no link back), session
+ * shared rooms and their side of DMs and group chats ("Deleted user"; the other person keeps
+ * the thread, read-only), poll/question votes (counts only, no link back), session
  * history they hosted or attended (name replaced, user link cleared).
  */
 const crypto = require('crypto');
@@ -79,8 +81,12 @@ async function deleteAccount(userId) {
       OR (target_type = 'post' AND target_key = ANY($3::text[])) OR (target_type = 'event' AND target_key = ANY($4::text[]))`, [id, key, postIds, eventIds]);
     await run('commentLikes', 'DELETE FROM comment_likes WHERE liker_key = $1', [key]);
     await run('notes', 'DELETE FROM personal_notes WHERE user_id = $1', [id]);
-    await run('dmMessages', 'DELETE FROM dm_messages WHERE thread_id IN (SELECT id FROM dm_threads WHERE user_a_id = $1 OR user_b_id = $1)', [id]);
-    await run('dmThreads', 'DELETE FROM dm_threads WHERE user_a_id = $1 OR user_b_id = $1', [id]);
+    // Their own threads with meeting guests (no one else can ever open those) go; threads with other
+    // signed-in people stay so the other person keeps their history (shown as "Deleted user").
+    await run('dmMessages', 'DELETE FROM dm_messages WHERE thread_id IN (SELECT id FROM dm_threads WHERE user_a_id = $1 AND peer_is_guest = TRUE)', [id]);
+    await run('dmThreads', 'DELETE FROM dm_threads WHERE user_a_id = $1 AND peer_is_guest = TRUE', [id]);
+    await run('messageReports', 'UPDATE message_reports SET reporter_id = NULL WHERE reporter_id = $1', [id]);
+    await run('calls', 'UPDATE calls SET started_by = NULL WHERE started_by = $1', [id]);
     await run('memberships', 'DELETE FROM meeting_membership WHERE user_id = $1', [id]);
     await run('groupMembers', 'DELETE FROM chat_group_members WHERE user_id = $1', [id]);
     await run('files', 'DELETE FROM files WHERE owner_user_id = $1', [id]);

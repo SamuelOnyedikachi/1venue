@@ -1,5 +1,5 @@
 /* 1venue service worker: offline app shell, stale-while-revalidate for static assets, network-only for API/WS/media. */
-const VERSION = 'v32-2026-11-16';
+const VERSION = 'v33-2026-11-16';
 const SHELL = `shell-${VERSION}`;
 const ASSETS = `assets-${VERSION}`;
 const PRECACHE = ['/', '/offline.html', '/css/app.css', '/css/room.css', '/js/app.js', '/js/ui.js', '/js/icons.js', '/js/commands.js', '/js/pwa.js', '/js/quran-cmd.js', '/brand/logo.svg', '/brand/mark-white.svg', '/manifest.webmanifest', '/icons/icon-192.png'];
@@ -32,4 +32,28 @@ self.addEventListener('fetch', (e) => {
       return hit || net;
     }));
   }
+});
+
+// Web Push (Messages): only fires when the server has VAPID keys and the user turned notifications on.
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { title: '1venue', body: e.data && e.data.text() }; }
+  const call = d.kind === 'call';
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+    // A focused tab already shows the message or the ringing sheet.
+    if (!call && wins.some((w) => w.focused && w.visibilityState === 'visible')) return undefined;
+    return self.registration.showNotification(d.title || '1venue', {
+      body: d.body || '', tag: d.tag || undefined, renotify: !!d.tag, requireInteraction: call,
+      icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', data: { url: d.url || '/messages' },
+    });
+  }));
+});
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || '/messages';
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+    const w = wins.find((x) => new URL(x.url).origin === location.origin);
+    if (w) return w.focus().then(() => w.navigate ? w.navigate(url) : undefined).catch(() => self.clients.openWindow(url));
+    return self.clients.openWindow(url);
+  }));
 });

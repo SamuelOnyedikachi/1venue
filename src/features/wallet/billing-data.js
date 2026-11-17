@@ -69,7 +69,7 @@ async function mediaToken(id,room,now=Date.now()) {
 }
 async function pendingCleanup(now=Date.now()) {return (await db.q("SELECT * FROM credit_billing_sessions WHERE state='closing' OR (state='closed' AND cleanup_until_ms>$1 AND (last_cleanup_ms IS NULL OR last_cleanup_ms<=$2))",[now,now-5000])).rows.map(shape);}
 async function markCleaned(id,now=Date.now()) {await db.q("UPDATE credit_billing_sessions SET state='closed',last_cleanup_ms=$2 WHERE id=$1 AND state<>'active'",[id,now]);}
-async function heartbeat(ownerId,stopped=false,now=Date.now()) {await db.q('INSERT INTO credit_billing_workers(id,heartbeat_ms,stopped) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET heartbeat_ms=$2,stopped=$3',[ownerId,now,stopped]);}
+async function heartbeat(ownerId,stopped=false,now=Date.now()) {await db.q('INSERT INTO credit_billing_workers(id,heartbeat_ms,stopped) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET heartbeat_ms=$2,stopped=(credit_billing_workers.stopped OR EXCLUDED.stopped)',[ownerId,now,stopped]);} // a stopped worker never comes back (an in-flight tick must not undo stop())
 async function claim(id,ownerId,now=Date.now()) {
   const original=await get(id);if(!original)return null;
   return db.tx(async c=>{

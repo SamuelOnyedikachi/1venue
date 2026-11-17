@@ -137,32 +137,10 @@ module.exports = {
       const payload = { type: 'group-chat', message: entry };
       sendToGroup(meeting, groupId, payload);
 
+      const messages = require('../messages/service');
       Promise.resolve()
-        .then(async () => {
-          let artifactId = meeting.artifactId || null;
-          if (!artifactId && meeting.historyId) {
-            try {
-              const art = await db.ensureArtifactForHistory(meeting.historyId, meetingCode);
-              if (art) {
-                meeting.artifactId = art.id;
-                artifactId = art.id;
-              }
-            } catch (_) {}
-          }
-          await db.saveChatMessage({
-            meetingHistoryId: meeting.historyId || null,
-            artifactId,
-            sessionId: meetingCode,
-            senderId: participantId,
-            senderName: actor.name,
-            senderUserId: actor.userId || null,
-            body: text || null,
-            attachments: attachment
-              ? { kind: attachment.kind, name: attachment.name, mime: attachment.mime, size: attachment.size, dataUrl: attachment.dataUrl, url: attachment.url }
-              : null,
-            groupId,
-          });
-        })
+        .then(() => messages.persistRoomChat(meeting, meetingCode, { senderId: participantId, senderName: actor.name, senderUserId: actor.userId || null, text, attachment, groupId }))
+        .then((row) => messages.onRoomChat(row))
         .catch((e) => console.warn('[group-chat] persist', e.message));
     });
 

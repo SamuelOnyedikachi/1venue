@@ -93,7 +93,8 @@ test('delete account: password, email code, limits, data removed or anonymised, 
     assert.equal(await one('SELECT 1 FROM users WHERE id = $1', [me.id]), undefined);
     assert.equal((await one('SELECT COUNT(*)::int n FROM posts WHERE user_id = $1', [me.id])).n, 0);
     assert.equal((await one('SELECT COUNT(*)::int n FROM auth_sessions WHERE user_id = $1', [me.id])).n, 0);
-    assert.equal((await one('SELECT COUNT(*)::int n FROM dm_threads WHERE id = $1', [th])).n, 0);
+    assert.equal((await one('SELECT COUNT(*)::int n FROM dm_threads WHERE id = $1', [th])).n, 1, 'DM thread kept for the other person');
+    assert.deepEqual(await one('SELECT sender_user_id, sender_name FROM dm_messages WHERE thread_id = $1', [th]), { sender_user_id: null, sender_name: 'Deleted user' }, 'their DM side anonymised');
     assert.equal(await one("SELECT 1 FROM files WHERE id = 'fdeltest0000000001'"), undefined);
     assert.equal(fs.existsSync(path.join(storeDir, '2026/11/abc-me.png')), false, 'file removed from storage');
     const msg = await one("SELECT sender_user_id, sender_name FROM chat_messages WHERE body = 'shared msg' AND meeting_history_id = $1", [hist]);
