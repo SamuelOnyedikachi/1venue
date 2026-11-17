@@ -345,6 +345,7 @@ async function publicPlans() {
   const pf = plans.platform(s);
   return { currency: 'NGN', plans: plans.PLAN_IDS.map((id) => ({ id, ...plans.limitsFor(s, id), features: plans.featuresFor(s, id), priceMonthKobo: s.plans[id].priceMonthKobo, priceYearKobo: s.plans[id].priceYearKobo })),
     platform: { feeBps: pf.feeBps, promoDayKobo: pf.promoDayKobo, promoMaxDays: pf.promoMaxDays },
+    promoPricing: { rates: Object.fromEntries(plans.PROMO_PLACEMENTS.map((k) => [k, plans.promoPricing(s)[k]])), tiers: plans.promoTiers(plans.promoPricing(s)), maxDays: pf.promoMaxDays },
     aiWeights: s.aiWeights, slugAddons: s.slugAddons, graceDays: s.graceDays, purchasesEnabled: gateway.enabled() };
 }
 async function assertCanDelete(c, userId) {

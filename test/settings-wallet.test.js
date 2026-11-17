@@ -264,8 +264,11 @@ test('short links: 4-character ₦10,000 and 3-character ₦25,000; old saved pr
   delete process.env.SLUG3_PRICE_KOBO; delete process.env.LINK3_PRICE_KOBO;
   const codes = require('../src/lib/codes');
   assert.ok(!codes.SLUG_ROUTE_RE.test('ab')); assert.ok(codes.SLUG_ROUTE_RE.test('abc'));
-  assert.match(src('public/js/pages/upgrade.js'), /tile\(4, 'abcd', addons\.slug4\), tile\(3, 'abc', addons\.slug3\)/);
-  assert.match(src('public/js/pages/upgrade.js'), /released \$\{releaseDays\} days after it lapses/);
+  // the card lives in public/js/shortlinks.js, shared by /upgrade and /billing so both look the same
+  assert.match(src('public/js/shortlinks.js'), /tile\(4, 'abcd', addons\.slug4\), tile\(3, 'abc', addons\.slug3\)/);
+  assert.match(src('public/js/shortlinks.js'), /released \$\{releaseDays\} days after it lapses/);
+  assert.match(src('public/js/pages/upgrade.js'), /from '\.\.\/shortlinks\.js'/);
+  assert.match(src('public/js/pages/billing.js'), /from '\.\.\/shortlinks\.js'/);
 });
 
 test('saved admin prices from before the change keep their money on the right tier', { skip }, async () => {

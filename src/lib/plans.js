@@ -53,6 +53,23 @@ const PLATFORM_KEYS = {
   seriesMax: [52, 200], // occurrences one recurring series may create
 };
 
+// Self-serve promotion pricing: a per-day rate for each placement, times days, less a duration discount.
+// Rates are kobo per day; tiers are "N+ days → P% off" (0 days or 0% turns a tier off). Env: PROMO_RATE_<PLACEMENT>_KOBO,
+// PROMO_TIER<n>_DAYS, PROMO_TIER<n>_PERCENT. The four default rates add up to the old flat promoDayKobo (₦1,000 a day).
+const PROMO_PLACEMENTS = ['discover', 'feed', 'venues', 'books'];
+const PROMO_SHARE = { discover: 35, feed: 30, venues: 20, books: 15 };
+const PROMO_KEYS = {
+  discover: [35000, 1e10], feed: [30000, 1e10], venues: [20000, 1e10], books: [15000, 1e10],
+  tier1Days: [7, 365], tier1Pct: [10, 90], tier2Days: [14, 365], tier2Pct: [15, 90], tier3Days: [30, 365], tier3Pct: [25, 90],
+};
+/** Placement rates that add up to one flat per-day price (used when only promoDayKobo was customised). */
+function scaledRates(dayKobo) {
+  const out = {}; let left = dayKobo;
+  for (const k of PROMO_PLACEMENTS.slice(1)) { out[k] = Math.floor((dayKobo * PROMO_SHARE[k]) / 100); left -= out[k]; }
+  out.discover = left;
+  return out;
+}
+
 const DEFAULTS = Object.freeze({
   plans: {
     free: { venues: 1, audience: 100, meeting: 25, speakerSeats: 2, aiDaily: 20, uploadMB: 250, priceMonthKobo: 0, priceYearKobo: 0 },
@@ -69,6 +86,7 @@ const DEFAULTS = Object.freeze({
     organisation: { branding: 1, recurring: 1, reminders: 1, whatsapp: 1, exports: 1, analytics: 1, badge: 1, selfPromo: 1, ticketing: 1, replays: 1, orgMembers: 25, replayMB: 51200, callVideo: 1, groupMembers: 64, callParticipants: 16, historyDays: 0 },
   },
   platform: Object.fromEntries(Object.entries(PLATFORM_KEYS).map(([k, [d]]) => [k, d])),
+  promoPricing: Object.fromEntries(Object.entries(PROMO_KEYS).map(([k, [d]]) => [k, d])),
 });
 
 const snake = (k) => k.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase();
@@ -95,6 +113,11 @@ function envDefaults() {
     if (v != null) out.features[p][k] = FEATURE_KEYS.includes(k) ? (v ? 1 : 0) : v;
   }
   for (const [k, [, max]] of Object.entries(PLATFORM_KEYS)) { const v = envNum(`PLATFORM_${snake(k)}`); if (v != null && v <= max) out.platform[k] = v; }
+  if (envNum('PLATFORM_PROMO_DAY_KOBO') != null) Object.assign(out.promoPricing, scaledRates(out.platform.promoDayKobo));
+  for (const k of PROMO_PLACEMENTS) { const v = envNum(`PROMO_RATE_${k.toUpperCase()}_KOBO`); if (v != null && v <= PROMO_KEYS[k][1]) out.promoPricing[k] = v; }
+  for (const n of [1, 2, 3]) for (const [k, env] of [[`tier${n}Days`, `PROMO_TIER${n}_DAYS`], [`tier${n}Pct`, `PROMO_TIER${n}_PERCENT`]]) {
+    const v = envNum(env); if (v != null && v <= PROMO_KEYS[k][1]) out.promoPricing[k] = v;
+  }
   return out;
 }
 
@@ -131,6 +154,11 @@ function mergeSettings(base, patch) {
     if (!PLATFORM_KEYS[k]) bad(`Unknown platform setting ${k}`);
     out.platform[k] = num(v, k, PLATFORM_KEYS[k][1]);
   }
+  if (patch.promoPricing) for (const [k, v] of Object.entries(patch.promoPricing)) {
+    if (!PROMO_KEYS[k]) bad(`Unknown promotion price ${k}`);
+    out.promoPricing[k] = num(v, k, PROMO_KEYS[k][1]);
+  }
+  if (patch.promoPricing && PROMO_PLACEMENTS.every((k) => out.promoPricing[k] === 0)) bad('At least one placement needs a price');
   for (const p of PAID) for (const k of PRICE_KEYS) if (out.plans[p][k] < 100) bad(`${p} ${k} must be at least 100 kobo`);
   return out;
 }
@@ -152,8 +180,13 @@ function db() { return require('../core/db'); }
 /** Saved settings written before the 4/3-character change keep their prices under the old names. */
 function upgradeSaved(saved) {
   if (!saved || typeof saved !== 'object') return saved;
-  const { slugAddonsV, ...rest } = saved;
+  const { slugAddonsV, promoPricingV, ...rest } = saved;
+  if (promoPricingV) rest.promoPricingV = promoPricingV;
   if (slugAddonsV !== SLUG_PRICES_V && rest.slugAddons) rest.slugAddons = legacySlugPrices(rest.slugAddons);
+  // A flat promotion day price saved before per-placement pricing keeps the same all-placement total.
+  if (rest.platform && rest.platform.promoDayKobo != null && !rest.promoPricing && !rest.promoPricingV) {
+    const n = nonNegInt(rest.platform.promoDayKobo); if (n) rest.promoPricing = scaledRates(n);
+  }
   return rest;
 }
 async function getSettings({ fresh = false } = {}) {
@@ -171,7 +204,7 @@ async function saveSettings(patch, actorId) {
   const next = mergeSettings(current, patch);
   // Store only what differs from env defaults, so env changes still flow through for untouched values.
   await db().q(`INSERT INTO app_settings (key, value, updated_by, updated_at) VALUES ('plans', $1, $2, NOW())
-    ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_by=EXCLUDED.updated_by, updated_at=NOW()`, [JSON.stringify({ ...diff(envDefaults(), next), slugAddonsV: SLUG_PRICES_V }), actorId || null]);
+    ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_by=EXCLUDED.updated_by, updated_at=NOW()`, [JSON.stringify({ ...diff(envDefaults(), next), slugAddonsV: SLUG_PRICES_V, promoPricingV: 1 }), actorId || null]);
   cache = next; cacheAt = Date.now();
   return next;
 }
@@ -229,6 +262,37 @@ function featuresFor(settings, plan) {
   return out;
 }
 const platform = (settings) => ({ ...DEFAULTS.platform, ...(settings.platform || {}) });
+const promoPricing = (settings) => ({ ...DEFAULTS.promoPricing, ...(settings.promoPricing || {}) });
+/** Discount tiers sorted by days, only the switched-on ones. */
+function promoTiers(pp) {
+  return [1, 2, 3].map((n) => ({ minDays: pp[`tier${n}Days`], percent: pp[`tier${n}Pct`] })).filter((t) => t.minDays > 0 && t.percent > 0).sort((a, b) => a.minDays - b.minDays);
+}
+/**
+ * Pure: the server-side promotion price. sum(rate of each chosen placement) x days, less the best tier the
+ * days reach. No placements = all priced placements. Throws 400 on bad days or unknown/unpriced placements.
+ */
+function promoQuote(settings, { days, placements } = {}) {
+  const bad = (m) => { const e = new Error(m); e.status = 400; e.expose = true; throw e; };
+  const pf = platform(settings); const pp = promoPricing(settings);
+  const d = Number(days);
+  if (!Number.isInteger(d) || d < 1 || d > pf.promoMaxDays) bad(`Choose 1 to ${pf.promoMaxDays} days`);
+  let list = Array.isArray(placements) ? placements : typeof placements === 'string' && placements ? placements.split(',') : [];
+  list = [...new Set(list.map((x) => String(x).trim()).filter(Boolean))];
+  for (const x of list) if (!PROMO_PLACEMENTS.includes(x)) bad(`Unknown placement ${x}`);
+  if (!list.length) list = PROMO_PLACEMENTS.filter((k) => pp[k] > 0);
+  for (const x of list) if (!(pp[x] > 0)) bad(`${x} is not available right now`);
+  list = PROMO_PLACEMENTS.filter((k) => list.includes(k));
+  const lines = list.map((k) => ({ id: k, dayKobo: pp[k], kobo: pp[k] * d }));
+  const perDayKobo = lines.reduce((a, l) => a + l.dayKobo, 0);
+  const grossKobo = perDayKobo * d;
+  const tiers = promoTiers(pp);
+  const tier = tiers.filter((t) => d >= t.minDays).pop() || null;
+  const discountPercent = tier ? tier.percent : 0;
+  const discountKobo = Math.round((grossKobo * discountPercent) / 100);
+  const next = tiers.find((t) => d < t.minDays) || null;
+  return { days: d, placements: lines, perDayKobo, grossKobo, discountPercent, discountKobo, subtotalKobo: grossKobo - discountKobo, priceKobo: grossKobo - discountKobo,
+    dayKobo: perDayKobo, tiers, nextTier: next, maxDays: pf.promoMaxDays, approval: !!pf.promoApproval };
+}
 /** Platform fee on a gross amount in kobo: rounded half up to whole kobo; net = gross - fee. */
 function feeSplit(grossKobo, feeBps) {
   const g = Number(grossKobo); const b = Number(feeBps);
@@ -324,6 +388,7 @@ async function aiUsed(userId) { return require('./usage').used(`u:${userId}`, 'a
 
 module.exports = {
   PLAN_IDS, PAID, INTERVALS, SLUG_TIERS, SLUG_FOR_SALE, SLUG_RANK, legacySlugPrices, LIMIT_KEYS, PRICE_KEYS, AI_KINDS, DEFAULTS, FEATURE_KEYS, EXTRA_LIMIT_KEYS, PLATFORM_KEYS,
+  PROMO_PLACEMENTS, PROMO_KEYS, promoPricing, promoTiers, promoQuote, scaledRates,
   featuresFor, platform, feeSplit, requireFeature, orgPlanFor,
   envDefaults, mergeSettings, diff, getSettings, saveSettings, resetSettings, clearCache,
   effectivePlan, parseOverrides, limitsFor, slugRights, aiWeight, priceFor, planRank, addInterval,
