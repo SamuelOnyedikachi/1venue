@@ -6,7 +6,10 @@ function quote(credits) {
   if (!Number.isSafeInteger(credits) || credits < 1 || !Number.isSafeInteger(credits * UNITS_PER_CREDIT) || !Number.isSafeInteger(credits * PRICE_PER_CREDIT_KOBO)) {
     throw fail(400, 'Choose a positive whole number of credits within the supported range');
   }
-  return { credits, priceKobo: credits * PRICE_PER_CREDIT_KOBO, currency: 'NGN' };
+  const subtotal = credits * PRICE_PER_CREDIT_KOBO;
+  const f = require('../../lib/money').withFee(subtotal);
+  // priceKobo stays the credits' price (subtotal); totalKobo is what the gateway charges.
+  return { credits, priceKobo: subtotal, subtotalKobo: subtotal, feeKobo: f.fee, feePercent: f.percent, totalKobo: f.total, currency: 'NGN' };
 }
 const BUNDLES = [10, 30, 60, 120].map(quote);
 module.exports = { UNITS_PER_CREDIT, PRICE_PER_CREDIT_KOBO, BUNDLES, quote, fail };

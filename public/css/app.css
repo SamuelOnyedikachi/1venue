@@ -3303,6 +3303,87 @@ button.list-item:hover {
     bottom: calc(var(--nav-h) + 66px + var(--safe-b));
   }
 }
+/* --- src/10-components/money.css --- */
+/* Money: coin glyph for credits, price breakdown, payment status icons. */
+.credits {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.credits-coin,
+.coin {
+  display: inline-flex;
+  color: #d4a017;
+  flex: none;
+}
+.credits-coin svg {
+  display: block;
+}
+.money-breakdown {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.mb-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.mb-row.total {
+  padding-top: 0.4rem;
+  border-top: 1px dashed var(--line-2);
+  color: var(--text);
+  font-weight: 700;
+  font-size: 1rem;
+}
+.mb-note {
+  margin: 0.15rem 0 0;
+}
+.checkout-sheet {
+  display: grid;
+  gap: 0.7rem;
+}
+.pay-st {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  color: var(--muted);
+}
+.pay-st.ok {
+  color: #16a34a;
+}
+.pay-st.wait {
+  color: #d97706;
+}
+.pay-st.bad {
+  color: #dc2626;
+}
+.pay-st.ref {
+  color: #2563eb;
+}
+.input-suffix {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.input-suffix > .input {
+  padding-right: 2.2rem;
+}
+.input-suffix > span {
+  position: absolute;
+  right: 0.7rem;
+  display: inline-flex;
+  pointer-events: none;
+}
 /* --- src/10-components/panels.css --- */
 .compose-card {
   display: flex;
@@ -7607,6 +7688,75 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
   flex: none;
   display: flex;
 }
+
+/* Theme row: icon + title + hint on one line, the Light/Dark/Auto switch on its own line (mobile). */
+@media (max-width: 640px) {
+  .set-row.set-row-stack {
+    flex-wrap: wrap;
+    row-gap: 0.6rem;
+    gap: 0.75rem;
+  }
+  .set-row.set-row-stack > .grow {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 0.45rem;
+    flex: 1 1 0;
+  }
+  .set-row.set-row-stack > .seg {
+    flex: 1 1 100%;
+    display: flex;
+  }
+  .set-row.set-row-stack > .seg button {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+/* Auto top-up and billing address */
+.at-grid,
+.addr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
+  gap: 0.75rem;
+}
+.addr-grid > .field:nth-child(2),
+.addr-grid > .field:nth-child(3) {
+  grid-column: 1 / -1;
+}
+.at-grid .field > span.tiny,
+.settings-view .field > span.tiny {
+  font-weight: 400;
+  font-size: 0.75rem;
+}
+.at-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--r-sm);
+  background: var(--s2);
+}
+.at-warn,
+.fx-warn {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #b45309;
+  margin: 0;
+}
+.fx-ph {
+  color: #b45309;
+  font-weight: 600;
+}
+.wallet-auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.8rem;
+  color: var(--accent);
+}
 /* --- src/20-pages/venues.css --- */
 /* Venues list header: icon+title left, New venue right */
 .venues-head {
@@ -7832,6 +7982,17 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
   .wallet-actions {
     justify-content: flex-start;
   }
+}
+
+/* Purchases: text first, then actions + status icon; wrap on narrow screens instead of squeezing the text. */
+.wallet-item {
+  flex-wrap: wrap;
+}
+.wallet-item > div:first-child {
+  flex: 1 1 12rem;
+}
+.wallet-item > .pay-st {
+  margin-left: auto;
 }
 /* --- src/20-pages/whiteboard.css --- */
 /* Whiteboard: paper on a quiet desk, one compact tool row */

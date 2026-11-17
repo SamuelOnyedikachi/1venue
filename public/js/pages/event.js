@@ -4,6 +4,7 @@ import { state, navigate, requireLogin } from '../app.js';
 import { catOf, commentThread, shareLink, sectionHead, empty, followBtn, eventCard } from '../components.js';
 import { registerCommands, unregisterCommands } from '../commands.js';
 import { promoCompact, loadPromos } from '../promo.js';
+import { loadMoney, fmtMoney, checkoutSheet } from '../money.js';
 
 export const roomPath = (code) => '/' + String(code || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -182,12 +183,14 @@ export async function mount(view, { slug }) {
   const stopScroll = [slim(left), slim(right)];
 
   // Tickets, donations and replays (Phase 3). Returning from Paystack carries ?reference=1vc-…
-  const naira = (k) => '₦' + (Number(k || 0) / 100).toLocaleString('en-NG');
+  const naira = (k) => fmtMoney(k);
   async function paintTickets() {
+    await loadMoney();
     const t = await api(`/api/events/${ev.id}/tickets`).catch(() => null);
     if (!t || !ticketSlot.isConnected || (!t.tiers.length && !t.donations)) { ticketSlot.replaceChildren(); return; }
     const buy = async (tier, qty) => {
       if (!requireLogin('Sign in to get a ticket')) return;
+      if (tier.priceKobo > 0) { await checkoutSheet({ title: 'Ticket checkout', what: `${qty} × ${tier.name}`, subtotalKobo: tier.priceKobo * qty, start: () => api(`/api/events/${ev.id}/tickets`, { method: 'POST', body: { tierId: tier.id, quantity: qty } }) }); return; }
       const r = await api(`/api/events/${ev.id}/tickets`, { method: 'POST', body: { tierId: tier.id, quantity: qty } });
       if (r.authorizationUrl) { location.assign(r.authorizationUrl); return; }
       toast('You have a ticket', { icon: 'ticket' }); paintTickets();
@@ -202,7 +205,7 @@ export async function mount(view, { slug }) {
           qty, h('button', { class: 'btn sm primary', type: 'button', disabled: soldOut || (!t.purchasesEnabled && tier.priceKobo > 0), onclick: () => buy(tier, Number(qty.value) || 1).catch(toastErr) }, soldOut ? 'Sold out' : tier.priceKobo ? 'Buy' : 'Get free ticket'));
       }),
       t.donations && t.purchasesEnabled ? h('div', { class: 'ev-meta-row' }, h('span', { class: 'grow small' }, 'Send the host a gift'), gift,
-        h('button', { class: 'btn sm', type: 'button', onclick: async () => { if (!requireLogin('Sign in to send a gift')) return; try { const r = await api(`/api/events/${ev.id}/donate`, { method: 'POST', body: { amountKobo: Math.round(Number(gift.value) * 100) } }); location.assign(r.authorizationUrl); } catch (e) { toastErr(e); } } }, 'Give')) : null));
+        h('button', { class: 'btn sm', type: 'button', onclick: async () => { if (!requireLogin('Sign in to send a gift')) return; const amountKobo = Math.round(Number(gift.value) * 100); checkoutSheet({ title: 'Send a gift', what: 'A gift to the host of this event.', subtotalKobo: amountKobo, start: () => api(`/api/events/${ev.id}/donate`, { method: 'POST', body: { amountKobo } }) }); } }, 'Give')) : null));
   }
   const ref = new URLSearchParams(location.search).get('reference') || new URLSearchParams(location.search).get('trxref');
   if (ref && ref.startsWith('1vc-')) {

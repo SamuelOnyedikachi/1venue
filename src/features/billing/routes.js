@@ -23,7 +23,7 @@ module.exports = function routes(route, { requireUser, httpError, rateLimit, int
     if (!u.isAdmin) throw httpError(403, 'Admins only. Add your email to ADMIN_EMAILS and confirm it.');
     return u;
   };
-  route('GET', '/api/plans', async () => billing.publicPlans());
+  route('GET', '/api/plans', async () => ({ ...(await billing.publicPlans()), shortLinkReleaseDays: require('./shortlinks').releaseDays() }));
   route('GET', '/api/billing', async (ctx) => billing.summary((await requireUser(ctx.req, ctx.res)).id));
   route('POST', '/api/billing/checkout', async (ctx) => {
     const u = await requireUser(ctx.req, ctx.res);

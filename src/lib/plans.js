@@ -14,7 +14,20 @@ const config = require('../config');
 const PLAN_IDS = ['free', 'premium', 'organisation'];
 const PAID = ['premium', 'organisation'];
 const INTERVALS = ['month', 'year'];
-const SLUG_TIERS = ['none', 'slug3', 'slug2'];
+// Short-link add-ons per venue (paid plans): slug4 = 4+ characters (₦10,000), slug3 = 3+ (₦25,000). Links are
+// never shorter than 3. Admin prices saved before this change used the keys { slug3: ₦10k price, slug2: ₦25k price };
+// they map across by price (old slug3 → slug4, old slug2 → slug3), see legacySlugPrices.
+const SLUG_TIERS = ['none', 'slug4', 'slug3'];
+const SLUG_FOR_SALE = ['slug4', 'slug3'];
+const SLUG_RANK = { none: 0, slug4: 1, slug3: 2 };
+const SLUG_PRICES_V = 2;
+/** Old price keys { slug3, slug2 } → { slug4, slug3 } (same money). */
+function legacySlugPrices(old) {
+  const out = {};
+  if (old && old.slug3 != null) out.slug4 = old.slug3;
+  if (old && old.slug2 != null) out.slug3 = old.slug2;
+  return out;
+}
 const LIMIT_KEYS = ['venues', 'audience', 'meeting', 'speakerSeats', 'aiDaily', 'uploadMB'];
 const PRICE_KEYS = ['priceMonthKobo', 'priceYearKobo'];
 const AI_KINDS = ['ask', 'catchup', 'translate', 'title', 'summary', 'finetune', 'scripture', 'analysis', 'transcribe', 'whiteboard_ai'];
@@ -47,7 +60,7 @@ const DEFAULTS = Object.freeze({
     organisation: { venues: 20, audience: 1000, meeting: 50, speakerSeats: 10, aiDaily: 1000, uploadMB: 10240, priceMonthKobo: 2500000, priceYearKobo: 25000000 },
   },
   aiWeights: { ask: 1, translate: 1, title: 1, scripture: 1, summary: 2, catchup: 2, finetune: 2, analysis: 2, transcribe: 2, whiteboard_ai: 3 },
-  slugAddons: { slug3: 1000000, slug2: 2500000 }, // kobo, one-off, per venue, paid plans only
+  slugAddons: { slug4: 1000000, slug3: 2500000 }, // kobo, one-off, per venue, paid plans only (4-char ₦10,000, 3-char ₦25,000)
   graceDays: 5,
   aiGuestPerIpDaily: 30, // points one guest IP may spend from a host's pool per day
   features: {
@@ -70,7 +83,10 @@ function envDefaults() {
     if (v != null) out.plans[p][k] = v;
   }
   for (const k of AI_KINDS) { const v = envNum(`AI_WEIGHT_${k.toUpperCase()}`); if (v != null) out.aiWeights[k] = v; }
-  for (const k of ['slug3', 'slug2']) { const v = envNum(`${k.toUpperCase()}_PRICE_KOBO`); if (v != null) out.slugAddons[k] = v; }
+  // LINK4_PRICE_KOBO / LINK3_PRICE_KOBO; the old SLUG3_PRICE_KOBO / SLUG2_PRICE_KOBO still work and map across by price.
+  for (const [k, oldName, newName] of [['slug4', 'SLUG3_PRICE_KOBO', 'LINK4_PRICE_KOBO'], ['slug3', 'SLUG2_PRICE_KOBO', 'LINK3_PRICE_KOBO']]) {
+    const v = envNum(newName) ?? envNum(oldName); if (v != null) out.slugAddons[k] = v;
+  }
   if (envNum('PLAN_FREE_UPLOAD_MB') == null && envNum('UPLOAD_USER_QUOTA_MB') != null) out.plans.free.uploadMB = envNum('UPLOAD_USER_QUOTA_MB');
   const g = envNum('BILLING_GRACE_DAYS'); if (g != null) out.graceDays = g;
   const ip = envNum('AI_GUEST_PER_IP_DAILY'); if (ip != null) out.aiGuestPerIpDaily = ip;
@@ -96,7 +112,11 @@ function mergeSettings(base, patch) {
     }
   }
   if (patch.aiWeights) for (const [k, v] of Object.entries(patch.aiWeights)) { if (!AI_KINDS.includes(k)) bad(`Unknown AI feature ${k}`); out.aiWeights[k] = num(v, `weight ${k}`, 1000); }
-  if (patch.slugAddons) for (const [k, v] of Object.entries(patch.slugAddons)) { if (!['slug3', 'slug2'].includes(k)) bad(`Unknown add-on ${k}`); out.slugAddons[k] = num(v, `${k} price`); }
+  if (patch.slugAddons) {
+    // A patch that still names slug2 uses the old keys (e.g. an admin page loaded before the update): map it across.
+    const addons = patch.slugAddons && Object.prototype.hasOwnProperty.call(patch.slugAddons, 'slug2') ? legacySlugPrices(patch.slugAddons) : patch.slugAddons;
+    for (const [k, v] of Object.entries(addons || {})) { if (!SLUG_FOR_SALE.includes(k)) bad(`Unknown add-on ${k}`); out.slugAddons[k] = num(v, `${k} price`); }
+  }
   if (patch.graceDays != null) out.graceDays = num(patch.graceDays, 'Grace days', 60);
   if (patch.aiGuestPerIpDaily != null) out.aiGuestPerIpDaily = num(patch.aiGuestPerIpDaily, 'Guest AI per IP', 1e6);
   if (patch.features) for (const [p, vals] of Object.entries(patch.features)) {
@@ -129,10 +149,18 @@ function diff(base, next) {
 let cache = null; let cacheAt = 0;
 const TTL = 30000;
 function db() { return require('../core/db'); }
+/** Saved settings written before the 4/3-character change keep their prices under the old names. */
+function upgradeSaved(saved) {
+  if (!saved || typeof saved !== 'object') return saved;
+  const { slugAddonsV, ...rest } = saved;
+  if (slugAddonsV !== SLUG_PRICES_V && rest.slugAddons) rest.slugAddons = legacySlugPrices(rest.slugAddons);
+  return rest;
+}
 async function getSettings({ fresh = false } = {}) {
   if (!fresh && cache && Date.now() - cacheAt < TTL) return cache;
   let saved = null;
   try { const r = await db().one("SELECT value FROM app_settings WHERE key='plans'"); saved = r ? JSON.parse(r.value) : null; } catch (_) { saved = null; }
+  saved = upgradeSaved(saved);
   let merged;
   try { merged = mergeSettings(envDefaults(), saved); } catch (_) { merged = envDefaults(); }
   cache = merged; cacheAt = Date.now();
@@ -143,7 +171,7 @@ async function saveSettings(patch, actorId) {
   const next = mergeSettings(current, patch);
   // Store only what differs from env defaults, so env changes still flow through for untouched values.
   await db().q(`INSERT INTO app_settings (key, value, updated_by, updated_at) VALUES ('plans', $1, $2, NOW())
-    ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_by=EXCLUDED.updated_by, updated_at=NOW()`, [JSON.stringify(diff(envDefaults(), next)), actorId || null]);
+    ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_by=EXCLUDED.updated_by, updated_at=NOW()`, [JSON.stringify({ ...diff(envDefaults(), next), slugAddonsV: SLUG_PRICES_V }), actorId || null]);
   cache = next; cacheAt = Date.now();
   return next;
 }
@@ -295,7 +323,7 @@ async function takeAi({ kind, ownerId, guestIp }) {
 async function aiUsed(userId) { return require('./usage').used(`u:${userId}`, 'ai'); }
 
 module.exports = {
-  PLAN_IDS, PAID, INTERVALS, SLUG_TIERS, LIMIT_KEYS, PRICE_KEYS, AI_KINDS, DEFAULTS, FEATURE_KEYS, EXTRA_LIMIT_KEYS, PLATFORM_KEYS,
+  PLAN_IDS, PAID, INTERVALS, SLUG_TIERS, SLUG_FOR_SALE, SLUG_RANK, legacySlugPrices, LIMIT_KEYS, PRICE_KEYS, AI_KINDS, DEFAULTS, FEATURE_KEYS, EXTRA_LIMIT_KEYS, PLATFORM_KEYS,
   featuresFor, platform, feeSplit, requireFeature, orgPlanFor,
   envDefaults, mergeSettings, diff, getSettings, saveSettings, resetSettings, clearCache,
   effectivePlan, parseOverrides, limitsFor, slugRights, aiWeight, priceFor, planRank, addInterval,

@@ -3,8 +3,9 @@
 import { h, api, toastErr } from '../ui.js';
 import { icon } from '../icons.js';
 import { state } from '../app.js';
+import { loadMoney, fmtMoney, checkoutSheet, moneyConfig } from '../money.js';
 
-const money = (kobo) => new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(kobo / 100);
+const money = (kobo) => fmtMoney(kobo, { whole: true });
 const LABEL = { free: 'Free', premium: 'Premium', organisation: 'Organisation' };
 const BLURB = { free: 'For trying 1venue and small gatherings.', premium: 'For growing communities and regular hosts.', organisation: 'For churches, schools and teams that host a lot.' };
 const POPULAR = 'premium';
@@ -21,7 +22,7 @@ const core = (p) => [
 const extras = (p) => [...FEATURES.filter(([k]) => p.features && p.features[k]).map(([, l]) => l),
   ...(p.features && p.features.orgMembers ? [`Organisation with ${p.features.orgMembers} members, roles and a shared library`] : [])];
 // Shorter venue links: a one-off add-on, shown as two price tiles and one accent button to Billing.
-function addonCard(addons, signedIn) {
+function addonCard(addons, signedIn, releaseDays = 60) {
   const tile = (len, sample, price) => h('div', { class: 'pr-addon-tile' },
     h('span', { class: 'pr-addon-len' }, `${len}-character`),
     h('code', { class: 'pr-addon-url' }, `1venue.live/v/`, h('b', null, sample)),
@@ -32,16 +33,16 @@ function addonCard(addons, signedIn) {
     h('div', { class: 'pr-addon-head' },
       h('span', { class: 'pr-addon-ic', html: icon('link', { size: 20 }) }),
       h('div', null, h('h2', { id: 'pr-addons-h' }, 'Shorter venue links'), h('p', { class: 'pr-addon-pitch' }, 'A link people remember. Yours to keep, for any venue on a paid plan.'))),
-    h('div', { class: 'pr-addon-tiles' }, tile(3, 'abc', addons.slug3), tile(2, 'ab', addons.slug2)),
+    h('div', { class: 'pr-addon-tiles' }, tile(4, 'abcd', addons.slug4), tile(3, 'abc', addons.slug3)),
     h('div', { class: 'pr-addon-foot' },
       h('a', { class: 'btn primary pr-btn pr-addon-btn', href, 'data-link': '' }, h('span', { class: 'i', html: icon('arrowRight', { size: 16 }) }), 'Get a short link'),
       signedIn ? h('a', { class: 'pr-addon-manage', href: '/billing', 'data-link': '' }, 'Manage billing') : null),
-    h('p', { class: 'pr-addon-note' }, 'If your plan lapses, the link stays reserved and comes back when you upgrade.'));
+    h('p', { class: 'pr-addon-note' }, `Kept while your plan is active; released ${releaseDays} days after it lapses.`));
 }
 const tick = (txt, cls = '') => h('li', { class: cls }, h('span', { class: 'pr-tick', html: icon('check', { size: 13 }) }), h('span', null, txt));
 
 export async function mount(view) {
-  const [table, me] = await Promise.all([api('/api/plans'), state.user ? api('/api/billing').catch(() => null) : null]);
+  const [, table, me] = await Promise.all([loadMoney(), api('/api/plans'), state.user ? api('/api/billing').catch(() => null) : null]);
   let interval = 'month';
   const current = me ? me.plan : 'free';
   const rank = ['free', 'premium', 'organisation'];
@@ -69,16 +70,15 @@ export async function mount(view) {
     buy.onclick = async () => {
       if (!paid) { location.assign('/signup'); return; }
       if (!state.user) { location.assign('/login?next=/upgrade'); return; }
-      buy.disabled = true; status.textContent = 'Opening secure checkout…';
-      try { const r = await api('/api/billing/checkout', { method: 'POST', body: { plan: p.id, interval } }); location.assign(r.authorizationUrl); }
-      catch (e) { status.textContent = ''; toastErr(e); buy.disabled = false; }
+      checkoutSheet({ title: `${LABEL[p.id]} · ${yearly ? 'yearly' : 'monthly'}`, what: `${LABEL[p.id]} plan, billed ${yearly ? 'once a year' : 'every month'}. Renewals include the same processing fee.`, subtotalKobo: yearly ? p.priceYearKobo : p.priceMonthKobo,
+        start: () => api('/api/billing/checkout', { method: 'POST', body: { plan: p.id, interval } }) });
     };
     const more = extras(p);
     return h('section', { class: 'pr-card' + (popular ? ' popular' : '') + (isCurrent ? ' current' : ''), 'aria-label': `${LABEL[p.id]} plan` },
       popular ? h('span', { class: 'pr-badge' }, 'Most popular') : null,
       h('div', { class: 'pr-name' }, h('h2', null, LABEL[p.id]), isCurrent ? h('span', { class: 'pr-current' }, 'Current') : null),
       h('p', { class: 'pr-blurb' }, BLURB[p.id] || ''),
-      h('div', { class: 'pr-price' }, h('strong', null, paid ? money(per) : '₦0'), h('span', null, '/month'),
+      h('div', { class: 'pr-price' }, h('strong', null, paid ? money(per) : money(0)), h('span', null, '/month'),
         yearly && pct > 0 ? h('span', { class: 'pr-off' }, `-${pct}%`) : null),
       h('p', { class: 'pr-billed' }, !paid ? 'Free forever' : yearly ? `Billed at ${money(p.priceYearKobo)}/year` : `Billed at ${money(p.priceMonthKobo)}/month`),
       buy,
@@ -107,12 +107,12 @@ export async function mount(view) {
   const addons = table.slugAddons;
   view.append(h('div', { class: 'pr-page' },
     h('header', { class: 'pr-head' }, h('h1', null, 'Pricing'),
-      h('p', { class: 'muted' }, 'Simple plans for every venue. Prices in naira; Paystack adds its processing fee at checkout.'),
+      h('p', { class: 'muted' }, `Simple plans for every venue. Prices in ${moneyConfig().currency}${moneyConfig().currency !== moneyConfig().chargeCurrency ? ` (estimated; charged in ${moneyConfig().chargeCurrency})` : ''}.`),
       h('div', { class: 'pr-toggle-row' }, toggle, savePill)),
     status, grid,
     h('div', { class: 'pr-foot' }, compareLink),
     compare,
-    addonCard(addons, !!me),
+    addonCard(addons, !!me, table.shortLinkReleaseDays),
     !table.purchasesEnabled ? h('p', { class: 'small muted pr-center' }, 'Online payments are not switched on yet.') : null));
   paint();
 }

@@ -48,12 +48,14 @@ function checkoutUrl(value, s = settings()) {
   try { const u = new URL(value); if ((u.origin === 'https://checkout.paystack.com' || (s.sandbox && u.origin === s.base)) && !u.username && !u.password) return u.href; } catch (_) {}
   throw fail(502, 'Paystack returned an invalid checkout link');
 }
-async function initialize(user, amount) {
+async function initialize(user, amount, { source = 'checkout' } = {}) {
   const priced = quote(amount);
   const s = settings();
   if (!s.enabled) throw fail(503, 'Credit purchases are not available yet');
-  const payment = await data.createPayment(user, priced, s.mode);
-  const result = await call('/transaction/initialize', { email: payment.payer_email, amount: payment.price_kobo, currency: 'NGN', reference: payment.reference, callback_url: s.callback, metadata: { wallet_reference: payment.reference, user_id: String(user.id) } });
+  const payment = await data.createPayment(user, priced, s.mode, { source });
+  const result = await call('/transaction/initialize', { email: payment.payer_email, amount: Number(payment.price_kobo), currency: 'NGN', reference: payment.reference, callback_url: s.callback,
+    ...(source === 'auto_topup_setup' ? { channels: ['card'] } : {}), // the card is kept (as a gateway token) for auto top-up
+    metadata: { wallet_reference: payment.reference, user_id: String(user.id), kind: source, subtotal_kobo: payment.subtotal_kobo, processing_fee_kobo: payment.processing_fee_kobo } });
   if (result.reference !== payment.reference) throw fail(502, 'Paystack returned an unexpected payment reference');
   const url = checkoutUrl(result.authorization_url, s);
   await data.checkoutReady(payment.reference, url);
@@ -73,7 +75,7 @@ async function confirm(payment) {
   const requested = result.requested_amount == null ? result.amount : result.requested_amount;
   const idOk = typeof result.id === 'number' ? Number.isSafeInteger(result.id) && result.id > 0 : typeof result.id === 'string' && /^[1-9]\d{0,29}$/.test(result.id);
   const valid = idOk && Number.isSafeInteger(result.amount) && Number.isSafeInteger(result.fees) && result.fees >= 0
-    && requested === Number(payment.price_kobo) && result.amount - result.fees >= Number(payment.price_kobo)
+    && requested === Number(payment.price_kobo) && require('../../lib/money').paidEnough(result.amount, result.fees, payment)
     && result.currency === payment.currency && result.domain === payment.provider_mode
     && typeof result.customer?.email === 'string' && result.customer.email.toLowerCase() === payment.payer_email
     && meta.wallet_reference === payment.reference && String(meta.user_id) === String(payment.user_id);
@@ -81,7 +83,11 @@ async function confirm(payment) {
     await data.mark(payment.reference, 'review', 'verification_mismatch');
     throw fail(409, 'The verified payment details do not match this purchase. No credits were added.');
   }
-  try { return await data.settle(payment, result); }
+  try {
+    const out = await data.settle(payment, result);
+    if (payment.source === 'auto_topup_setup') await require('./autotopup').saveCardFrom(payment, result).catch((e) => console.error('[autotopup] save card', e.message));
+    return out;
+  }
   catch (e) {
     if (e.code === '23505') { await data.mark(payment.reference, 'review', 'duplicate_provider_transaction'); throw fail(409, 'This transaction has already been assigned to another purchase'); }
     throw e;

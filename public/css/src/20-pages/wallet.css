@@ -121,3 +121,14 @@
     justify-content: flex-start;
   }
 }
+
+/* Purchases: text first, then actions + status icon; wrap on narrow screens instead of squeezing the text. */
+.wallet-item {
+  flex-wrap: wrap;
+}
+.wallet-item > div:first-child {
+  flex: 1 1 12rem;
+}
+.wallet-item > .pay-st {
+  margin-left: auto;
+}

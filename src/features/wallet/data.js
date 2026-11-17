@@ -3,16 +3,18 @@ const { q, tx } = require('../../../db');
 const { UNITS_PER_CREDIT: U, fail } = require('./rules');
 const one = async (sql, args) => (await q(sql, args)).rows[0] || null;
 const credits = (value) => Number(value) / U;
-const paymentOut = (p) => ({ reference: p.reference, credits: credits(p.credit_units), priceKobo: Number(p.price_kobo), currency: p.currency, status: p.status, createdAt: p.created_at, paidAt: p.paid_at, authorizationUrl: p.authorization_url || null });
+const paymentOut = (p) => ({ reference: p.reference, credits: credits(p.credit_units), priceKobo: Number(p.price_kobo), subtotalKobo: Number(p.subtotal_kobo ?? p.price_kobo), feeKobo: Number(p.processing_fee_kobo || 0), feePercent: p.fee_percent == null ? 0 : Number(p.fee_percent), displayCurrency: p.display_currency || p.currency, displayTotalMinor: p.display_total_minor == null ? Number(p.price_kobo) : Number(p.display_total_minor), source: p.source || 'checkout', currency: p.currency, status: p.status, createdAt: p.created_at, paidAt: p.paid_at, authorizationUrl: p.authorization_url || null });
 const getPayment = (ref) => one('SELECT * FROM credit_payments WHERE reference=$1', [ref]);
 async function balance(userId) {
   const row = await one('SELECT balance_units FROM credit_wallets WHERE user_id=$1', [userId]);
   return credits(row ? row.balance_units : 0);
 }
-async function createPayment(user, quote, mode) {
-  const ref = '1v-' + crypto.randomBytes(16).toString('hex');
-  return one(`INSERT INTO credit_payments (reference,user_id,payer_email,credit_units,price_kobo,provider_mode)
-    VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`, [ref, user.id, user.email.toLowerCase(), quote.credits * U, quote.priceKobo, mode]);
+async function createPayment(user, quote, mode, { source = 'checkout' } = {}) {
+  const ref = (source === 'checkout' ? '1v-' : '1va-') + crypto.randomBytes(16).toString('hex');
+  // price_kobo is the amount charged: the credits' price plus the processing fee (PROCESSING_FEE_PERCENT).
+  const m = await require('../../lib/money').checkoutAmounts(user.id, quote.priceKobo);
+  return one(`INSERT INTO credit_payments (reference,user_id,payer_email,credit_units,price_kobo,provider_mode,subtotal_kobo,processing_fee_kobo,fee_percent,display_currency,display_total_minor,fx_rate,source)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`, [ref, user.id, user.email.toLowerCase(), quote.credits * U, m.total, mode, m.subtotal, m.fee, m.percent, m.displayCurrency, m.displayTotal, m.fxRate, source]);
 }
 async function checkoutReady(ref, url) {
   await q('UPDATE credit_payments SET authorization_url=$2 WHERE reference=$1', [ref, url]);

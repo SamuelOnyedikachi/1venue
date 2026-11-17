@@ -137,7 +137,7 @@ const ROUTES = [
   [/^\/reset-password\/?$/, () => import('./pages/reset.js')],
   [/^\/verify-email\/?$/, () => import('./pages/verify.js')],
   [/^\/venues\/?$/, () => import('./pages/venue.js'), { list: true }],
-  [/^\/v\/([A-Za-z0-9]{2,16}(?:-venue)?)\/?$/, () => import('./pages/venue.js'), 'slug'],
+  [/^\/v\/([A-Za-z0-9]{3,16}(?:-venue)?)\/?$/, () => import('./pages/venue.js'), 'slug'],
   [/^\/(?=[A-Za-z]*\d)(?=\d*[A-Za-z])([A-Za-z0-9]{7})\/?$/, () => import('./pages/venue.js'), 'slug'],
   [/^\/([A-Za-z0-9]{5,16}-venue)\/?$/, () => import('./pages/venue.js'), 'slug'],
   [/^\/new\/?$/, () => import('./room/room.js'), { code: null, instant: true }],
@@ -319,7 +319,6 @@ function buildShell() {
     h('div', { class: 'grow' }),
     h('a', { class: 'btn sm primary top-desktop', href: '/create', 'data-link': '', html: icon('plus', { size: 16 }) + 'Create' }),
     h('div', { class: 'row', 'data-group': 'nav', style: { gap: '2px' } },
-      h('a', { class: 'icon-btn', href: '/settings', 'data-link': '', 'data-group': 'settings', 'data-tip': 'Settings', 'aria-label': 'Settings', html: icon('settings') }),
       themeBtn, h('div', { id: 'userslot', class: 'row' })),
   );
   const bottom = h('nav', { class: 'bottomnav', 'aria-label': 'Primary' },

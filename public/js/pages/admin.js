@@ -42,7 +42,7 @@ export async function mount(view) {
     busy(true);
     try { const r = await api('/api/admin/seed', { method: 'DELETE' }); paint(r); toast('Demo data removed', { icon: 'check' }); } catch (e) { toastErr(e); } finally { busy(false); }
   };
-  view.append(plansCard(), userPlanCard(), promoCard(), commerceCard(), reportsCard(), ttsCard());
+  view.append(plansCard(), fxCard(), userPlanCard(), promoCard(), commerceCard(), reportsCard(), ttsCard());
   body.append(h('p', { class: 'tiny muted' }, 'Loading…'));
   await refresh().catch((e) => body.replaceChildren(h('p', { class: 'small' }, e.message || 'Could not load')));
 }
@@ -148,6 +148,28 @@ const FIELDS = [['venues', 'Venues'], ['audience', 'Stage audience'], ['meeting'
 const FEATURE_FIELDS = [['branding', 'Branding'], ['recurring', 'Recurring'], ['reminders', 'Reminders'], ['whatsapp', 'WhatsApp reminders'], ['exports', 'Exports'], ['analytics', 'Analytics'], ['badge', 'Verified badge eligible'], ['selfPromo', 'Self-serve promotions'], ['ticketing', 'Tickets & donations'], ['replays', 'Cloud replays'], ['orgMembers', 'Org members (0 = no org)'], ['replayMB', 'Replay storage (MB)'], ['callVideo', '1:1 video calls'], ['groupMembers', 'Group chat members'], ['callParticipants', 'Call participants (2 = 1:1 only)'], ['historyDays', 'Message history days (0 = forever)']];
 const PLATFORM_FIELDS = [['feeBps', 'Platform fee (basis points, 500 = 5%)'], ['promoDayKobo', 'Promotion price per day (kobo)'], ['promoMaxDays', 'Promotion max days'], ['promoApproval', 'Approve promotions first (1/0)'], ['payoutMinKobo', 'Minimum payout (kobo)'], ['ticketMaxPerOrder', 'Tickets per order'], ['donationMinKobo', 'Minimum gift (kobo)'], ['reminderLeadA', 'First reminder (minutes before)'], ['reminderLeadB', 'Second reminder (minutes, 0 = off)'], ['whatsappEnabled', 'WhatsApp on (1/0, needs env keys)'], ['verifiedBoost', 'Verified Discover boost (1/0)'], ['replayUploadMB', 'Replay upload cap (MB)'], ['seriesMax', 'Max occurrences per series']];
 const numIn = (value, name) => h('input', { class: 'input', type: 'number', min: '0', step: '1', value: String(value), name });
+function fxCard() {
+  const out = h('div', { class: 'col', style: { gap: '.6rem' } }, h('p', { class: 'tiny muted' }, 'Loading…'));
+  const card = h('section', { class: 'card pad col', id: 'currency', style: { gap: '.8rem', marginTop: '1rem' } },
+    h('div', { class: 'row', style: { gap: '.6rem' } }, h('span', { class: 'ico-tile', 'data-group': 'settings', html: icon('globe', { size: 18 }) }),
+      h('div', { class: 'grow' }, h('h3', null, 'Currency and exchange rates'), h('p', { class: 'muted small' }, 'How much 1 unit of the base currency is worth in each display currency. Saved values override FX_RATES; payments are still charged in the base currency.'))), out);
+  const paint = (r) => {
+    const inputs = {};
+    const grid = h('div', { class: 'admin-plan-grid' }, ...Object.keys(r.rates).filter((c) => c !== r.base).map((c) => {
+      inputs[c] = h('input', { class: 'input', type: 'number', min: '0', step: 'any', value: String(r.rates[c]), name: c });
+      return h('label', null, h('span', null, `1 ${r.base} → ${c}`, r.placeholder.includes(c) ? h('span', { class: 'fx-ph' }, ' placeholder') : null), inputs[c]);
+    }));
+    const save = h('button', { class: 'btn sm primary', type: 'button' }, 'Save rates');
+    save.onclick = async () => { try { const rates = {}; for (const [c, i] of Object.entries(inputs)) rates[c] = Number(i.value); paint(await api('/api/admin/fx', { method: 'PUT', body: { rates } })); toast('Rates saved', { icon: 'check' }); } catch (e) { toastErr(e); } };
+    const reset = h('button', { class: 'btn sm', type: 'button' }, 'Use env / placeholders');
+    reset.onclick = async () => { try { paint(await api('/api/admin/fx', { method: 'DELETE' })); } catch (e) { toastErr(e); } };
+    out.replaceChildren(...[h('p', { class: 'small' }, `Base ${r.base} · processing fee ${r.feePercent}% (PROCESSING_FEE_PERCENT)`),
+      r.placeholder.length ? h('p', { class: 'small fx-warn', html: icon('alert', { size: 14 }) + ` Placeholder rates for ${r.placeholder.join(', ')}. Replace them with real rates before showing prices in those currencies.` }) : null,
+      grid, h('div', { class: 'row', style: { gap: '.5rem', justifyContent: 'flex-end' } }, reset, save)].filter(Boolean));
+  };
+  api('/api/admin/fx').then(paint).catch((e) => out.replaceChildren(h('p', { class: 'small' }, e.message || 'Could not load')));
+  return card;
+}
 function plansCard() {
   const out = h('div', { class: 'col', style: { gap: '.8rem' } }, h('p', { class: 'tiny muted' }, 'Loading…'));
   const card = h('section', { class: 'card pad col', style: { gap: '.8rem', marginTop: '1rem' } },
@@ -161,7 +183,7 @@ function plansCard() {
     const weights = h('div', { class: 'col', style: { gap: '.3rem' } }, h('strong', null, 'AI point cost per use'),
       h('div', { class: 'admin-plan-grid' }, ...Object.keys(s.aiWeights).map((k) => field(`aiWeights.${k}`, k, s.aiWeights[k], d.aiWeights[k]))));
     const other = h('div', { class: 'col', style: { gap: '.3rem' } }, h('strong', null, 'Add-ons and billing'),
-      h('div', { class: 'admin-plan-grid' }, field('slugAddons.slug3', 'slug3 link (kobo)', s.slugAddons.slug3, d.slugAddons.slug3), field('slugAddons.slug2', 'slug2 link (kobo)', s.slugAddons.slug2, d.slugAddons.slug2),
+      h('div', { class: 'admin-plan-grid' }, field('slugAddons.slug4', '4-character link (kobo)', s.slugAddons.slug4, d.slugAddons.slug4), field('slugAddons.slug3', '3-character link (kobo)', s.slugAddons.slug3, d.slugAddons.slug3),
         field('graceDays', 'Grace days after failed renewal', s.graceDays, d.graceDays), field('aiGuestPerIpDaily', 'Guest AI points per IP / day', s.aiGuestPerIpDaily, d.aiGuestPerIpDaily)));
     const featureBlocks = Object.keys(PLAN_LABEL).map((p) => h('div', { class: 'col', style: { gap: '.3rem' } }, h('strong', null, `${PLAN_LABEL[p]} features (1 = on, 0 = off)`),
       h('div', { class: 'admin-plan-grid' }, ...FEATURE_FIELDS.map(([k, l]) => field(`features.${p}.${k}`, l, s.features[p][k], d.features[p][k])))));
@@ -234,14 +256,16 @@ function userPlanCard() {
         h('button', { class: 'btn sm', type: 'button', onclick: async () => { try { await api('/api/admin/verified/' + id, { method: 'POST', body: { verified: false, note: reason.value } }); toast('Badge removed', { icon: 'check' }); } catch (e) { toastErr(e); } } }, 'Remove badge')),
       d.venues.length ? h('strong', { class: 'small' }, 'Venues') : null,
       ...d.venues.map((v) => {
-        const tier = h('select', { class: 'input' }, ...['none', 'slug3', 'slug2'].map((t) => h('option', { value: t, selected: t === v.slugTier }, t)));
+        const tier = h('select', { class: 'input' }, ...[['none', 'None'], ['slug4', '4-character'], ['slug3', '3-character']].map(([t, l]) => h('option', { value: t, selected: t === v.slugTier }, l)));
         const set = h('button', { class: 'btn sm', type: 'button', onclick: async () => {
           try { await api('/api/admin/billing/venues/' + v.id, { method: 'POST', body: { slugTier: tier.value, reason: reason.value } }); toast('Venue updated', { icon: 'check' }); open(id); } catch (e) { toastErr(e); }
         } }, 'Set tier');
         return h('div', { class: 'row wrap', style: { gap: '.5rem' } }, h('span', { class: 'grow small' }, `${v.name} · /v/${v.slug}${v.reservedSlug ? ` (reserved /v/${v.reservedSlug})` : ''}${v.archived ? ' · archived' : ''}`), tier, set);
       }),
       d.payments.length ? h('strong', { class: 'small' }, 'Payments') : null,
-      ...d.payments.map((p) => h('div', { class: 'tiny' }, `${p.kind} ${p.plan || p.slugTier || ''} · ₦${(p.priceKobo / 100).toLocaleString()} · ${p.status} · ${new Date(p.createdAt).toLocaleString()}`)),
+      ...d.payments.map((p) => h('div', { class: 'tiny' }, `${p.kind} ${p.plan || p.slugTier || ''} · ${feeText(p)} · ${p.status} · ${new Date(p.createdAt).toLocaleString()}`)),
+      d.creditPayments && d.creditPayments.length ? h('strong', { class: 'small' }, 'Credit purchases') : null,
+      ...(d.creditPayments || []).map((p) => h('div', { class: 'tiny' }, `${p.credits} credits${p.source !== 'checkout' ? ' (' + p.source.replace(/_/g, ' ') + ')' : ''} · ${feeText(p)} · ${p.status} · ${new Date(p.createdAt).toLocaleString()}`)),
       d.audit.length ? h('strong', { class: 'small' }, 'Audit') : null,
       ...d.audit.map((a) => h('div', { class: 'tiny muted' }, `${new Date(a.at).toLocaleString()} · ${a.action}${a.detail ? ' · ' + JSON.stringify(a.detail) : ''}`)));
   }
@@ -279,6 +303,8 @@ function reportsCard() {
 
 // ---------------------------------------------------------------- self-serve promotions review, payouts and refunds
 const naira = (k) => '₦' + (Number(k || 0) / 100).toLocaleString('en-NG');
+/** Total charged with its subtotal + processing-fee split (fee recorded per payment). */
+const feeText = (p) => { const fee = p.feeKobo ?? p.processingFeeKobo ?? 0; const sub = p.subtotalKobo ?? p.priceKobo; return fee ? `${naira(p.priceKobo)} (${naira(sub)} + ${naira(fee)} fee ${p.feePercent}%)` : naira(p.priceKobo); };
 function commerceCard() {
   const out = h('div', { class: 'col', style: { gap: '.6rem' } }, h('p', { class: 'tiny muted' }, 'Loading…'));
   const card = h('section', { class: 'card pad col', style: { gap: '.8rem', marginTop: '1rem' } },
@@ -303,7 +329,7 @@ function commerceCard() {
       }),
       h('strong', { class: 'small' }, 'Recent ticket, gift and promotion payments'),
       ...pay.payments.slice(0, 40).map((p) => h('div', { class: 'row wrap', style: { gap: '.5rem' } },
-        h('span', { class: 'grow tiny' }, `${p.kind} · ${naira(p.priceKobo)} · ${p.status}${p.refunded ? ' · refunded' : ''}${p.error ? ' · ' + p.error : ''} · ${p.payer || ''} · ${p.event || ''} · ${new Date(p.createdAt).toLocaleString()}`),
+        h('span', { class: 'grow tiny' }, `${p.kind} · ${feeText(p)} · ${p.status}${p.refunded ? ' · refunded' : ''}${p.error ? ' · ' + p.error : ''} · ${p.payer || ''} · ${p.event || ''} · ${new Date(p.createdAt).toLocaleString()}`),
         ['paid', 'review'].includes(p.status) && !p.refunded ? h('button', { class: 'btn sm', type: 'button', onclick: act(async () => { if (await confirmDlg(`Mark ${naira(p.priceKobo)} as refunded? Refund the buyer in Paystack first. Tickets are cancelled and the host balance is reduced.`, { ok: 'Mark refunded' })) await api(`/api/admin/commerce/payments/${p.reference}/refund`, { method: 'POST', body: {} }); }) }, 'Mark refunded') : null)));
   }
   load().catch((e) => out.replaceChildren(h('p', { class: 'small' }, e.message || 'Could not load')));

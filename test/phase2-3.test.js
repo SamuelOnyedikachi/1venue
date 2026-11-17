@@ -1,4 +1,5 @@
 'use strict';
+process.env.PROCESSING_FEE_PERCENT = '0'; // these suites pin the original price maths; the fee is covered in test/settings-wallet.test.js
 // Phase 2 and 3: feature gating, fee math, org permissions, recurring series, reminder idempotency,
 // exports, branding, verified badge, tickets, donations, promotions, payouts and refunds.
 const secretKey = 'sk_test_phase3_fixture';

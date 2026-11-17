@@ -35,7 +35,7 @@ module.exports = function routes(route, kit) {
     if (v.archived && !(u && u.id === v.ownerUserId)) return { venue: null };
     return { venue: { slug: v.slug, name: v.name, code: v.code, isOwner: !!(u && u.id === v.ownerUserId), live: venueLive(v) } };
   });
-  const SLUG = '([A-Za-z0-9]{2,16}(?:-venue)?)';
+  const SLUG = '([A-Za-z0-9]{3,16}(?:-venue)?)';
   route('GET', '/api/venues/plan', async (ctx) => {
     const u = await requireUser(ctx.req, ctx.res);
     const plans = require('../../lib/plans');
@@ -73,6 +73,13 @@ module.exports = function routes(route, kit) {
     return { audit: await data.getVenueAudit(v.id) };
   });
 
+  // A short link nobody holds (never bought, or released after a lapsed plan) can be bought by anyone on a paid plan.
+  route('GET', '/api/venues/claimable/([A-Za-z0-9-]{1,24})', async (ctx, [slug]) => {
+    const lib = require('../../lib/codes'); const vdata = require('./data');
+    const base = lib.slugifyBase(slug);
+    const short = base.length >= 3 && base.length <= 4 && base === String(slug).toLowerCase() && !lib.RESERVED.has(base);
+    return { slug: base, claimable: short && !(await vdata.slugTaken(base)), tier: base.length === 3 ? 'slug3' : base.length === 4 ? 'slug4' : null };
+  });
   route('GET', `/api/venues/${SLUG}`, async (ctx, [slug]) => {
     const v = await data.getVenueBySlug(slug.toLowerCase());
     if (!v) throw httpError(404, 'Venue not found');

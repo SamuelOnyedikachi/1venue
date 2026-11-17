@@ -14,7 +14,7 @@ const fail = (status, message, extra) => Object.assign(new Error(message), { sta
 const asJson = (v) => { if (!v) return {}; if (typeof v === 'object') return v; try { return JSON.parse(v); } catch (_) { return {}; } };
 
 const paymentOut = (p) => ({ reference: p.reference, kind: p.kind, eventId: p.event_id ? Number(p.event_id) : null, tierId: p.tier_id ? Number(p.tier_id) : null, promotionId: p.promotion_id ? Number(p.promotion_id) : null,
-  quantity: Number(p.quantity), priceKobo: Number(p.price_kobo), feeKobo: Number(p.fee_kobo || 0), status: p.status, refunded: p.refund_status === 'refunded', createdAt: p.created_at, paidAt: p.paid_at,
+  quantity: Number(p.quantity), priceKobo: Number(p.price_kobo), feeKobo: Number(p.fee_kobo || 0), subtotalKobo: Number(p.subtotal_kobo ?? p.price_kobo), processingFeeKobo: Number(p.processing_fee_kobo || 0), feePercent: p.fee_percent == null ? 0 : Number(p.fee_percent), displayCurrency: p.display_currency || p.currency || 'NGN', displayTotalMinor: p.display_total_minor == null ? Number(p.price_kobo) : Number(p.display_total_minor), status: p.status, refunded: p.refund_status === 'refunded', createdAt: p.created_at, paidAt: p.paid_at,
   authorizationUrl: p.status === 'pending' ? p.authorization_url || null : null, error: p.last_error || null });
 const getPayment = (ref) => one('SELECT * FROM commerce_payments WHERE reference=$1', [ref]);
 async function settings() { return plans.platform(await plans.getSettings()); }
@@ -26,9 +26,11 @@ async function initialize(user, f, returnPath) {
   if (!user.email) throw fail(400, 'Add an email address to your account before paying');
   if (!Number.isSafeInteger(f.priceKobo) || f.priceKobo < 100) throw fail(400, 'This amount is too small');
   const ref = '1vc-' + crypto.randomBytes(16).toString('hex');
-  const p = await one(`INSERT INTO commerce_payments (reference, kind, user_id, host_user_id, event_id, tier_id, quantity, detail, payer_email, price_kobo, fee_bps, fee_kobo, provider_mode)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-  [ref, f.kind, user.id, f.hostUserId || null, f.eventId || null, f.tierId || null, f.quantity || 1, f.detail ? JSON.stringify(f.detail) : null, String(user.email).toLowerCase(), f.priceKobo, f.feeBps || 0, f.feeKobo || 0, s.mode]);
+  // price_kobo = amount charged (subtotal + processing fee). Host splits and platform fee use the subtotal.
+  const m = await require('../../lib/money').checkoutAmounts(user.id, f.priceKobo);
+  const p = await one(`INSERT INTO commerce_payments (reference, kind, user_id, host_user_id, event_id, tier_id, quantity, detail, payer_email, price_kobo, fee_bps, fee_kobo, provider_mode, subtotal_kobo, processing_fee_kobo, fee_percent, display_currency, display_total_minor, fx_rate)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+  [ref, f.kind, user.id, f.hostUserId || null, f.eventId || null, f.tierId || null, f.quantity || 1, f.detail ? JSON.stringify(f.detail) : null, String(user.email).toLowerCase(), m.total, f.feeBps || 0, f.feeKobo || 0, s.mode, m.subtotal, m.fee, m.percent, m.displayCurrency, m.displayTotal, m.fxRate]);
   const back = new URL(returnPath + (returnPath.includes('?') ? '&' : '?') + 'reference=' + ref, s.callback).href;
   const result = await gateway.call('/transaction/initialize', { email: p.payer_email, amount: Number(p.price_kobo), currency: 'NGN', reference: ref, callback_url: back,
     metadata: { commerce_reference: ref, user_id: String(user.id), kind: f.kind, event_id: f.eventId ? String(f.eventId) : null } });
@@ -192,7 +194,7 @@ function validVerified(p, r) {
   const requested = r.requested_amount == null ? r.amount : r.requested_amount;
   const idOk = typeof r.id === 'number' ? Number.isSafeInteger(r.id) && r.id > 0 : typeof r.id === 'string' && /^[1-9]\d{0,29}$/.test(r.id);
   const fees = r.fees == null ? 0 : r.fees;
-  return idOk && Number.isSafeInteger(r.amount) && Number.isSafeInteger(fees) && fees >= 0 && requested === Number(p.price_kobo) && r.amount - fees >= Number(p.price_kobo)
+  return idOk && Number.isSafeInteger(r.amount) && Number.isSafeInteger(fees) && fees >= 0 && requested === Number(p.price_kobo) && require('../../lib/money').paidEnough(r.amount, fees, p)
     && r.currency === p.currency && r.domain === p.provider_mode && typeof r.customer?.email === 'string' && r.customer.email.toLowerCase() === p.payer_email
     && meta.commerce_reference === p.reference && String(meta.user_id) === String(p.user_id);
 }
@@ -235,7 +237,7 @@ async function settle(purchase, verified) {
     }
     const paid = (await c.query('UPDATE commerce_payments SET status=$2, provider_id=$3, amount_paid_kobo=$4, paid_at=NOW(), last_error=$5 WHERE id=$1 RETURNING *', [p.id, status, String(verified.id), verified.amount, err])).rows[0];
     if (status === 'paid' && (p.kind === 'ticket' || p.kind === 'donation') && p.host_user_id) {
-      const split = plans.feeSplit(Number(p.price_kobo), Number(p.fee_bps));
+      const split = plans.feeSplit(Number(p.subtotal_kobo ?? p.price_kobo), Number(p.fee_bps));
       await c.query(`INSERT INTO host_ledger (host_user_id, kind, payment_id, gross_kobo, fee_kobo, net_kobo) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
         [p.host_user_id, p.kind === 'ticket' ? 'sale' : 'donation', p.id, split.gross, split.fee, split.net]);
     }
