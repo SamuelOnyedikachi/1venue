@@ -499,6 +499,22 @@ body.in-room .cmdbar {
   display: flex;
   flex-direction: column;
 }
+/* Spotlight has one expanding video and a compact horizontal filmstrip. Use explicit grid tracks
+   so the main tile keeps the available stage height even when the room has only a few participants. */
+.stage[data-layout="spotlight"] .tiles {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  align-content: stretch;
+}
+.stage[data-layout="spotlight"] .tile-main {
+  min-width: 0;
+  min-height: 0;
+}
+.stage[data-layout="spotlight"] .filmstrip {
+  width: 100%;
+  min-width: 0;
+}
 .stage.presenting .tiles {
   flex: 0 0 auto;
   display: block;

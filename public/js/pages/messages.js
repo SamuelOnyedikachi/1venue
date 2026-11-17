@@ -9,6 +9,7 @@ import { state, navigate } from '../app.js';
 import { barVisible } from '../commands.js';
 import { bus, setActiveConversation, refreshUnread, typing as sendTyping, pushState, enablePush, disablePush } from '../messages/live.js';
 import { toneMuted, setToneMuted, playMessageTone } from '../messages/tones.js';
+import { openMini } from '../messages/mini.js';
 import { safeText, safeList, put, add } from '../safe-text.js';
 
 const I = (n, s = 18) => h('span', { class: 'i', html: icon(n, { size: s }) });
@@ -175,7 +176,11 @@ export async function mount(view, params) {
     const head = h('header', { class: 'msg-thread-head' }, back, h('button', { class: 'msg-head-who', type: 'button', 'aria-label': 'Contact details', onclick: () => toggleSide() }, av,
       h('div', { class: 'msg-thread-title' }, h('b', null, titleEl), h('span', { class: 'muted tiny msg-presence' }, presenceText(c)))),
       ib('star', c.starred ? 'Unstar' : 'Star', () => patch({ starred: !c.starred }, c.starred ? 'Unstarred' : 'Starred').then(paintThread), `msg-star-btn${c.starred ? ' on' : ''}`),
-      ib('pip', 'Float this chat', () => import('../messages/mini.js').then((m) => m.openMini(c.id)), 'msg-pip-btn'),
+      ib('pip', 'Float this chat', () => {
+        openMini(c.id).then((mode) => {
+          if (mode === 'inline') toast('Always-on-top chat needs a browser with Picture-in-Picture support. This browser opened an in-page mini chat instead.', { icon: 'pip' });
+        }).catch(toastErr);
+      }, 'msg-pip-btn'),
       canCall ? ib('phone', 'Audio call', () => call('audio')) : null,
       canCall && c.type === 'dm' ? ib('video', 'Video call', () => call('video')) : null,
       c.canSend && c.editable ? ib('calendarPlus', 'Meet', (e) => meetMenu(e.currentTarget), 'msg-meet') : null,
