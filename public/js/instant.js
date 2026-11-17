@@ -4,13 +4,12 @@
 // command bar calls openInstant() directly. A deep link to /create?instant=1 opens it over the home page.
 import { icon } from './icons.js';
 import { h } from './ui.js';
-import { state, navigate, requireLogin } from './app.js';
+import { state, navigate } from './app.js';
 import { field } from './pages/login.js';
 
 let open = null;
 
 export function openInstant({ onClose } = {}) {
-  if (!state.user) { requireLogin(); return; }
   if (open) { open.focus(); return open; }
   const prevFocus = document.activeElement;
   const defName = state.user ? `${(state.user.displayName || state.user.username || 'My').split(' ')[0]}’s meeting` : 'Quick meeting';
@@ -29,7 +28,7 @@ export function openInstant({ onClose } = {}) {
   const start = h('button', { class: 'au-btn au-primary', type: 'submit', html: icon('zap', { size: 18 }) + '<span>Start now</span>' });
   const form = h('form', { class: 'au-form', novalidate: true },
     name.el,
-    h('p', {class:'small muted'}, '1 credit per minute while the room is open. At least 30 credits are required to start. ', h('a',{href:'/wallet','data-link':''},'View wallet')),
+    h('p', {class:'small muted'}, 'The first 15 minutes are free. Sign in and use credits to keep the meeting going after that. ', h('a',{href:'/wallet','data-link':''},'View wallet')),
     h('div', { class: 'im-opts' },
       opt('stage', 'stage', 'Stage mode', 'Audience watches; limited speaker seats'),
       opt('waitingRoom', 'door', 'Waiting room', 'Admit people one by one')),

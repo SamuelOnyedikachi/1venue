@@ -5,6 +5,7 @@ import { h, $, api, toast, sheet, menu, avatar, initTooltips, debounce, closeTop
 import { mountCommandBar, registerCommands, setBarContext, barVisible, focusBar, refreshBar } from './commands.js';
 import { surahCommands, loadSurahs, looksLikeQuran } from './quran-cmd.js';
 import { initPwa, promptInstall } from './pwa.js';
+import './messages/tones.js'; // install audio-unlock handlers before any incoming call or message arrives
 
 export const state = { config: null, user: null, session: null, prefs: null, route: null, inRoom: false };
 const LS_PREFS = 'venue.prefs';
@@ -47,6 +48,10 @@ export async function refreshSession() {
   } catch { state.session = { authenticated: false }; state.user = null; }
   if (state.user) {
     try { const p = await api('/api/prefs'); const local = loadLocalPrefs(); state.prefs = { ...DEFAULT_PREFS, ...p }; if (p.anonymous) state.prefs = local; applyPrefs(); localStorage.setItem(LS_PREFS, JSON.stringify(state.prefs)); } catch { /* keep local */ }
+    try {
+      const welcome = await api('/api/wallet/welcome-notice', { method: 'POST' });
+      if (welcome.show) await (await import('./pages/login.js')).showWelcomeCredits(welcome.credits);
+    } catch { /* the credit award remains available in the wallet if the welcome notice cannot load */ }
   }
   renderUserSlot();
   renderVerifyBanner();

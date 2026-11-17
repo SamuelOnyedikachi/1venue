@@ -19,22 +19,24 @@ test('GET /privacy and /terms return 200 text/html without auth', async () => {
       assert.match(body, /legal@1venue\.live/, p);
       assert.doesNotMatch(body, /1venue needs JavaScript to run/, p + ' must not be the SPA shell');
     }
-    const privacy = (await (await fetch(base + '/privacy')).text()).replace(/\s+/g, ' '); // formatters wrap lines
-    const terms = (await (await fetch(base + '/terms')).text()).replace(/\s+/g, ' ');
-    assert.match(privacy, /Privacy policy/);
-    assert.match(privacy, /Google API Services User Data Policy/);
-    assert.match(privacy, /Effective 15 November 2026/);
-    assert.match(privacy, /We don.t sell your personal data or use your recordings, transcripts, or voice to target ads/);
-    assert.match(privacy, /Promoted events and posts are chosen by 1venue admins and shown to everyone the same way/);
-    assert.match(privacy, /we only count total views and clicks, not who viewed them/);
-    assert.doesNotMatch(privacy, /we do not use it for advertising/);
-    assert.match(privacy, /outside speech provider \(Replicate\)|uploaded to Replicate, an outside speech provider/);
-    assert.match(privacy, /turn it off in Settings/);
-    assert.match(privacy, /about one hour/);
-    assert.match(privacy, /Write it for me/);
-    assert.match(privacy, /AI provider configured for this server/);
-    assert.match(terms, /Terms of service/);
-    assert.match(terms, /Federal Republic of Nigeria/);
+    const privacy = await (await fetch(base + '/privacy')).text();
+    const terms = await (await fetch(base + '/terms')).text();
+    const privacyText = privacy.replace(/\s+/g, ' ');
+    const termsText = terms.replace(/\s+/g, ' ');
+    assert.match(privacyText, /Privacy policy/);
+    assert.match(privacyText, /Google API Services User Data Policy/);
+    assert.match(privacyText, /Effective 15 November 2026/);
+    assert.match(privacyText, /We don.t sell your personal data or use your recordings, transcripts, or voice to target ads/);
+    assert.match(privacyText, /Promoted events and posts are chosen by 1venue admins and shown to everyone the same way/);
+    assert.match(privacyText, /we only count total views and clicks, not who viewed them/);
+    assert.doesNotMatch(privacyText, /we do not use it for advertising/);
+    assert.match(privacyText, /outside speech provider \(Replicate\)|uploaded to Replicate, an outside speech provider/);
+    assert.match(privacyText, /turn it off in Settings/);
+    assert.match(privacyText, /about one hour/);
+    assert.match(privacyText, /Write it for me/);
+    assert.match(privacyText, /AI provider configured for this server/);
+    assert.match(termsText, /Terms of service/);
+    assert.match(termsText, /Federal Republic of Nigeria/);
     // Extensionless app routes still fall back to the SPA shell
     const spa = await fetch(base + '/discover');
     assert.equal(spa.status, 200);

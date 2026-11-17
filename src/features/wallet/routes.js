@@ -6,6 +6,10 @@ module.exports = function routes(route, { requireUser, httpError, rateLimit }) {
     const u = await requireUser(ctx.req, ctx.res);
     return { userId:u.id, ...await require('./billing-data').current(u.id), pricePerCreditKobo: PRICE_PER_CREDIT_KOBO, currency: 'NGN', feePercent: require('../../lib/money').feePercent(), bundles: BUNDLES, purchasesEnabled: gateway.enabled(), expires: false };
   });
+  route('POST', '/api/wallet/welcome-notice', async (ctx) => {
+    const u = await requireUser(ctx.req, ctx.res);
+    return data.claimWelcomeNotice(u.id);
+  });
   route('POST', '/api/wallet/quote', async (ctx) => {
     await requireUser(ctx.req, ctx.res);
     return { ...quote((await ctx.body()).credits), feeNotice: 'The processing fee is shown above and included in the total. Fees do not buy additional credits.' };
