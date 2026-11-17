@@ -3,6 +3,8 @@ import { h, api, esc, frag, fmtNum } from '../ui.js';
 import { state, navigate, CATS, joinPrompt, parseCode } from '../app.js';
 import { eventCard, skeletonCards, sectionHead, empty, catOf } from '../components.js';
 
+let heroCarouselFrame = 0;
+
 /** Homepage hero visual — lightweight preview cards around the join-first hero. */
 function previewCards() {
   return [
@@ -21,11 +23,11 @@ function previewCards() {
 
 function mobileImageCards() {
   const images = [
-    '/img/hero/messages.png',
-    '/img/hero/amara-call.png',
-    '/img/hero/people-follow.png',
+    ['/img/hero/messages.png', 'messages'],
+    ['/img/hero/amara-call.png', 'amara-call'],
+    ['/img/hero/people-follow.png', 'people-follow'],
   ];
-  return images.map((src) => h('article', { class: 'mobile-image-card' },
+  return [...images, ...images].map(([src, name]) => h('article', { class: `mobile-image-card mobile-image-card--${name}` },
     h('img', { src, alt: '', loading: 'eager', decoding: 'async', draggable: 'false' })));
 }
 
@@ -42,6 +44,34 @@ function heroVisual(extraClass = '') {
 
 function band(cls, ...kids) {
   return h('section', { class: `home-band ${cls}` }, h('div', { class: 'band-inner' }, ...kids));
+}
+
+function startHeroCarousel(root) {
+  if (heroCarouselFrame) cancelAnimationFrame(heroCarouselFrame);
+  const carousel = root.querySelector('.hero-mobile-carousel');
+  const group = carousel?.querySelector('.hero-carousel-group');
+  if (!carousel || !group) return;
+
+  const systemReduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  let lastFrame = 0;
+  const step = (now) => {
+    if (!carousel.isConnected) {
+      heroCarouselFrame = 0;
+      return;
+    }
+    const reduceMotion = systemReduceMotion.matches || document.documentElement.classList.contains('reduce-motion');
+    if (!reduceMotion && document.visibilityState === 'visible') {
+      const loopWidth = group.getBoundingClientRect().width;
+      const elapsed = lastFrame ? Math.min(now - lastFrame, 50) : 0;
+      if (loopWidth > 0 && elapsed > 0) {
+        const next = carousel.scrollLeft + elapsed * 0.03;
+        carousel.scrollLeft = next >= loopWidth ? next % loopWidth : next;
+      }
+    }
+    lastFrame = now;
+    heroCarouselFrame = requestAnimationFrame(step);
+  };
+  heroCarouselFrame = requestAnimationFrame(step);
 }
 
 export async function mount(view) {
@@ -97,6 +127,7 @@ export async function mount(view) {
         h('div', { class: 'row' }, h('span', { class: 'ico-tile', style: { color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 14%, transparent)' }, html: icon(ic, { size: 22 }) }), h('strong', null, t)),
         h('p', { class: 'muted small', style: { marginTop: '.5rem' } }, d))))),
     h('div', { style: { height: '2rem' } }));
+  startHeroCarousel(view);
 
   const [live, up] = await Promise.all([
     api('/api/discover?status=live&limit=6').catch(() => ({ events: [] })),
@@ -114,4 +145,8 @@ export async function mount(view) {
     : empty('calendar', 'No upcoming events yet', 'Schedule a talk show, seminar or service and it will show up here.'));
 }
 export const barPinned = null;
-export function unmount() { if (document.body.dataset.page === 'home') delete document.body.dataset.page; }
+export function unmount() {
+  if (heroCarouselFrame) cancelAnimationFrame(heroCarouselFrame);
+  heroCarouselFrame = 0;
+  if (document.body.dataset.page === 'home') delete document.body.dataset.page;
+}
