@@ -76,6 +76,7 @@ module.exports = async function handle(req, res, parsed) {
 
   if (urlPath === '/api/create' && req.method === 'POST') {
     let openedBilling = null;
+    let openedPaidEntry = null;
     let publishedCode = null;
     try {
       const body = await parseBody(req);
@@ -94,6 +95,17 @@ module.exports = async function handle(req, res, parsed) {
         }
         if (event) code = normCode(event.code);
       }
+      const requestedAccess = event
+        ? (event.category === 'meeting' ? event.meetingAccessMode : 'host_funded')
+        : String(body.meetingAccessMode || 'host_funded');
+      if (!['host_funded', 'paid_entry'].includes(requestedAccess)) return sendJSON(res, 400, { error: 'Choose host-funded or paid entry' });
+      if (requestedAccess === 'paid_entry' && (!event && body.venue || event && event.category !== 'meeting')) return sendJSON(res, 400, { error: 'Paid entry is available for meetings, not venues or other event types' });
+      if (requestedAccess === 'paid_entry' && !authUser) return sendJSON(res, 401, { error: 'Sign in to host a paid-entry meeting' });
+      const paidDuration = event ? event.meetingDurationMin : Number(body.meetingDurationMin);
+      const paidPrice = event ? event.meetingEntryPriceCredits : Number(body.meetingEntryPriceCredits);
+      if (requestedAccess === 'paid_entry' && (!Number.isInteger(paidDuration) || paidDuration < 1 || paidDuration > 720 || !Number.isSafeInteger(paidPrice) || paidPrice < 1)) {
+        return sendJSON(res, 400, { error: 'Paid entry requires an advertised duration from 1 to 720 minutes and a positive whole-credit entry price' });
+      }
       // Permanent venue: fixed code, owner only, waiting room always on.
       let venue = null;
       const vdata = require('../venue/data');
@@ -104,6 +116,7 @@ module.exports = async function handle(req, res, parsed) {
         // A create aimed at a venue-bound code must open that venue, never fork a new code.
         venue = await vdata.getVenueByCode(normCode(body.code)).catch(() => null);
       }
+      if (venue && requestedAccess === 'paid_entry') return sendJSON(res, 400, { error: 'Permanent venues use host-funded billing; paid entry is available for standalone meetings and Meeting events' });
       if (venue && venue.archived) return sendJSON(res, 403, { error: 'This venue is archived because its plan changed. The owner can upgrade to open it again.', code: venue.code });
       if (venue) {
         if (!authUser) return sendJSON(res, 401, { error: 'Sign in to open your venue', code: venue.code });
@@ -135,7 +148,7 @@ module.exports = async function handle(req, res, parsed) {
         return sendJSON(res, 400, { error: 'Please enter your display name' });
       }
 
-      if (!venue) {
+      if (!venue && requestedAccess !== 'paid_entry') {
         openedBilling = await require('../features/wallet/billing').start({ user: authUser, code, name, hostName });
       } else await discardSnapshot(code); // venue funding remains deferred
       const historyId = openedBilling ? openedBilling.historyId : await db.startMeetingHistory({
@@ -144,6 +157,9 @@ module.exports = async function handle(req, res, parsed) {
         hostUserId: authUser ? authUser.id : null,
         hostDisplayName: hostName,
       });
+      if (requestedAccess === 'paid_entry') {
+        openedPaidEntry = await require('../features/wallet/paid-entry').open({ code, historyId, hostUserId: authUser.id, entryCredits: paidPrice, durationMin: paidDuration, startedMs: Date.now() });
+      }
 
       await db.logParticipantJoin({
         meetingHistoryId: historyId,
@@ -153,7 +169,7 @@ module.exports = async function handle(req, res, parsed) {
       });
 
       const settings = createMeetingSettings({
-        waitingRoom: !!body.waitingRoom || !!venue,
+        waitingRoom: !!body.waitingRoom || !!venue || requestedAccess === 'paid_entry',
         guestAccess: body.guestAccess !== false,
         participantScreenShare: body.participantScreenShare !== false,
         participantMicrophone: body.participantMicrophone !== false,
@@ -184,6 +200,7 @@ module.exports = async function handle(req, res, parsed) {
       publishedCode = code;
       meetings.set(code, {
         code,
+        paidEntry: openedPaidEntry ? { enabled: true, entryCredits: openedPaidEntry.entryCredits, durationMin: openedPaidEntry.durationMin, startedMs: openedPaidEntry.startedMs, advertisedEndMs: openedPaidEntry.advertisedEndMs, runtimeEndMs: openedPaidEntry.runtimeEndMs } : null,
         billingId: openedBilling?.historyId || null,
         mediaRoom: openedBilling?.session.media_room || null,
         name,
@@ -266,11 +283,19 @@ module.exports = async function handle(req, res, parsed) {
         eventSlug: meeting.eventSlug || null,
         venue: meeting.venue || null,
         freeUntilMs: openedBilling?.session.free_until_ms || null,
+        paidEntry: meeting.paidEntry || null,
       });
     } catch (e) {
       if (openedBilling) {
         if (publishedCode && meetings.has(publishedCode)) await endMeeting(publishedCode, 'open-failed').catch(() => {});
         else await require('../features/wallet/billing-data').settle(openedBilling.historyId, {now:Number(openedBilling.session.started_ms),endReason:'open-failed'}).catch(() => {});
+      }
+      if (openedPaidEntry) {
+        if (publishedCode && meetings.has(publishedCode)) await endMeeting(publishedCode, 'open-failed').catch(() => {});
+        else {
+          await require('../features/wallet/paid-entry').settle(openedPaidEntry.code, Date.now()).catch(() => {});
+          await db.endMeetingHistory(openedPaidEntry.historyId).catch(() => {});
+        }
       }
       console.error('[create]', e.message);
       return sendJSON(res, e.status || 400, { error: publicErr(e, 'Bad request') });
@@ -300,6 +325,11 @@ module.exports = async function handle(req, res, parsed) {
       }
 
       const authUser = await getAuthUser(req, res);
+      const paidMeeting = !!(meeting.paidEntry && meeting.paidEntry.enabled);
+      if (paidMeeting && !authUser) return sendJSON(res, 401, { error: 'Sign in to join this paid-entry meeting', signInRequired: true });
+      const paidAdmission = paidMeeting && authUser
+        ? await require('../features/wallet/paid-entry').admission(code, authUser.id)
+        : null;
       const participantId = body.participantId || 'user-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
       const participantName = normalizeParticipantName(
         body.participantName
@@ -327,7 +357,7 @@ module.exports = async function handle(req, res, parsed) {
           participantId,
         });
       } catch (_) {}
-      if (membership && (membership.status === 'BLOCKED' || membership.status === 'REMOVED')) {
+      if (membership && (membership.status === 'BLOCKED' || (membership.status === 'REMOVED' && !(paidMeeting && paidAdmission)))) {
         return sendJSON(res, 403, { error: 'You no longer have access to this meeting.' });
       }
 
@@ -354,7 +384,7 @@ module.exports = async function handle(req, res, parsed) {
       }
 
       // Ticketed events: a valid ticket is needed to join (hosts, speakers and returning hosts skip).
-      if (meeting.eventId && !(rejoinCandidate && (rejoinCandidate.role === 'host' || rejoinCandidate.role === 'cohost'))) {
+      if (meeting.eventId && !paidMeeting && !(rejoinCandidate && (rejoinCandidate.role === 'host' || rejoinCandidate.role === 'cohost'))) {
         try {
           const gate = await require('../features/commerce/service').canJoinEvent(meeting.eventId, authUser);
           if (!gate.ok) return sendJSON(res, 403, { error: gate.reason, ticketRequired: true, eventSlug: meeting.eventSlug || null });
@@ -375,7 +405,7 @@ module.exports = async function handle(req, res, parsed) {
       }
 
       if (rejoinCandidate) {
-        if (rejoinCandidate.status === 'BLOCKED' || rejoinCandidate.status === 'REMOVED') {
+        if (rejoinCandidate.status === 'BLOCKED' || (rejoinCandidate.status === 'REMOVED' && !(paidMeeting && paidAdmission))) {
           return sendJSON(res, 403, { error: 'You no longer have access to this meeting.' });
         }
         if (rejoinCandidate.role === 'host' || rejoinCandidate.role === 'cohost') {
@@ -383,11 +413,11 @@ module.exports = async function handle(req, res, parsed) {
         }
       }
 
-      const needsWaiting =
-        meeting.settings &&
-        meeting.settings.waitingRoom &&
-        role !== 'host' &&
-        !(rejoinCandidate && (rejoinCandidate.status === 'ACTIVE' || rejoinCandidate.status === 'APPROVED' || rejoinCandidate.role === 'host' || rejoinCandidate.role === 'cohost'));
+      const paidAdmissionApproved = !!(paidMeeting && rejoinCandidate && rejoinCandidate.paidAdmissionApproved);
+      const needsWaiting = paidMeeting
+        ? role !== 'host' && role !== 'cohost' && !paidAdmissionApproved
+        : meeting.settings && meeting.settings.waitingRoom && role !== 'host' &&
+          !(rejoinCandidate && (rejoinCandidate.status === 'ACTIVE' || rejoinCandidate.status === 'APPROVED' || rejoinCandidate.role === 'host' || rejoinCandidate.role === 'cohost'));
 
       if (needsWaiting) status = 'WAITING';
 
@@ -403,6 +433,7 @@ module.exports = async function handle(req, res, parsed) {
         device: body.device || 'desktop',
         status,
       });
+      if (paidMeeting) participant.paidAdmissionApproved = false;
       if (rejoinCandidate && rejoinCandidate.role === 'host') {
         participant.role = 'host';
         participant.isHost = true;
@@ -451,6 +482,7 @@ module.exports = async function handle(req, res, parsed) {
           role,
           status: 'WAITING',
           waitingRoom: true,
+          paidEntry: meeting.paidEntry ? { ...meeting.paidEntry, paid: !!paidAdmission } : null,
           participants: [],
           waiting: [],
           security: getSecurityState(meeting),
@@ -489,6 +521,7 @@ module.exports = async function handle(req, res, parsed) {
         name: meeting.name,
         venue: meeting.venue || null,
         freeUntilMs: meeting.billingId ? (await require('../features/wallet/billing-data').get(meeting.billingId))?.free_until_ms || null : null,
+        paidEntry: meeting.paidEntry ? { ...meeting.paidEntry, paid: !!paidAdmission } : null,
         participantId: pid,
         wsCredential: signWsCredential({ participantId: pid, code }),
         role: participant.role,
@@ -531,7 +564,28 @@ module.exports = async function handle(req, res, parsed) {
       requiresKey: meeting.inviteAccess === 'approval' || meeting.requireInviteKey === true,
       guestAccess: !(meeting.settings && meeting.settings.guestAccess === false),
       freeUntilMs: meeting.billingId ? (await require('../features/wallet/billing-data').get(meeting.billingId))?.free_until_ms || null : null,
+      paidEntry: meeting.paidEntry || null,
     });
+  }
+
+  if (urlPath === '/api/meeting/paid-entry/extend' && req.method === 'POST') {
+    try {
+      const body = await parseBody(req);
+      const code = normCode(body.code);
+      const meeting = meetings.get(code) || (isCode(code) ? await getOrRestoreMeeting(code) : null);
+      if (!meeting?.paidEntry?.enabled) return sendJSON(res, 404, { error: 'Paid-entry meeting not found' });
+      const participant = meeting.participants.get(body.participantId);
+      if (!participant || participant.id !== meeting.hostId || participant.role !== 'host') return sendJSON(res, 403, { error: 'Only the host can extend this meeting' });
+      if (!body.wsCredential || !require('../lib/wsCredential').verifyWsCredential(body.wsCredential, { participantId: participant.id, code }).ok) return sendJSON(res, 403, { error: 'Invalid room credential' });
+      const user = await getAuthUser(req, res);
+      if (!user) return sendJSON(res, 401, { error: 'Sign in to extend this meeting' });
+      const result = await require('../features/wallet/paid-entry').extend({ code, hostUserId: user.id, minutes: body.minutes });
+      meeting.paidEntry.runtimeEndMs = result.session.runtimeEndMs;
+      broadcast(code, { type: 'paid-entry-extension', runtimeEndMs: result.session.runtimeEndMs, minutes: result.addedMinutes });
+      return sendJSON(res, 200, result);
+    } catch (e) {
+      return sendJSON(res, e.status || 400, { error: publicErr(e, 'Could not extend this meeting') });
+    }
   }
 
   if (urlPath === '/api/meeting/billing/claim' && req.method === 'POST') {

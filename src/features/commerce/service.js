@@ -128,6 +128,7 @@ async function tiers(eventId, { all = false } = {}) {
 /** Host replaces the tier list. Tiers with sales are kept (deactivated if removed) and cannot drop below sold. */
 async function saveTiers(user, eventId, list) {
   const ev = await ownEvent(user.id, eventId);
+  if (ev.meeting_access_mode === 'paid_entry') throw fail(409, 'Paid-entry meetings use credit entry pricing, not event tickets');
   await plans.requireFeature(user.id, 'ticketing', 'Ticketing');
   if (!Array.isArray(list) || list.length > 10) throw fail(400, 'Up to 10 ticket tiers');
   const existing = new Map((await many('SELECT * FROM ticket_tiers WHERE event_id=$1', [ev.id])).map((t) => [Number(t.id), t]));
@@ -164,8 +165,9 @@ async function myTickets(userId, eventId) {
     .map((t) => ({ code: t.code, status: t.status, tier: t.name, createdAt: t.created_at }));
 }
 async function publicTickets(eventId, userId) {
-  const ev = await one('SELECT id, host_user_id FROM events WHERE id=$1', [eventId]);
+  const ev = await one('SELECT id, host_user_id, meeting_access_mode FROM events WHERE id=$1', [eventId]);
   if (!ev) throw fail(404, 'Event not found');
+  if (ev.meeting_access_mode === 'paid_entry') return { tiers: [], required: false, mine: [], donations: false, maxPerOrder: 0, purchasesEnabled: gateway.enabled(), paidEntry: true };
   const ent = await plans.entitlements(ev.host_user_id);
   const p = await settings();
   return { tiers: ent.features.ticketing ? await tiers(eventId) : [], required: ent.features.ticketing && (await tiers(eventId)).length > 0, mine: await myTickets(userId, eventId),
@@ -178,6 +180,7 @@ async function issueTickets(c, { tierId, eventId, userId, paymentId, quantity })
 async function getTicket(user, eventId, { tierId, quantity } = {}) {
   const ev = await one('SELECT * FROM events WHERE id=$1', [eventId]);
   if (!ev || ['draft', 'cancelled'].includes(ev.status)) throw fail(404, 'Event not found');
+  if (ev.meeting_access_mode === 'paid_entry') throw fail(409, 'Paid-entry meetings use credit entry pricing, not event tickets');
   const ent = await plans.entitlements(ev.host_user_id);
   if (!ent.features.ticketing) throw fail(404, 'Tickets are not available for this event');
   const tier = await one('SELECT * FROM ticket_tiers WHERE id=$1 AND event_id=$2 AND active', [tierId, eventId]);
@@ -202,6 +205,7 @@ async function getTicket(user, eventId, { tierId, quantity } = {}) {
 async function donate(user, eventId, amountKobo) {
   const ev = await one('SELECT * FROM events WHERE id=$1', [eventId]);
   if (!ev || ['draft', 'cancelled'].includes(ev.status)) throw fail(404, 'Event not found');
+  if (ev.meeting_access_mode === 'paid_entry') throw fail(409, 'Gifts are not available for paid-entry meetings');
   const ent = await plans.entitlements(ev.host_user_id);
   if (!ent.features.ticketing) throw fail(404, 'Donations are not available for this event');
   const p = await settings();
@@ -212,8 +216,9 @@ async function donate(user, eventId, amountKobo) {
 }
 /** Room join gate: events with ticket tiers need a valid ticket (hosts, speakers and venue managers skip). */
 async function canJoinEvent(eventId, user) {
-  const ev = await one('SELECT id, host_user_id FROM events WHERE id=$1', [eventId]);
+  const ev = await one('SELECT id, host_user_id, meeting_access_mode FROM events WHERE id=$1', [eventId]);
   if (!ev) return { ok: true };
+  if (ev.meeting_access_mode === 'paid_entry') return { ok: true };
   const has = await one('SELECT 1 FROM ticket_tiers WHERE event_id=$1 AND active LIMIT 1', [eventId]);
   if (!has) return { ok: true };
   const ent = await plans.entitlements(ev.host_user_id);
