@@ -4,15 +4,40 @@ const KEYS = { ring: 'venue.tone.ring.muted', message: 'venue.tone.message.muted
 export const toneMuted = (k) => { try { return localStorage.getItem(KEYS[k]) === '1'; } catch { return false; } };
 export const setToneMuted = (k, v) => { try { localStorage.setItem(KEYS[k], v ? '1' : '0'); } catch { /* private mode */ } };
 
-// Browsers only allow sound after a user gesture: warm both files up on the first tap or key press.
+// Browsers only allow sound after a user gesture. This module is imported by the app shell so these
+// listeners are already installed before a WebSocket can deliver the first call or message.
 const cache = {};
 function audio(name) { if (!cache[name]) { cache[name] = new Audio(`/sounds/${name}.mp3`); cache[name].preload = 'auto'; } return cache[name]; }
-let unlocked = false;
+let unlocked = false, unlocking = false, ringing = false;
 function unlock() {
-  if (unlocked) return; unlocked = true;
-  for (const n of ['message', 'ringtone']) { const a = audio(n); a.muted = true; a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; }); }
+  const ring = audio('ringtone');
+  // If autoplay rejected the active ringtone, retry the same element while this gesture is active.
+  if (ringing && !toneMuted('ring')) {
+    ring.muted = false;
+    ring.play().then(() => { unlocked = true; }).catch(() => {});
+    return;
+  }
+  if (unlocked || unlocking) return;
+  unlocking = true;
+  const warm = (ringing ? ['message'] : ['message', 'ringtone']).map((name) => {
+    const a = audio(name);
+    a.muted = true;
+    return a.play().then(() => {
+      a.pause();
+      a.currentTime = 0;
+      a.muted = false;
+      return true;
+    }).catch(() => {
+      a.muted = false;
+      return false;
+    });
+  });
+  Promise.all(warm).then((ok) => { if (ok.every(Boolean)) unlocked = true; }).finally(() => { unlocking = false; });
 }
-if (typeof window !== 'undefined') { window.addEventListener('pointerdown', unlock, { once: true, capture: true }); window.addEventListener('keydown', unlock, { once: true, capture: true }); }
+if (typeof window !== 'undefined') {
+  window.addEventListener('pointerdown', unlock, { capture: true });
+  window.addEventListener('keydown', unlock, { capture: true });
+}
 
 let lastMsg = 0;
 /** Short two-note chime for an incoming message (throttled so a burst plays once). */
@@ -25,23 +50,17 @@ export function playMessageTone() {
 
 /** Start the looping ringtone (plus vibration on phones). Returns stop(). */
 export function startRingtone() {
-  let stopped = false; let vib = null; let fallback = null;
+  let vib = null;
   const buzz = () => { try { navigator.vibrate && navigator.vibrate([400, 200, 400]); } catch { /* ignore */ } };
   buzz(); vib = setInterval(buzz, 2600);
-  const a = new Audio('/sounds/ringtone.mp3'); a.loop = true; a.volume = 1;
+  const a = audio('ringtone'); a.loop = true; a.volume = 1; ringing = true;
   if (!toneMuted('ring')) {
-    a.play().catch(() => {
-      // Autoplay blocked: a quiet Web Audio beep pattern still works once the page was touched.
-      try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const beep = () => { if (stopped) return; const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'triangle'; o.frequency.value = 880; g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.45); o.connect(g).connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.5); };
-        beep(); fallback = { ctx, iv: setInterval(beep, 1300) };
-      } catch { /* no audio at all: the ringing sheet is still on screen */ }
-    });
+    a.currentTime = 0;
+    a.play().then(() => { unlocked = true; }).catch(() => {});
   }
   return () => {
-    stopped = true; clearInterval(vib); try { navigator.vibrate && navigator.vibrate(0); } catch { /* ignore */ }
-    try { a.pause(); a.src = ''; } catch { /* ignore */ }
-    if (fallback) { clearInterval(fallback.iv); try { fallback.ctx.close(); } catch { /* ignore */ } }
+    clearInterval(vib); try { navigator.vibrate && navigator.vibrate(0); } catch { /* ignore */ }
+    if (ringing) ringing = false;
+    try { a.pause(); a.currentTime = 0; } catch { /* ignore */ }
   };
 }
