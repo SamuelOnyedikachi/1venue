@@ -21,10 +21,9 @@ function previewCards() {
 
 function mobileImageCards() {
   const images = [
-    '/img/hero/collage.webp',
-    '/img/hero/meeting.png',
-    '/img/hero/speaker.webp',
-    '/img/hero/collage-sm.webp',
+    '/img/hero/messages.png',
+    '/img/hero/amara-call.png',
+    '/img/hero/people-follow.png',
   ];
   return images.map((src) => h('article', { class: 'mobile-image-card' },
     h('img', { src, alt: '', loading: 'lazy' })));
