@@ -2866,6 +2866,17 @@ body[data-page="home"] .main { overflow-x: clip; }
 .preview-live { right: max(1rem, calc(50% - 610px)); top: 13%; animation-delay: -2s; }
 .hero-mobile-carousel { display: none; }
 @keyframes previewFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@media (min-width: 821px) and (max-width: 1100px) {
+  .hero-join-first { min-height: clamp(680px, 78vh, 760px); padding: 3.5rem 1.25rem 3rem; }
+  .hero-join-first .hero-layout { grid-template-columns: minmax(0, 660px); }
+  .hero-join-first .hero-copy { max-width: 660px; padding-top: 9rem; }
+  .hero-join-first h1 { max-width: 620px; font-size: 32px; }
+  .hero-join-first p { max-width: 560px; font-size: 15px; }
+  .hero-join-first .join-box, .hero-join-first .hero-ctas { width: min(100%, 600px); }
+  .hero-join-first .hero-preview { transform: scale(.62); transform-origin: top center; animation: none; }
+  .hero-join-first .preview-poll { left: 1%; top: 3rem; }
+  .hero-join-first .preview-live { right: 1%; top: 3rem; }
+}
 @media (max-width: 820px) { .hero-join-first { min-height: 0; padding-top: 3rem; padding-bottom: 2.5rem; } .hero-join-first .hero-layout { min-height: 0; } .hero-join-first .hero-visual:not(.hero-mobile-carousel) { position: relative; inset: auto; display: block; height: 120px; order: -1; } .hero-join-first .hero-preview { transform: scale(.48); transform-origin: top center; animation: none; } .hero-join-first .preview-poll { left: 2%; top: 0; } .hero-join-first .preview-live { right: 2%; top: 0; } .hero-join-first .hero-mobile-carousel { position: relative; inset: auto; display: block; width: calc(100% + 1.5rem); height: min(300px, 64vw); margin: 1.4rem -.75rem -.25rem; overflow: hidden; pointer-events: none; }
   .hero-mobile-carousel .hero-carousel-track { display: flex; width: max-content; height: 100%; gap: .9rem; align-items: stretch; animation: heroCarousel 24s linear infinite; }
   .mobile-image-card { position: relative; flex: 0 0 clamp(235px, 70vw, 300px); height: 100%; overflow: hidden; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line-2)); border-radius: 24px; background: var(--s2); box-shadow: var(--shadow-2); }
