@@ -1,11 +1,136 @@
+/* Public /u/:username profile: compact premium hero, stat tiles, tidy tabs. */
+.main.profile-view,
+body[data-page="profile"] .main {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+.profile-view,
+.profile-hero,
+.profile-hero .in,
+.profile-copy,
+.profile-actions {
+  min-width: 0;
+  max-width: 100%;
+}
+.profile-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 0 0 1.05rem;
+  margin-bottom: 0.2rem;
+  box-shadow: var(--shadow-1);
+}
 .profile-hero .band,
 .speaker-card .band {
   position: absolute;
   inset: 0 0 auto;
-  height: 64px;
+  height: 88px;
   background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  opacity: 0.9;
+  opacity: 0.92;
 }
 .profile-hero > :not(.band) {
   position: relative;
+}
+.profile-hero .in {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem 1.1rem;
+  align-items: flex-start;
+  padding: 0 1.15rem 0;
+}
+.profile-hero .av {
+  width: 88px;
+  height: 88px;
+  margin-top: 44px;
+  flex: none;
+  z-index: 1;
+  box-shadow: 0 0 0 4px var(--s1);
+}
+.profile-copy {
+  flex: 1 1 14rem;
+  padding-top: 100px;
+}
+.profile-hero h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+.profile-handle {
+  margin-top: 0.1rem;
+}
+.profile-bio {
+  margin: 0.45rem 0 0;
+  max-width: 40rem;
+  overflow-wrap: anywhere;
+}
+.profile-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+.profile-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--s1);
+  min-width: 5.4rem;
+}
+.profile-stat strong {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.profile-stat span {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-left: auto;
+  padding-top: 100px;
+}
+.profile-tabs {
+  margin-top: 0.85rem;
+}
+.profile-body {
+  gap: 0.8rem;
+  margin-top: 0.85rem;
+  min-width: 0;
+}
+
+@media (max-width: 620px) {
+  .profile-hero .in {
+    padding: 0 0.9rem 0;
+  }
+  .profile-copy,
+  .profile-actions {
+    padding-top: 0;
+  }
+  .profile-hero .av {
+    width: 72px;
+    height: 72px;
+    margin-top: 52px;
+  }
+  .profile-copy {
+    flex: 1 1 calc(100% - 6rem);
+    padding-top: 68px;
+  }
+  .profile-actions {
+    flex: 1 1 100%;
+    margin-left: 0;
+    padding-top: 0.15rem;
+  }
+  .profile-stat {
+    flex: 1 1 auto;
+  }
 }

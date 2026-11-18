@@ -61,8 +61,9 @@ export function filterPicker({ status, category, onPick }) {
 }
 
 export async function mount(view, params) {
-  document.body.dataset.page = 'discover';
   const isSearch = !!params.search;
+  document.body.dataset.page = 'discover';
+  view.classList.add('dz-view');
   let q = params.q || '', category = params.category || '', status = params.status || '', tab = params.tab || 'events';
   const input = h('input', { class: 'input', type: 'search', placeholder: isSearch ? 'Search events, people, scripture…' : 'Search talk shows, seminars, sermons…', value: q, 'aria-label': 'Search' });
   const results = h('div');

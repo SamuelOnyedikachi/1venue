@@ -1,0 +1,104 @@
+/* Sessions list and an individual session: compact host-tools panels, transcript, AI cards. */
+.main.sess-view,
+body[data-page="sessions"] .main,
+body[data-page="session"] .main {
+  width: min(100%, 1120px);
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+.sess-view,
+.sess-split,
+.sess-toolbar,
+.sess-transcript {
+  min-width: 0;
+  max-width: 100%;
+}
+.sess-head h1 {
+  overflow-wrap: anywhere;
+}
+.sess-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0 0 1rem;
+}
+.sess-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+.sess-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+.sess-tx-panel .ht-panel-actions {
+  min-width: 0;
+}
+.sess-tx-panel .ht-panel-actions .input {
+  width: min(16rem, 100%);
+}
+.sess-transcript {
+  max-height: min(70vh, 720px);
+  overflow: auto;
+  padding-right: 2px;
+}
+.sess-transcript .tline {
+  display: grid;
+  grid-template-columns: 4.2rem minmax(0, 1fr);
+  gap: 0.55rem;
+  padding: 0.4rem 0.15rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  font-size: 0.9rem;
+}
+.sess-transcript .tline:last-child {
+  border-bottom: 0;
+}
+.sess-transcript .ts {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-size: 0.75rem;
+  padding-top: 0.15rem;
+}
+.sess-ai .prose {
+  margin: 0;
+  font-size: 0.92rem;
+}
+.sess-view .ht-table td > span {
+  display: inline-flex;
+}
+
+@media (min-width: 960px) {
+  .sess-split {
+    grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.8fr);
+  }
+  .sess-aside {
+    position: sticky;
+    top: calc(var(--top-h, 60px) + 0.75rem);
+  }
+}
+
+@media (max-width: 420px) {
+  .sess-toolbar .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .sess-transcript .tline {
+    grid-template-columns: 3.4rem minmax(0, 1fr);
+    font-size: 0.86rem;
+  }
+}
+
+.sess-name {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.sess-name .tiny {
+  font-weight: 500;
+}

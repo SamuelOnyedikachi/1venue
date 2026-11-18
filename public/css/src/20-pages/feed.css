@@ -670,3 +670,45 @@ body[data-page="feed"] .main {
     margin-left: auto;
   }
 }
+
+/* Premium compactness for the feed chrome; cards stay as they are. */
+body[data-page="feed"] .main {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+.feed-shell,
+.feed-center,
+.feed-head,
+.feed-stream,
+.feed-compose {
+  min-width: 0;
+  max-width: 100%;
+}
+.feed-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0 0 0.65rem;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+.feed-compose {
+  box-shadow: var(--shadow-1);
+}
+.feed-card {
+  box-shadow: var(--shadow-1);
+}
+.feed-stream .post,
+.feed-stream .card {
+  box-shadow: var(--shadow-1);
+}
+
+@media (max-width: 420px) {
+  .feed-title {
+    font-size: 1.12rem;
+  }
+  .feed-compose-input {
+    font-size: 0.95rem;
+  }
+}

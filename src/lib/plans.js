@@ -40,7 +40,7 @@ const EXTRA_LIMIT_KEYS = ['orgMembers', 'replayMB', 'groupMembers', 'callPartici
 const PLATFORM_KEYS = {
   feeBps: [500, 5000], // platform cut of tickets and donations, basis points (500 = 5%)
   promoDayKobo: [100000, 1e10], // self-serve promotion price per day
-  promoMaxDays: [30, 365],
+  promoMaxDays: [90, 365], // default 90; override with PLATFORM_PROMO_MAX_DAYS (ceiling 365)
   promoApproval: [1, 1], // 1 = admin approves paid promotions before they go live
   payoutMinKobo: [500000, 1e12],
   ticketMaxPerOrder: [10, 100],

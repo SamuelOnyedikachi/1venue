@@ -1,5 +1,5 @@
 /**
- * Dashboard and global search.
+ * Dashboard, personal analytics and global search.
  * JSON API routes (see src/core/router.js for the route() contract).
  */
 module.exports = function routes(route, kit) {
@@ -13,6 +13,10 @@ module.exports = function routes(route, kit) {
       require('../../../db').getHistoryForUser(u.id).catch(() => []), data.suggestedPeople(u.id, 5), data.getUserProfile(u.id, u.id),
     ]);
     return { ...dash, profile, hosting: hosting.slice(0, 12).map((e) => ({ ...e, live: liveInfo(e) })), going, live: live.map((e) => ({ ...e, live: liveInfo(e) })), history: (history || []).slice(0, 10), people };
+  });
+  route('GET', '/api/dashboard/analytics', async (ctx) => {
+    const u = await requireUser(ctx.req, ctx.res);
+    return require('./data').analytics(u.id, ctx.url.searchParams);
   });
   route('GET', '/api/search', async (ctx) => {
     const qy = String(ctx.url.searchParams.get('q') || '').trim();

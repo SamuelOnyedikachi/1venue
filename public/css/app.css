@@ -4456,86 +4456,192 @@ textarea.has-vmic {
   }
 }
 /* --- src/20-pages/attendance.css --- */
-/* Attendance list page */
-.att-page {
-  max-width: 860px;
-  margin: 0 auto;
+/* Attendance list UI and the printed/PDF export: compact, striped, branded. */
+.main.att-view,
+body[data-page="attendance"] .main {
+  width: min(100%, 860px);
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+.att-page,
+.att-hero,
+.att-panel {
+  min-width: 0;
+  max-width: 100%;
 }
 .att-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 1.1rem 1.2rem 1rem;
+  margin-bottom: 1rem;
   background: linear-gradient(
     135deg,
-    color-mix(in srgb, var(--accent) 18%, var(--s1)),
-    color-mix(in srgb, var(--accent-2, var(--accent)) 12%, var(--s1))
+    color-mix(in srgb, var(--accent) 14%, var(--s1)),
+    color-mix(in srgb, var(--accent-2, var(--accent)) 8%, var(--s1))
   );
-  border-radius: var(--r-xl);
-  padding: clamp(1.6rem, 4vw, 2.8rem);
-  margin-bottom: 1.2rem;
-  text-align: center;
+  box-shadow: var(--shadow-1);
 }
 .att-brand {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  font-weight: 750;
-  letter-spacing: 0.04em;
-  margin-bottom: 0.6rem;
-  color: var(--accent);
-}
-.att-hero h1 {
-  margin: 0.2rem 0 0.4rem;
-  font-size: clamp(1.6rem, 4vw, 2.2rem);
-}
-.host-card {
   display: inline-flex;
   align-items: center;
-  gap: 0.8rem;
-  margin-top: 1rem;
-  padding: 0.6rem 1rem;
-  background: color-mix(in srgb, var(--s1) 80%, transparent);
+  gap: 0.4rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  font-size: 0.82rem;
+  color: var(--accent);
+  margin-bottom: 0.45rem;
+}
+.att-kicker {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+.att-hero h1 {
+  margin: 0.15rem 0 0.2rem;
+  font-size: clamp(1.15rem, 3.2vw, 1.55rem);
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+.att-date {
+  margin: 0;
+}
+.att-host {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+  padding: 0.4rem 0.7rem 0.4rem 0.4rem;
+  background: color-mix(in srgb, var(--s1) 82%, transparent);
+  border: 1px solid var(--line);
   border-radius: 999px;
 }
-.att-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.92rem;
+.att-count {
+  margin: 0.55rem 0 0;
 }
-.att-table th,
-.att-table td {
-  padding: 0.65rem 0.5rem;
-  text-align: left;
-  border-bottom: 1px solid var(--line-2);
-  vertical-align: top;
+.att-person {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
 }
-.att-table th {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
-  font-weight: 700;
+.att-person-txt {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 0.05rem;
+}
+.att-actions {
+  gap: 0.45rem;
+  margin-top: 0.15rem;
+}
+.att-print-foot {
+  margin: 0.8rem 0 0;
+  display: none;
+}
+
+@media (max-width: 420px) {
+  .att-hero {
+    padding: 0.95rem;
+  }
+  .att-actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
 }
 
 @media print {
+  @page {
+    size: A4;
+    margin: 12mm 12mm 14mm;
+  }
+  html,
+  body {
+    background: #fff !important;
+    color: #111 !important;
+  }
   .no-print,
   .topbar,
   .bottomnav,
-  .btn {
+  .cmdbar,
+  .toast,
+  .sheet,
+  [data-cmdbar],
+  .install-overlay {
     display: none !important;
+  }
+  body[data-page="attendance"] .main,
+  .main.att-view {
+    width: 100%;
+    max-width: none;
+    padding: 0;
+    margin: 0;
   }
   .att-page {
     max-width: none;
   }
-  .att-hero {
-    background: #f8fafc !important;
-    color: #111;
+  .att-hero,
+  .att-panel,
+  .att-page .card,
+  .att-page .ht-panel {
+    box-shadow: none !important;
+    border: 1px solid #d4d4d8 !important;
+    background: #fff !important;
+    break-inside: avoid;
     -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
-  .card {
-    box-shadow: none;
-    border: 1px solid #ddd;
+  .att-hero {
+    padding: 0.8rem 0.9rem;
+    margin-bottom: 0.7rem;
   }
-  body {
-    background: #fff;
+  .att-hero h1 {
+    font-size: 16pt;
+    color: #111;
+  }
+  .att-brand,
+  .att-kicker,
+  .muted,
+  .tiny {
+    color: #52525b !important;
+  }
+  .att-page .ht-panel-head {
+    padding: 0.55rem 0.75rem;
+  }
+  .att-page .ht-panel-body {
+    padding: 0.4rem 0;
+  }
+  .att-page .ht-table-wrap {
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
+  }
+  .att-page .ht-table {
+    font-size: 8.5pt;
+  }
+  .att-page .ht-table th,
+  .att-page .ht-table td {
+    padding: 0.32rem 0.5rem;
+    border-bottom: 1px solid #e4e4e7;
+  }
+  .att-page .ht-table tbody tr:nth-child(even) td {
+    background: #f4f4f5 !important;
+  }
+  .att-print-foot {
+    display: block;
+    margin-top: 0.8rem;
+    font-size: 8pt;
+    color: #71717a !important;
+  }
+  .ht-pill {
+    border: 1px solid #d4d4d8;
+    background: #fafafa !important;
+    color: #18181b !important;
+  }
+  a {
+    color: inherit !important;
+    text-decoration: none;
   }
 }
 /* --- src/20-pages/auth.css --- */
@@ -5569,63 +5675,132 @@ body[data-page="books"] .main {
   min-height: 1.1em;
 }
 /* --- src/20-pages/dashboard.css --- */
-/* Dashboard vertical rhythm — extra spacing to avoid jagged stacked sections */
-.dash-activity {
-  margin-top: 1.35rem;
+/* Dashboard: Host-tools panels, compact hero, analytics charts. No sideways scroll at 390px. */
+.main.dash-view,
+body[data-page="dashboard"] .main {
+  width: min(100%, 1120px);
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
 }
-.dash-split {
-  margin-top: 1.75rem;
-  gap: 1.85rem;
-}
-.dash-main-col {
-  gap: 1.85rem !important;
-}
-.dash-side-col {
-  gap: 1.5rem !important;
-}
-.dash-block {
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-}
-.dash-block .section-h {
-  margin-top: 0;
-  margin-bottom: 0.55rem;
-}
-.dash-block + .dash-block {
-  margin-top: 0.55rem;
+.dash-view,
+.dash-hero,
+.dash-split,
+.dash-analytics-body,
+.dash-hero-copy,
+.dash-hero-actions {
+  min-width: 0;
+  max-width: 100%;
 }
 .dash-hero {
-  margin-bottom: 0.25rem;
-}
-.dash-list-head {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.55rem;
-}
-.dash-hero,
-.profile-hero {
   position: relative;
   overflow: hidden;
-  padding: clamp(1.1rem, 3vw, 1.8rem);
+  padding: 1rem 1.15rem;
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem;
+  gap: 0.85rem 1rem;
   align-items: center;
+  margin: 0 0 1rem;
   background: linear-gradient(
     135deg,
     color-mix(in srgb, var(--accent) 12%, var(--s1)),
     color-mix(in srgb, var(--accent-2) 8%, var(--s1))
   );
+  box-shadow: var(--shadow-1);
 }
-.dash-list-head .ic {
-  width: 18px;
-  height: 18px;
-  color: var(--accent);
-}
-.dash-list-head strong {
+.dash-hero h1 {
+  margin: 0.05rem 0 0;
+  font-size: 1.2rem;
   font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.dash-hero-meta {
+  gap: 0.85rem;
+  margin-top: 0.25rem;
+}
+.dash-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+.dash-hero-actions .btn {
+  flex: 0 1 auto;
+}
+.dash-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  margin-top: 0.15rem;
+}
+.dash-main-col,
+.dash-side-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+.dash-list {
+  gap: 0.1rem;
+  min-width: 0;
+}
+.dash-list .list-item {
+  padding: 0.5rem 0.15rem;
+  min-width: 0;
+}
+.dash-analytics-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+.dash-view .ht-panel {
+  margin: 0;
+}
+.dash-view .hscroll {
+  max-width: 100%;
+}
+.dash-view .grid-cards {
+  min-width: 0;
+}
+
+@media (min-width: 900px) {
+  .dash-hero {
+    padding: 1.15rem 1.3rem;
+  }
+  .dash-split {
+    grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.85fr);
+    gap: 1rem;
+    align-items: start;
+  }
+}
+
+@media (max-width: 420px) {
+  .dash-hero {
+    padding: 0.9rem;
+    gap: 0.7rem;
+  }
+  .dash-hero .av {
+    width: 52px;
+    height: 52px;
+  }
+  .dash-hero h1 {
+    font-size: 1.08rem;
+  }
+  .dash-hero-actions {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+  .dash-hero-actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .dash-view .ht-panel-head,
+  .dash-view .ht-panel-body {
+    padding-left: 0.9rem;
+    padding-right: 0.9rem;
+  }
 }
 /* --- src/20-pages/discover.css --- */
 /* discover header: [◎ Discover | Timing | Category] / [search] (phone), one row (wide) */
@@ -5841,6 +6016,49 @@ body[data-page="discover"] .main {
   .dz-txt.in {
     animation: none;
     transition: none;
+  }
+}
+
+/* Premium compactness + overflow safety (keep the phone Feed entry above). */
+body[data-page="discover"] .main,
+body[data-page="search"] .main {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+.dz-head,
+.dz-title,
+.dz-filters,
+.search-line {
+  min-width: 0;
+  max-width: 100%;
+}
+.dz-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+.dz-head .search-line {
+  border-radius: 14px;
+  box-shadow: var(--shadow-1);
+}
+.dz-feed {
+  box-shadow: var(--shadow-1);
+}
+body[data-page="discover"] .grid-cards,
+body[data-page="search"] .grid-cards {
+  min-width: 0;
+}
+
+@media (max-width: 420px) {
+  .dz-title {
+    font-size: 1.12rem;
+  }
+  .dz-filters {
+    max-width: 100%;
   }
 }
 /* --- src/20-pages/event.css --- */
@@ -6137,6 +6355,41 @@ body[data-page="event"] .main {
   }
   .ev-page {
     padding-bottom: calc(var(--cmd-h, 56px) + 2rem + var(--safe-b, 0px));
+  }
+}
+
+/* Tighter, host-tools-like event chrome. Overflow already clipped on .ev-page. */
+.ev-hero {
+  padding: clamp(1rem, 3.2vw, 1.8rem);
+  box-shadow: var(--shadow-2);
+}
+.ev-hero h1 {
+  font-size: clamp(1.12rem, 2.6vw, 1.35rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.ev-card,
+.ev-page .card {
+  box-shadow: var(--shadow-1);
+}
+.ev-card .section-h {
+  margin-top: 0;
+}
+.speaker-card {
+  padding: 1.7rem 0.75rem 0.85rem;
+  box-shadow: var(--shadow-1);
+}
+.ev-meta-row {
+  padding: 0.35rem 0;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 420px) {
+  .ev-hero {
+    padding: 0.95rem 1rem;
+  }
+  .speaker-cards {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   }
 }
 /* --- src/20-pages/feed.css --- */
@@ -6810,6 +7063,48 @@ body[data-page="feed"] .main {
   }
   .feed-compose-bar .feed-post-btn {
     margin-left: auto;
+  }
+}
+
+/* Premium compactness for the feed chrome; cards stay as they are. */
+body[data-page="feed"] .main {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+.feed-shell,
+.feed-center,
+.feed-head,
+.feed-stream,
+.feed-compose {
+  min-width: 0;
+  max-width: 100%;
+}
+.feed-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0 0 0.65rem;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+.feed-compose {
+  box-shadow: var(--shadow-1);
+}
+.feed-card {
+  box-shadow: var(--shadow-1);
+}
+.feed-stream .post,
+.feed-stream .card {
+  box-shadow: var(--shadow-1);
+}
+
+@media (max-width: 420px) {
+  .feed-title {
+    font-size: 1.12rem;
+  }
+  .feed-compose-input {
+    font-size: 0.95rem;
   }
 }
 /* --- src/20-pages/home.css --- */
@@ -9635,16 +9930,246 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
   }
 }
 /* --- src/20-pages/profile.css --- */
+/* Public /u/:username profile: compact premium hero, stat tiles, tidy tabs. */
+.main.profile-view,
+body[data-page="profile"] .main {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+.profile-view,
+.profile-hero,
+.profile-hero .in,
+.profile-copy,
+.profile-actions {
+  min-width: 0;
+  max-width: 100%;
+}
+.profile-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 0 0 1.05rem;
+  margin-bottom: 0.2rem;
+  box-shadow: var(--shadow-1);
+}
 .profile-hero .band,
 .speaker-card .band {
   position: absolute;
   inset: 0 0 auto;
-  height: 64px;
+  height: 88px;
   background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  opacity: 0.9;
+  opacity: 0.92;
 }
 .profile-hero > :not(.band) {
   position: relative;
+}
+.profile-hero .in {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem 1.1rem;
+  align-items: flex-start;
+  padding: 0 1.15rem 0;
+}
+.profile-hero .av {
+  width: 88px;
+  height: 88px;
+  margin-top: 44px;
+  flex: none;
+  z-index: 1;
+  box-shadow: 0 0 0 4px var(--s1);
+}
+.profile-copy {
+  flex: 1 1 14rem;
+  padding-top: 100px;
+}
+.profile-hero h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+.profile-handle {
+  margin-top: 0.1rem;
+}
+.profile-bio {
+  margin: 0.45rem 0 0;
+  max-width: 40rem;
+  overflow-wrap: anywhere;
+}
+.profile-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+.profile-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--s1);
+  min-width: 5.4rem;
+}
+.profile-stat strong {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.profile-stat span {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-left: auto;
+  padding-top: 100px;
+}
+.profile-tabs {
+  margin-top: 0.85rem;
+}
+.profile-body {
+  gap: 0.8rem;
+  margin-top: 0.85rem;
+  min-width: 0;
+}
+
+@media (max-width: 620px) {
+  .profile-hero .in {
+    padding: 0 0.9rem 0;
+  }
+  .profile-copy,
+  .profile-actions {
+    padding-top: 0;
+  }
+  .profile-hero .av {
+    width: 72px;
+    height: 72px;
+    margin-top: 52px;
+  }
+  .profile-copy {
+    flex: 1 1 calc(100% - 6rem);
+    padding-top: 68px;
+  }
+  .profile-actions {
+    flex: 1 1 100%;
+    margin-left: 0;
+    padding-top: 0.15rem;
+  }
+  .profile-stat {
+    flex: 1 1 auto;
+  }
+}
+/* --- src/20-pages/sessions.css --- */
+/* Sessions list and an individual session: compact host-tools panels, transcript, AI cards. */
+.main.sess-view,
+body[data-page="sessions"] .main,
+body[data-page="session"] .main {
+  width: min(100%, 1120px);
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+.sess-view,
+.sess-split,
+.sess-toolbar,
+.sess-transcript {
+  min-width: 0;
+  max-width: 100%;
+}
+.sess-head h1 {
+  overflow-wrap: anywhere;
+}
+.sess-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0 0 1rem;
+}
+.sess-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+.sess-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+.sess-tx-panel .ht-panel-actions {
+  min-width: 0;
+}
+.sess-tx-panel .ht-panel-actions .input {
+  width: min(16rem, 100%);
+}
+.sess-transcript {
+  max-height: min(70vh, 720px);
+  overflow: auto;
+  padding-right: 2px;
+}
+.sess-transcript .tline {
+  display: grid;
+  grid-template-columns: 4.2rem minmax(0, 1fr);
+  gap: 0.55rem;
+  padding: 0.4rem 0.15rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  font-size: 0.9rem;
+}
+.sess-transcript .tline:last-child {
+  border-bottom: 0;
+}
+.sess-transcript .ts {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-size: 0.75rem;
+  padding-top: 0.15rem;
+}
+.sess-ai .prose {
+  margin: 0;
+  font-size: 0.92rem;
+}
+.sess-view .ht-table td > span {
+  display: inline-flex;
+}
+
+@media (min-width: 960px) {
+  .sess-split {
+    grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.8fr);
+  }
+  .sess-aside {
+    position: sticky;
+    top: calc(var(--top-h, 60px) + 0.75rem);
+  }
+}
+
+@media (max-width: 420px) {
+  .sess-toolbar .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .sess-transcript .tline {
+    grid-template-columns: 3.4rem minmax(0, 1fr);
+    font-size: 0.86rem;
+  }
+}
+
+.sess-name {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.sess-name .tiny {
+  font-weight: 500;
 }
 /* --- src/20-pages/settings.css --- */
 .session-row {

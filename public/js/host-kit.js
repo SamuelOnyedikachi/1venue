@@ -1,5 +1,5 @@
 // Shared building blocks for the host tools and billing pages: section cards, striped tables that turn into
-// card rows on phones, icon actions with tooltips, filter chips, stat tiles and empty states.
+// card rows on phones, icon actions with tooltips, filter chips, stat tiles, empty states and the 7/30/90/custom date-range picker.
 import { h, toastErr } from './ui.js';
 import { icon } from './icons.js';
 
@@ -60,3 +60,30 @@ export const actionBtn = (text, fn, { primary = false, ic = null, cls = '' } = {
 };
 export const dayFmt = (d) => (d ? new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 export const whenFmt = (d) => (d ? new Date(d).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '');
+
+const isoDay = (d) => new Date(d).toISOString().slice(0, 10);
+/** 7 / 30 / 90 / custom date range. Mutates `R` (`{ days, from, to }`) and calls onChange. */
+export function rangePicker(R, onChange) {
+  const inp = (attrs = {}) => h('input', { class: 'input', ...attrs });
+  const preset = R.from ? 'custom' : String(R.days || 30);
+  const from = inp({ type: 'date', value: R.from || isoDay(new Date(Date.now() - 29 * 864e5)), max: isoDay(new Date()), 'aria-label': 'From' });
+  const to = inp({ type: 'date', value: R.to || isoDay(new Date()), max: isoDay(new Date()), 'aria-label': 'To' });
+  const err = h('span', { class: 'tiny ht-err', role: 'alert' });
+  const apply = h('button', { class: 'btn primary sm', type: 'button' }, 'Apply');
+  const custom = h('div', { class: 'ht-custom', hidden: preset !== 'custom' }, field('From', from), field('To', to), apply, err);
+  apply.onclick = () => {
+    err.textContent = '';
+    if (!from.value || !to.value) { err.textContent = 'Pick both dates.'; return; }
+    if (from.value > to.value) { err.textContent = 'The start date must be before the end date.'; return; }
+    const today = isoDay(new Date());
+    if (to.value > today) { err.textContent = 'The end date cannot be in the future.'; return; }
+    if ((Date.parse(to.value) - Date.parse(from.value)) / 864e5 > 365) { err.textContent = 'Choose at most 366 days.'; return; }
+    Object.assign(R, { days: null, from: from.value, to: to.value }); onChange();
+  };
+  const c = chips([['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['custom', 'Custom', 'calendar']], preset, (id) => {
+    if (id === 'custom') { custom.hidden = false; from.focus(); return; }
+    custom.hidden = true; Object.assign(R, { days: id, from: null, to: null }); onChange();
+  }, { label: 'Date range' });
+  return h('div', { class: 'ht-range' }, c, custom);
+}
+export const rangeLabel = (r) => (r.preset ? `Last ${r.days} days` : `${dayFmt(r.from + 'T00:00:00Z')} – ${dayFmt(r.to + 'T00:00:00Z')}`);

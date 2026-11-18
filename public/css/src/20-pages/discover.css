@@ -213,3 +213,46 @@ body[data-page="discover"] .main {
     transition: none;
   }
 }
+
+/* Premium compactness + overflow safety (keep the phone Feed entry above). */
+body[data-page="discover"] .main,
+body[data-page="search"] .main {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+.dz-head,
+.dz-title,
+.dz-filters,
+.search-line {
+  min-width: 0;
+  max-width: 100%;
+}
+.dz-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+.dz-head .search-line {
+  border-radius: 14px;
+  box-shadow: var(--shadow-1);
+}
+.dz-feed {
+  box-shadow: var(--shadow-1);
+}
+body[data-page="discover"] .grid-cards,
+body[data-page="search"] .grid-cards {
+  min-width: 0;
+}
+
+@media (max-width: 420px) {
+  .dz-title {
+    font-size: 1.12rem;
+  }
+  .dz-filters {
+    max-width: 100%;
+  }
+}

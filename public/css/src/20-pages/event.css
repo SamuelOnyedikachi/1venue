@@ -293,3 +293,38 @@ body[data-page="event"] .main {
     padding-bottom: calc(var(--cmd-h, 56px) + 2rem + var(--safe-b, 0px));
   }
 }
+
+/* Tighter, host-tools-like event chrome. Overflow already clipped on .ev-page. */
+.ev-hero {
+  padding: clamp(1rem, 3.2vw, 1.8rem);
+  box-shadow: var(--shadow-2);
+}
+.ev-hero h1 {
+  font-size: clamp(1.12rem, 2.6vw, 1.35rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.ev-card,
+.ev-page .card {
+  box-shadow: var(--shadow-1);
+}
+.ev-card .section-h {
+  margin-top: 0;
+}
+.speaker-card {
+  padding: 1.7rem 0.75rem 0.85rem;
+  box-shadow: var(--shadow-1);
+}
+.ev-meta-row {
+  padding: 0.35rem 0;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 420px) {
+  .ev-hero {
+    padding: 0.95rem 1rem;
+  }
+  .speaker-cards {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+}

@@ -5,7 +5,7 @@ import { h, api, toast, toastErr, confirmDlg, uploadFile, sheet, debounce } from
 import { icon } from '../icons.js';
 import { state, requireLogin } from '../app.js';
 import { loadMoney, fmtMoney, checkoutSheet, moneyConfig, format as fmtIn } from '../money.js';
-import { panel, table, iconBtn, downloads, chips, stat, stats, empty, pill, field, actionBtn, dayFmt, whenFmt } from '../host-kit.js';
+import { panel, table, iconBtn, downloads, chips, stat, stats, empty, pill, field, actionBtn, dayFmt, whenFmt, rangePicker, rangeLabel } from '../host-kit.js';
 import { areaChart, barChart, donutChart } from '../charts.js';
 
 const naira = (k) => fmtMoney(k);
@@ -74,28 +74,6 @@ const EXPORTS = [
   ['chat', 'Chat', 'chat', 'Room chat from every session.'],
   ['transcripts', 'Transcripts', 'captions', 'Captions and transcripts by speaker.'],
 ];
-const isoDay = (d) => d.toISOString().slice(0, 10);
-function rangePicker(R, onChange) {
-  const preset = R.from ? 'custom' : String(R.days || 30);
-  const from = inp({ type: 'date', value: R.from || isoDay(new Date(Date.now() - 29 * 864e5)), max: isoDay(new Date()), 'aria-label': 'From' });
-  const to = inp({ type: 'date', value: R.to || isoDay(new Date()), max: isoDay(new Date()), 'aria-label': 'To' });
-  const err = h('span', { class: 'tiny ht-err', role: 'alert' });
-  const apply = h('button', { class: 'btn primary sm', type: 'button' }, 'Apply');
-  const custom = h('div', { class: 'ht-custom', hidden: preset !== 'custom' }, field('From', from), field('To', to), apply, err);
-  apply.onclick = () => {
-    err.textContent = '';
-    if (!from.value || !to.value) { err.textContent = 'Pick both dates.'; return; }
-    if (from.value > to.value) { err.textContent = 'The start date must be before the end date.'; return; }
-    if ((Date.parse(to.value) - Date.parse(from.value)) / 864e5 > 365) { err.textContent = 'Choose at most 366 days.'; return; }
-    Object.assign(R, { days: null, from: from.value, to: to.value }); onChange();
-  };
-  const c = chips([['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['custom', 'Custom', 'calendar']], preset, (id) => {
-    if (id === 'custom') { custom.hidden = false; from.focus(); return; }
-    custom.hidden = true; Object.assign(R, { days: id, from: null, to: null }); onChange();
-  }, { label: 'Date range' });
-  return h('div', { class: 'ht-range' }, c, custom);
-}
-const rangeLabel = (r) => (r.preset ? `Last ${r.days} days` : `${dayFmt(r.from + 'T00:00:00Z')} – ${dayFmt(r.to + 'T00:00:00Z')}`);
 /** Weekly buckets when the range is long, so bars stay readable. */
 function weekly(points, key) {
   if (points.length <= 31) return points.map((p) => ({ label: dayFmt(p.day + 'T12:00:00Z'), short: new Date(p.day + 'T12:00:00Z').toLocaleDateString(undefined, { day: 'numeric', month: 'short' }), value: p[key] }));
@@ -416,7 +394,7 @@ function quoteView(qt) {
 function daysControl(max, value, onChange) {
   const n = inp({ type: 'number', min: 1, max, value, class: 'input ht-days-n', 'aria-label': 'Days' });
   const r = h('input', { type: 'range', min: 1, max, value, class: 'ht-days-r', 'aria-label': 'Days' });
-  const c = chips([3, 7, 14, 30].filter((d) => d <= max).map((d) => [String(d), `${d} days`]), String(value), (id) => set(Number(id)), { label: 'Quick pick' });
+  const c = chips([3, 7, 14, 30, 60, 90].filter((d) => d <= max).map((d) => [String(d), `${d} days`]), String(value), (id) => set(Number(id)), { label: 'Quick pick' });
   const set = (v) => { v = Math.max(1, Math.min(max, Math.round(Number(v) || 1))); n.value = v; r.value = v; c.set(String(v)); r.style.setProperty('--p', `${((v - 1) / Math.max(1, max - 1)) * 100}%`); onChange(v); };
   n.addEventListener('change', () => set(n.value)); r.addEventListener('input', () => set(r.value));
   r.style.setProperty('--p', `${((value - 1) / Math.max(1, max - 1)) * 100}%`);

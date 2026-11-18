@@ -18,8 +18,8 @@ export async function mount(view, params) {
   if (!params.me && u.username && location.pathname !== `/u/${u.username}`) history.replaceState({}, '', `/u/${encodeURIComponent(u.username)}${location.search}`);
   document.title = `${u.name}${u.username ? ` (@${u.username})` : ''} — 1venue`;
   id = u.username || u.id;
-  const tabs = h('div', { class: 'tabs' });
-  const body = h('div', { class: 'col', style: { gap: '.8rem', marginTop: '1rem' } });
+  const tabs = h('div', { class: 'tabs profile-tabs' });
+  const body = h('div', { class: 'col profile-body' });
   let tab = 'timeline';
   const paintTabs = () => { tabs.innerHTML = ''; [['timeline', 'Timeline', 'feed'], ['events', `Events · ${u.events?.length || 0}`, 'calendar']].forEach(([k, l, ic]) => tabs.append(h('button', { class: tab === k ? 'on' : '', html: icon(ic, { size: 16 }) + l, onclick: () => { tab = k; paintTabs(); load(); } }))); };
   async function load() {
@@ -33,12 +33,18 @@ export async function mount(view, params) {
   // Message: shown only when the allow-list lets me start (or continue) a chat with this person.
   const msgBtn = h('a', { class: 'btn sm', href: `/messages/new?user=${u.id}`, 'data-link': '', style: { display: 'none' }, html: icon('chat', { size: 15 }) + 'Message' });
   if (state.user && !u.isMe && u.id) api(`/api/messages/can?userId=${u.id}`).then((r) => { msgBtn.style.display = r.ok ? '' : 'none'; }).catch(() => {});
+  document.body.dataset.page = 'profile';
+  view.classList.add('profile-view');
+  const evCount = Array.isArray(u.events) ? u.events.length : (u.eventCount ?? u.events);
   view.append(h('section', { class: 'profile-hero card' },
     h('div', { class: 'band' }),
     h('div', { class: 'in' }, avatar(u.name, u.avatarUrl, 'xxl ring'),
-      h('div', { class: 'grow' }, h('h1', null, u.name), u.username || u.handle ? h('div', { class: 'muted' }, '@' + (u.username || u.handle)) : null, u.bio ? h('p', { style: { marginTop: '.4rem' } }, u.bio) : null,
-        h('div', { class: 'row wrap small', style: { gap: '1.1rem', marginTop: '.6rem' } }, h('span', null, h('strong', null, fmtNum(u.followers)), ' followers'), h('span', null, h('strong', null, fmtNum(u.following)), ' following'), h('span', null, h('strong', null, fmtNum(Array.isArray(u.events) ? u.events.length : (u.eventCount ?? u.events))), ' events'))),
-      h('div', { class: 'row', style: { gap: '.4rem' } },
+      h('div', { class: 'grow profile-copy' }, h('h1', null, u.name), u.username || u.handle ? h('div', { class: 'muted profile-handle' }, '@' + (u.username || u.handle)) : null, u.bio ? h('p', { class: 'profile-bio' }, u.bio) : null,
+        h('div', { class: 'profile-stats' },
+          h('div', { class: 'profile-stat' }, h('strong', null, fmtNum(u.followers)), h('span', null, 'Followers')),
+          h('div', { class: 'profile-stat' }, h('strong', null, fmtNum(u.following)), h('span', null, 'Following')),
+          h('div', { class: 'profile-stat' }, h('strong', null, fmtNum(evCount)), h('span', null, 'Events')))),
+      h('div', { class: 'row wrap profile-actions' },
         u.isMe ? h('button', { class: 'btn sm', html: icon('pen', { size: 15 }) + 'Edit profile', onclick: () => edit(u) }) : state.user ? followBtn(u, (on) => { u.followers += on ? 1 : -1; }) : null,
         msgBtn,
         h('button', { class: 'icon-btn', 'data-group': 'content', 'data-tip': 'Share profile', 'aria-label': 'Share', html: icon('share'), onclick: () => shareLink(`${location.origin}${profilePath(u)}`, u.name) })))),
