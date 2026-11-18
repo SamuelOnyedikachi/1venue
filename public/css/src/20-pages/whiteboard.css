@@ -35,7 +35,7 @@
   padding: 2px 8px;
   border-radius: 999px;
   font-size: 0.7rem;
-  font-weight: 650;
+  font-weight: 600;
   background: var(--glass);
   border: 1px solid var(--line);
   color: var(--muted);
@@ -162,7 +162,7 @@
 .wb-pg {
   min-width: 2.4rem;
   text-align: center;
-  font-weight: 650;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
@@ -192,7 +192,7 @@
   border: 0;
   background: none;
   font: inherit;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 1rem;
   padding: 4px 6px;
   border-radius: 8px;
@@ -269,7 +269,7 @@
 }
 .wb-item-txt b {
   font-size: 0.88rem;
-  font-weight: 650;
+  font-weight: 600;
 }
 .wb-side-note {
   padding: 0.3rem 0.2rem 0;

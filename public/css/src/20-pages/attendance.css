@@ -28,7 +28,7 @@ body[data-page="attendance"] .main {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  font-weight: 750;
+  font-weight: 600;
   letter-spacing: 0.04em;
   font-size: 0.82rem;
   color: var(--accent);
@@ -38,7 +38,7 @@ body[data-page="attendance"] .main {
   margin: 0;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  font-weight: 700;
+  font-weight: 600;
 }
 .att-hero h1 {
   margin: 0.15rem 0 0.2rem;

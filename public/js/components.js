@@ -19,23 +19,40 @@ export const CAT = {
 };
 export const catOf = (k) => CAT[k] || CAT.other;
 
+function eventPlace(ev) {
+  const s = ev.settings || ev.venue || {};
+  return (s && (s.venue || s.location || s.place)) || ev.venueName || ev.location || 'Online';
+}
+function eventTypeLabel(ev) {
+  if (ev.status === 'live' || ev.live) return 'Live';
+  if (ev.status === 'ended') return 'Ended';
+  return 'Upcoming';
+}
 export function eventCard(ev, { compact = false } = {}) {
   const [cl, ci, cc] = catOf(ev.category);
   const live = ev.status === 'live' || ev.live;
   const c1 = ev.theme?.accent || cc, c2 = ev.theme?.accent2 || 'var(--accent-2)';
-  const viewers = ev.live?.viewers ?? ev.liveViewers ?? 0;
-  const a = h('a', { class: 'card hover ev-card', href: `/e/${ev.slug}`, 'data-link': '' },
+  const attending = ev.rsvps != null ? Number(ev.rsvps) : (ev.totalJoins != null ? Number(ev.totalJoins) : null);
+  const dateLabel = ev.startsAt ? fmtDate(ev.startsAt, { weekday: undefined }) : null;
+  const place = eventPlace(ev);
+  const a = h('a', { class: 'card hover ev-card ev-tile' + (compact ? ' compact' : ''), href: `/e/${ev.slug}`, 'data-link': '' },
     h('div', { class: 'cover', style: { '--c1': c1, '--c2': c2 } },
       ev.coverUrl ? h('img', { src: ev.coverUrl, alt: '', loading: 'lazy' }) : h('div', { class: 'art', html: LOGO_ART }),
-      live ? h('span', { class: 'pill live' }, 'LIVE') : ev.startsAt ? h('span', { class: 'pill', html: icon('calendar', { size: 12 }) + esc(fmtDate(ev.startsAt, { weekday: undefined })) }) : null,
-      live && viewers ? h('span', { class: 'pill r', html: icon('eye', { size: 12 }) + fmtNum(viewers) }) : null),
-    h('div', { class: 'body' },
-      h('span', { class: 'cat', style: { '--g': cc }, html: icon(ci, { size: 13 }) + esc(cl) }),
-      h('div', { class: 'title' }, ev.title),
-      compact ? null : h('div', { class: 'meta' },
-        h('span', null, avatar(ev.host?.name, ev.host?.avatarUrl, 'sm'), ev.host?.name || '', ev.host?.verified ? h('span', { class: 'verified-dot', title: 'Verified host', 'aria-label': 'Verified host', html: icon('check', { size: 11 }) }) : null),
-        ev.rsvps ? h('span', { html: icon('ticket', { size: 14 }) + fmtNum(ev.rsvps) }) : null,
-        ev.speakerSeats && ev.category !== 'meeting' ? h('span', { html: icon('stage', { size: 14 }) + ev.speakerSeats + ' seats' }) : null)));
+      h('span', { class: 'ev-chip ev-chip-type' + (live ? ' live' : '') }, eventTypeLabel(ev)),
+      attending != null ? h('span', { class: 'ev-chip ev-chip-count' }, fmtNum(attending) + ' attending') : null,
+      h('div', { class: 'body' },
+        h('span', { class: 'cat ev-cat', style: { '--g': cc }, html: icon(ci, { size: 12 }) + esc(cl) }),
+        h('div', { class: 'title' }, ev.title),
+        h('div', { class: 'ev-foot' },
+          h('div', { class: 'ev-foot-main' },
+            ev.host ? h('div', { class: 'ev-host' },
+              avatar(ev.host.name, ev.host.avatarUrl, 'sm'),
+              h('span', { class: 'ev-host-name' }, ev.host.name || ''),
+              ev.host.verified ? h('span', { class: 'verified-dot', title: 'Verified host', 'aria-label': 'Verified host', html: icon('check', { size: 11 }) }) : null)
+              : null,
+            h('div', { class: 'ev-sub' },
+              ...[dateLabel, place].filter(Boolean).flatMap((bit, i) => i ? [h('span', { class: 'ev-dot', 'aria-hidden': 'true' }), bit] : [bit]))),
+          h('span', { class: 'ev-open', 'aria-hidden': 'true', html: icon('play', { size: 14 }) })))));
   return a;
 }
 
@@ -178,20 +195,7 @@ const POST_KIND = {
 
 function feedEventBlock(ev) {
   if (!ev) return null;
-  const [cl, ci, cc] = catOf(ev.category);
-  const live = ev.status === 'live' || ev.live;
-  const c1 = ev.theme?.accent || cc;
-  const c2 = ev.theme?.accent2 || 'var(--accent-2)';
-  const dateLabel = live ? 'LIVE' : (ev.startsAt ? fmtDate(ev.startsAt, { weekday: undefined }) : null);
-  return h('div', { class: 'feed-event' },
-    h('div', { class: 'feed-event-cover', style: { '--c1': c1, '--c2': c2 } },
-      ev.coverUrl
-        ? h('img', { src: ev.coverUrl, alt: '', loading: 'lazy' })
-        : h('div', { class: 'feed-event-art', html: LOGO_ART }),
-      dateLabel ? h('span', { class: `feed-event-pill${live ? ' live' : ''}`, html: (live ? '' : icon('calendar', { size: 12 })) + esc(dateLabel) }) : null),
-    h('div', { class: 'feed-event-body' },
-      h('span', { class: 'feed-event-cat', style: { '--g': cc }, html: icon(ci, { size: 12 }) + esc(cl.toUpperCase()) }),
-      h('div', { class: 'feed-event-title' }, ev.title)));
+  return h('div', { class: 'feed-event' }, eventCard(ev));
 }
 
 export function postCard(p, { onDelete } = {}) {

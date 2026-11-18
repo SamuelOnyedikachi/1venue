@@ -45,9 +45,8 @@ export async function mount(view, params) {
   const duration = s.endedAt ? fmtDur((new Date(s.endedAt) - start) / 1000) : 'in progress';
   view.append(
     h('div', { class: 'page-head ht-head sess-head' },
-      h('div', { class: 'tiny muted', html: icon('history', { size: 14 }) + ` Session · ${String(s.code).toLowerCase()}` }),
-      h('h1', null, s.name || 'Session'),
-      h('p', { class: 'muted small' }, `${fmtDate(s.startedAt)} · ${duration} · ${lines.length} transcript line${lines.length === 1 ? '' : 's'}`)),
+      h('h1', { html: icon('history', { size: 26 }) + (s.name || 'Session') }),
+      h('p', { class: 'muted small sess-meta' }, [String(s.code).toLowerCase(), fmtDate(s.startedAt), duration, `${lines.length} transcript line${lines.length === 1 ? '' : 's'}`].join(' · '))),
     h('div', { class: 'sess-toolbar' },
       h('a', { class: 'btn sm', href: `/api/sessions/${s.id}/transcript.txt`, download: '', html: icon('download', { size: 15 }) + 'Transcript .txt' }),
       Object.keys(sums).length ? h('a', { class: 'btn sm', href: `/api/sessions/${s.id}/summary.md`, download: '', html: icon('fileText', { size: 15 }) + 'Summary .md' }) : null,
@@ -88,8 +87,7 @@ async function list(view) {
   });
   view.append(
     h('div', { class: 'page-head ht-head' },
-      h('h1', { html: icon('history', { size: 26 }) + 'Sessions' }),
-      h('p', { class: 'muted' }, 'Every meeting and event you joined — transcripts, AI summaries and attendance.')),
+      h('h1', { html: icon('history', { size: 26 }) + 'Sessions' })),
     panel({ icon: 'history', title: 'Your sessions', desc: r.history.length ? `${r.history.length} session${r.history.length === 1 ? '' : 's'}` : 'None yet.' },
       r.history.length
         ? table(

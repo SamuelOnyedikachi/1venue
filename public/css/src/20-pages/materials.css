@@ -203,7 +203,7 @@
   position: sticky;
   top: 0;
   background: var(--s2);
-  font-weight: 700;
+  font-weight: 600;
   z-index: 1;
 }
 .mat-table tbody tr:nth-child(even) td {

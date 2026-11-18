@@ -92,8 +92,7 @@ export async function mount(view) {
 
   const addons = table.slugAddons;
   view.append(h('div', { class: 'pr-page' },
-    h('header', { class: 'pr-head' }, h('h1', null, 'Pricing'),
-      h('p', { class: 'muted' }, `Simple plans for every venue. Prices in ${moneyConfig().currency}${moneyConfig().currency !== moneyConfig().chargeCurrency ? ` (estimated; charged in ${moneyConfig().chargeCurrency})` : ''}.`),
+    h('header', { class: 'pr-head' }, h('h1', { html: icon('sparkles', { size: 26 }) + 'Pricing' }),
       h('div', { class: 'pr-toggle-row' }, toggle, savePill)),
     status, grid,
     h('div', { class: 'pr-foot' }, compareLink),

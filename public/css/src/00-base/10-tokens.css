@@ -4,6 +4,10 @@
   --accent-2: #7c3aed;
   --accent-ink: #fff;
   --font-scale: 1;
+  --font: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  --fw: 400;
+  --fw-medium: 500;
+  --fw-title: 600;
   --r-xs: 8px;
   --r-sm: 12px;
   --r-md: 16px;
@@ -85,15 +89,7 @@ body {
   min-height: 100dvh;
   background: var(--bg);
   color: var(--text);
-  font:
-    400 1rem/1.5 "Inter",
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Roboto,
-    "Noto Sans",
-    sans-serif;
+  font: var(--fw) 1rem/1.5 var(--font);
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;

@@ -20,7 +20,19 @@ body[data-page="profile"] .main {
   margin-bottom: 1.1rem;
   box-shadow: var(--shadow-1);
 }
-.profile-hero .band,
+.profile-cover {
+  position: relative;
+  height: 140px;
+  overflow: hidden;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+.profile-cover .band,
+.profile-cover-prev .band {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  opacity: 0.92;
+}
 .speaker-card .band {
   position: absolute;
   inset: 0 0 auto;
@@ -28,33 +40,39 @@ body[data-page="profile"] .main {
   background: linear-gradient(90deg, var(--accent), var(--accent-2));
   opacity: 0.92;
 }
-.profile-hero > :not(.band) {
-  position: relative;
+.profile-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 .profile-hero .in {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.85rem 1.1rem;
-  align-items: flex-start;
+  gap: 0.55rem 1.1rem;
+  align-items: flex-end;
   padding: 0 1.15rem 0;
+  position: relative;
 }
 .profile-hero .av {
   width: 88px;
   height: 88px;
-  margin-top: 44px;
+  margin-top: -44px;
   flex: none;
   z-index: 1;
   box-shadow: 0 0 0 4px var(--s1);
 }
 .profile-copy {
-  flex: 1 1 14rem;
-  padding-top: 100px;
+  flex: 1 1 12rem;
+  padding-top: 0.35rem;
+  min-width: 0;
 }
 .profile-hero h1 {
   margin: 0;
   font-size: 1.25rem;
   letter-spacing: -0.02em;
   overflow-wrap: anywhere;
+  font-weight: 600;
 }
 .profile-handle {
   margin-top: 0.1rem;
@@ -64,7 +82,21 @@ body[data-page="profile"] .main {
   flex-wrap: wrap;
   gap: 0.4rem;
   margin-left: auto;
-  padding-top: 100px;
+  padding-top: 0.35rem;
+}
+.profile-cover-prev {
+  position: relative;
+  height: 88px;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  margin: 0.3rem 0 0.45rem;
+}
+.profile-cover-prev img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .profile-layout {
@@ -210,7 +242,7 @@ body[data-page="profile"] .main {
 }
 .pr-stat span {
   font-size: 0.72rem;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--muted);
@@ -271,7 +303,7 @@ body[data-page="profile"] .main {
   display: grid;
   place-items: center;
   flex: none;
-  font-weight: 750;
+  font-weight: 600;
   letter-spacing: -0.03em;
   color: var(--accent-ink);
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
@@ -283,7 +315,7 @@ body[data-page="profile"] .main {
   margin-left: auto;
   flex: none;
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--accent);
@@ -305,21 +337,20 @@ body[data-page="profile"] .main {
   .profile-layout { grid-template-columns: 1fr; }
 }
 @media (max-width: 620px) {
+  .profile-cover { height: 120px; }
   .profile-hero .in { padding: 0 0.9rem 0; }
-  .profile-copy,
-  .profile-actions { padding-top: 0; }
   .profile-hero .av {
     width: 72px;
     height: 72px;
-    margin-top: 52px;
+    margin-top: -36px;
   }
   .profile-copy {
-    flex: 1 1 calc(100% - 6rem);
-    padding-top: 68px;
+    flex: 1 1 100%;
+    padding-top: 0.15rem;
   }
   .profile-actions {
     flex: 1 1 100%;
     margin-left: 0;
-    padding-top: 0.15rem;
+    padding-top: 0.1rem;
   }
 }

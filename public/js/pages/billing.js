@@ -21,8 +21,7 @@ export async function mount(view) {
   view.classList.add('ht-view', 'bl-view');
   const msg = h('p', { class: 'small bl-msg', role: 'status', 'aria-live': 'polite' });
   const body = h('div', { class: 'bl-body' }, h('div', { class: 'ht-loading' }, h('span', { class: 'spinner' }), 'Loading…'));
-  view.append(h('div', { class: 'page-head' }, h('h1', { html: icon('creditCard', { size: 26 }) + 'Billing' }),
-    h('p', { class: 'muted' }, 'Your plan, payment methods and receipts. Meeting credits live in your ', h('a', { href: '/wallet', 'data-link': '' }, 'credit wallet'), '.')), msg, body);
+  view.append(h('div', { class: 'page-head' }, h('h1', { html: icon('creditCard', { size: 26 }) + 'Billing' })), msg, body);
   const act = (fn) => async (e) => { const b = e.currentTarget; b.disabled = true; try { await fn(); await refresh(); } catch (err) { toastErr(err); } finally { b.disabled = false; } };
 
   async function refresh() {

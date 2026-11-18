@@ -85,7 +85,7 @@
 .ht-panel-title h2 {
   margin: 0;
   font-size: 1.02rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 .ht-panel-title p {
@@ -107,7 +107,7 @@
 .ht-sub {
   margin: 0.3rem 0 -0.2rem;
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted);
@@ -202,7 +202,7 @@ a.ht-strong:hover {
 .ht-table th {
   text-align: left;
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--muted);
@@ -672,7 +672,7 @@ a.ht-strong:hover {
 .donut-n {
   fill: var(--text);
   font-size: 19px;
-  font-weight: 700;
+  font-weight: 600;
 }
 .donut-l {
   fill: var(--muted);
@@ -743,7 +743,7 @@ a.ht-strong:hover {
   flex: none;
   border-radius: 14px;
   border: 3px solid var(--s1);
-  font-weight: 800;
+  font-weight: 600;
   color: #fff;
   background: var(--b1) center / cover;
 }
@@ -779,7 +779,7 @@ a.ht-strong:hover {
   height: 24px;
   border-radius: 50%;
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--accent-ink, #fff);
   background: var(--accent);
 }
@@ -850,7 +850,7 @@ a.ht-strong:hover {
   width: 88px;
   height: 58px;
   border-radius: 10px;
-  font-weight: 800;
+  font-weight: 600;
   font-size: 1.3rem;
   color: #fff;
   background: linear-gradient(135deg, hsl(var(--h) 70% 55%), hsl(calc(var(--h) + 50) 70% 45%)) center / cover;
@@ -1052,7 +1052,7 @@ a.ht-strong:hover {
   margin-top: 0.3rem;
   padding-top: 0.55rem;
   border-top: 1px solid var(--line-2);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 1.05rem;
 }
 .ht-pay {
@@ -1438,7 +1438,7 @@ a.ht-strong:hover {
     content: attr(data-label);
     flex: none;
     font-size: 0.72rem;
-    font-weight: 700;
+    font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--muted);

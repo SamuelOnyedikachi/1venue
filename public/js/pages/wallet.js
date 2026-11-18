@@ -380,11 +380,6 @@ export async function mount(view) {
       "div",
       { class: "page-head" },
       h("h1", { html: icon("creditCard", { size: 26 }) + "Credit wallet" }),
-      h(
-        "p",
-        { class: "muted" },
-        `${fmtMoney(wallet.pricePerCreditKobo)} per credit. Purchased credits never expire.`,
-      ),
     ),
     h(
       "section",

@@ -252,7 +252,7 @@
 .au-title {
   text-align: center;
   font-size: 1.75rem;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.2;
   margin: 0;
@@ -530,7 +530,7 @@
   margin: 0.8rem 0 0;
   color: var(--brand);
   font-size: 0.74rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.12em;
   text-align: center;
   text-transform: uppercase;
@@ -544,7 +544,7 @@
   color: var(--brand);
   background: color-mix(in srgb, var(--brand) 8%, var(--s1));
   font-size: 1.25rem;
-  font-weight: 750;
+  font-weight: 600;
   text-align: center;
 }
 .welcome-credit-footnote {

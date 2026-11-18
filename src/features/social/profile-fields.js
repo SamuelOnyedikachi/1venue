@@ -61,6 +61,18 @@ function normalizeWebsite(raw) {
   return parseHttps(raw, 200);
 }
 
+/** Upload path (/uploads/..., /files/...) or a safe https URL. Empty clears the cover. */
+function normalizeCoverUrl(raw) {
+  const s = cleanText(raw, 500);
+  if (!s) return null;
+  if (s.startsWith('/uploads/') || s.startsWith('/files/')) {
+    if (s.includes('..') || /[<>\s]/.test(s) || s.includes('//', 1)) bad('Enter a valid cover image');
+    return s;
+  }
+  return parseHttps(s, 500);
+}
+
+
 function normalizeLocation(raw) {
   const s = cleanText(raw, 80);
   return s || null;
@@ -143,6 +155,10 @@ function normalizeProfilePatch(body = {}) {
   if (body.bio != null) out.bio = cleanText(body.bio, 500);
   if (body.handle != null) out.handle = body.handle;
   if (body.avatarUrl != null || body.avatar_url != null) out.avatarUrl = body.avatarUrl || body.avatar_url || null;
+  if (body.coverUrl !== undefined || body.cover_url !== undefined) {
+    const raw = body.coverUrl !== undefined ? body.coverUrl : body.cover_url;
+    out.coverUrl = raw == null || raw === '' ? null : normalizeCoverUrl(raw);
+  }
   if (body.location !== undefined) out.location = normalizeLocation(body.location);
   if (body.website !== undefined) out.website = body.website == null || body.website === '' ? null : normalizeWebsite(body.website);
   if (body.socials !== undefined) out.socials = normalizeSocials(body.socials);
@@ -151,6 +167,6 @@ function normalizeProfilePatch(body = {}) {
 
 module.exports = {
   SOCIAL_KEYS, SOCIAL_PREFIX,
-  cleanText, normalizeWebsite, normalizeLocation, normalizeSocial, normalizeSocials,
+  cleanText, normalizeWebsite, normalizeCoverUrl, normalizeLocation, normalizeSocial, normalizeSocials,
   normalizeProfilePatch, socialsOut,
 };

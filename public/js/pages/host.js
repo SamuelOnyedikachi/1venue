@@ -30,8 +30,7 @@ export async function mount(view) {
   const body = h('div', { class: 'ht-body' });
   const nav = h('nav', { class: 'chips ht-tabs', role: 'tablist', 'aria-label': 'Host tools' });
   view.classList.add('ht-view');
-  view.append(h('div', { class: 'page-head ht-head' }, h('h1', { html: icon('stage', { size: 26 }) + 'Host tools' }),
-    h('p', { class: 'muted' }, 'Your plan: ', h('strong', null, me.plan[0].toUpperCase() + me.plan.slice(1)), me.orgPlan ? ` (organisation features from ${me.orgPlan})` : '', '. ', h('a', { href: '/billing', 'data-link': '' }, 'Billing'))), nav, body);
+  view.append(h('div', { class: 'page-head ht-head' }, h('h1', { html: icon('stage', { size: 26 }) + 'Host tools' })), nav, body);
 
   const ref = q.get('reference') || q.get('trxref');
   if (ref && ref.startsWith('1vc-')) api(`/api/commerce/payments/${encodeURIComponent(ref)}/verify`, { method: 'POST', body: {} }).then((p) => { toast(p.status === 'paid' ? 'Payment confirmed' : `Payment ${p.status}`, { icon: 'check' }); if (tab === 'promote') show('promote'); }).catch(toastErr);

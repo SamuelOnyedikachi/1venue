@@ -1,13 +1,13 @@
 'use strict';
-// Mobile overflow: at 360/390/414, scrollWidth must not exceed clientWidth
-// on home, Discover, Feed, Books, and a real event page.
+// Overflow: at phone and tablet widths, scrollWidth must not exceed clientWidth
+// on home, Discover, Feed, Books, a real event page, and dashboard/profile when signed in.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { boot, client, signupPayload } = require('./helpers/server');
 
-const skipDb = !process.env.DATABASE_URL ? 'set DATABASE_URL' : false;
+const skipDb = !process.env.DATABASE_URL && process.env.DB_DRIVER !== 'sqlite' ? 'set DATABASE_URL or DB_DRIVER=sqlite' : false;
 const chrome = process.env.CHROME_PATH || '/usr/bin/google-chrome';
 const hasChrome = fs.existsSync(chrome);
 const puppeteerPaths = [
@@ -21,7 +21,7 @@ function loadPuppeteer() {
   try { return require('puppeteer-core'); } catch { return null; }
 }
 
-test('no horizontal overflow at 360/390/414 on home, Discover, Feed, Books, event', {
+test('no horizontal overflow at phone and tablet widths', {
   skip: skipDb || (!hasChrome ? 'google-chrome missing' : false),
   timeout: 180000,
 }, async () => {
@@ -46,21 +46,32 @@ test('no horizontal overflow at 360/390/414 on home, Discover, Feed, Books, even
     assert.ok(ev.status === 200 || ev.status === 201, JSON.stringify(ev.body));
     const slug = ev.body.slug;
     assert.ok(slug);
+    const me = (await u.get('/api/session')).body.user || {};
+    const username = me.username;
+    assert.ok(username);
 
     browser = await puppeteer.launch({
       executablePath: chrome,
       headless: 'new',
       args: ['--no-sandbox', '--disable-dev-shm-usage', '--hide-scrollbars'],
     });
-    const widths = [360, 390, 414];
-    const paths = ['/', '/discover', '/feed', '/books', '/e/' + slug];
+    const baseUrl = new URL(s.base);
+    const cookies = [];
+    const raw = u.jar && u.jar.header ? u.jar.header() : '';
+    for (const pair of raw.split(';').map((x) => x.trim()).filter(Boolean)) {
+      const i = pair.indexOf('=');
+      if (i > 0) cookies.push({ name: pair.slice(0, i), value: pair.slice(i + 1), domain: baseUrl.hostname, path: '/' });
+    }
+    const widths = [360, 390, 414, 600, 768, 820, 1024];
+    const paths = ['/', '/discover', '/feed', '/books', '/e/' + slug, '/dashboard', '/u/' + username, '/sessions', '/wallet', '/upgrade'];
     const fails = [];
     for (const w of widths) {
       const page = await browser.newPage();
+      if (cookies.length) await page.setCookie(...cookies);
       await page.setViewport({ width: w, height: 800, deviceScaleFactor: 1 });
       for (const pth of paths) {
-        await page.goto(s.base + pth, { waitUntil: 'networkidle0', timeout: 30000 });
-        await new Promise((r) => setTimeout(r, 250));
+        await page.goto(s.base + pth, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await new Promise((r) => setTimeout(r, 350));
         const m = await page.evaluate(() => {
           const de = document.documentElement;
           const body = document.body;

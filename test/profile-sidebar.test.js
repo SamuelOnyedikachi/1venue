@@ -28,7 +28,12 @@ test('profile field normalisation: https URLs and handles, rejects unsafe input'
   assert.throws(() => fields.normalizeSocial('x', 'https://example.com/x'), (e) => e.status === 400);
   assert.throws(() => fields.normalizeSocial('youtube', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'), (e) => e.status === 400);
   assert.throws(() => fields.normalizeSocial('linkedin', 'https://linkedin.com/feed'), (e) => e.status === 400);
-  const patch = fields.normalizeProfilePatch({ location: 'Enugu', website: 'gracechapel.live', socials: { x: '@adaeze', instagram: '' } });
+  assert.equal(fields.normalizeCoverUrl('/uploads/covers/a.jpg'), '/uploads/covers/a.jpg');
+  assert.equal(fields.normalizeCoverUrl('https://cdn.example.com/c.jpg'), 'https://cdn.example.com/c.jpg');
+  assert.equal(fields.normalizeCoverUrl(''), null);
+  assert.throws(() => fields.normalizeCoverUrl('javascript:alert(1)'), (e) => e.status === 400);
+  const patch = fields.normalizeProfilePatch({ location: 'Enugu', website: 'gracechapel.live', socials: { x: '@adaeze', instagram: '' }, coverUrl: '/uploads/covers/a.jpg' });
+  assert.equal(patch.coverUrl, '/uploads/covers/a.jpg');
   assert.equal(patch.location, 'Enugu');
   assert.equal(patch.website, 'https://gracechapel.live');
   assert.deepEqual(patch.socials, { x: 'https://x.com/adaeze' });
@@ -71,13 +76,17 @@ test('profile page source: About in main, rail stacks under 1024px, edit has soc
   assert.match(js, /profile-about-facts/);
   assert.match(js, /Add links/);
   assert.doesNotMatch(js, /Add Instagram/);
+  assert.match(js, /profile-cover/);
+  assert.match(js, /coverUrl/);
+  assert.match(css, /profile-cover/);
+  assert.match(css, /margin-top:\s*-/);
   const host = read('public/js/pages/host.js');
   assert.match(host, /profile:\s*\[\s*'Profile rail'/);
   const admin = read('public/js/pages/admin.js');
   assert.match(admin, /\['profile',\s*'Profile rail \(kobo\/day\)'\]/);
   assert.match(admin, /\['profile',\s*'Profile'\]/);
-  assert.match(read('public/index.html'), /app\.css\?v=33/);
-  assert.match(read('public/sw.js'), /VERSION = 'v44-2026-11-18'/);
+  assert.match(read('public/index.html'), /app\.css\?v=34/);
+  assert.match(read('public/sw.js'), /VERSION = 'v45-2026-11-18'/);
 });
 
 
@@ -93,9 +102,18 @@ test('users can save website and socials; the profile rail returns upcoming, sta
     location: 'Enugu, Nigeria',
     website: 'example.com/adaeze',
     socials: { x: '@adaezeprofile', instagram: 'adaezeprofile' },
+    coverUrl: '/uploads/covers/adaeze.jpg',
   });
   assert.equal(saved.status, 200, JSON.stringify(saved.body));
   assert.equal(saved.body.location, 'Enugu, Nigeria');
+  assert.equal(saved.body.coverUrl, '/uploads/covers/adaeze.jpg');
+  const cleared = await a.patch('/api/profile', { coverUrl: '' });
+  assert.equal(cleared.status, 200, JSON.stringify(cleared.body));
+  assert.equal(cleared.body.coverUrl, null);
+  const recoved = await a.patch('/api/profile', { coverUrl: '/uploads/covers/adaeze.jpg' });
+  assert.equal(recoved.body.coverUrl, '/uploads/covers/adaeze.jpg');
+  const badCover = await a.patch('/api/profile', { coverUrl: 'javascript:alert(1)' });
+  assert.equal(badCover.status, 400);
   assert.equal(saved.body.website, 'https://example.com/adaeze');
   assert.equal(saved.body.socials.x, 'https://x.com/adaezeprofile');
   assert.equal(saved.body.socials.instagram, 'https://www.instagram.com/adaezeprofile');

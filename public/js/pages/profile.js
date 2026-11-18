@@ -3,7 +3,7 @@ import { h, api, toast, toastErr, avatar, fmtNum, sheet, uploadFile, profilePath
 import { state, navigate, requireLogin, refreshSession } from '../app.js';
 import { postCard, eventCard, empty, followBtn, shareLink } from '../components.js';
 import { composer } from './feed.js';
-import { loadPromos, promoCompact } from '../promo.js';
+import { loadPromos, promoCard } from '../promo.js';
 
 const SOCIAL_META = [
   ['x', 'socialX', 'X'],
@@ -130,15 +130,15 @@ function rail(u) {
       statRow('users', st.attendeesReached ?? 0, 'Attendees reached'),
       statRow('heart', st.followers ?? u.followers ?? 0, 'Followers'))));
 
-  const promoBox = h('section', { class: 'ev-card profile-promoted', hidden: true },
+  const promoBox = h('section', { class: 'profile-promoted', hidden: true },
     h('div', { class: 'ev-rail-head tiny faint' }, 'Promoted'),
-    h('div', { class: 'profile-rail-body' }));
+    h('div', { class: 'profile-rail-body profile-promo-tiles' }));
   aside.append(promoBox);
   loadPromos('profile', { profileUserId: u.id }).then((items) => {
     if (!items.length || !promoBox.isConnected) return;
     promoBox.hidden = false;
     const body = promoBox.querySelector('.profile-rail-body');
-    body.replaceChildren(...items.slice(0, 2).map(promoCompact).filter(Boolean));
+    body.replaceChildren(...items.slice(0, 2).map((it) => promoCard(it, { compact: true, tagged: false })).filter(Boolean));
   });
 
   const similar = u.similarHosts || [];
@@ -208,7 +208,8 @@ export async function mount(view, params) {
   view.classList.add('profile-view');
   view.append(
     h('section', { class: 'profile-hero card' },
-      h('div', { class: 'band' }),
+      h('div', { class: 'profile-cover' + (u.coverUrl ? ' has-img' : '') },
+        u.coverUrl ? h('img', { src: u.coverUrl, alt: '', loading: 'lazy' }) : h('div', { class: 'band' })),
       h('div', { class: 'in' }, avatar(u.name, u.avatarUrl, 'xxl ring'),
         h('div', { class: 'grow profile-copy' }, h('h1', null, u.name), u.username || u.handle ? h('div', { class: 'muted profile-handle' }, '@' + (u.username || u.handle)) : null),
         h('div', { class: 'row wrap profile-actions' },
@@ -234,12 +235,34 @@ function edit(u) {
     return [k, inp];
   }));
   let avatarUrl = u.avatarUrl;
+  let coverUrl = u.coverUrl || null;
   const av = h('div', { class: 'row' }, avatar(u.name, avatarUrl, 'lg'));
   const f = h('input', { type: 'file', accept: 'image/*', class: 'hidden' });
   f.onchange = async () => { try { const r = await uploadFile(f.files[0], { purpose: 'avatar' }); avatarUrl = r.url; av.firstChild.replaceWith(avatar(u.name, avatarUrl, 'lg')); } catch (e) { toastErr(e); } };
+  const coverPrev = h('div', { class: 'profile-cover-prev' + (coverUrl ? ' has-img' : '') },
+    coverUrl ? h('img', { src: coverUrl, alt: '' }) : h('div', { class: 'band' }));
+  const paintCover = () => {
+    coverPrev.classList.toggle('has-img', !!coverUrl);
+    coverPrev.replaceChildren(coverUrl ? h('img', { src: coverUrl, alt: '' }) : h('div', { class: 'band' }));
+  };
+  const cf = h('input', { type: 'file', accept: 'image/*', class: 'hidden' });
+  cf.onchange = async () => { try { const r = await uploadFile(cf.files[0], { purpose: 'cover' }); coverUrl = r.url; paintCover(); } catch (e) { toastErr(e); } };
   const field = (lbl, el) => h('label', { class: 'field' }, h('span', { class: 'lbl' }, lbl), el);
   s.body.append(h('div', { class: 'col' },
     h('div', { class: 'row' }, av, h('button', { class: 'btn sm', html: icon('image', { size: 15 }) + 'Change photo', onclick: () => f.click() }), f),
+    h('div', { class: 'field' }, h('span', { class: 'lbl' }, 'Cover image'),
+      coverPrev,
+      h('p', { class: 'tiny muted' }, 'JPG, PNG or WebP, up to 8 MB. The theme gradient shows when there is no cover.'),
+      (() => {
+        const upBtn = h('button', { class: 'btn sm', type: 'button', html: icon('image', { size: 15 }) + (coverUrl ? 'Replace cover' : 'Upload cover') });
+        const remBtn = h('button', { class: 'btn sm', type: 'button', hidden: !coverUrl, html: icon('x', { size: 14 }) + 'Remove' });
+        const sync = () => { upBtn.innerHTML = icon('image', { size: 15 }) + (coverUrl ? 'Replace cover' : 'Upload cover'); remBtn.hidden = !coverUrl; };
+        upBtn.onclick = () => cf.click();
+        remBtn.onclick = () => { coverUrl = null; paintCover(); sync(); };
+        const prevOn = cf.onchange;
+        cf.onchange = async (ev) => { if (prevOn) await prevOn(ev); sync(); };
+        return h('div', { class: 'row wrap', style: { gap: '.4rem' } }, upBtn, remBtn, cf);
+      })()),
     field('Display name', name),
     h('div', { class: 'field' }, h('span', { class: 'lbl' }, 'Public link'), h('div', { class: 'row small', style: { gap: '.5rem' } }, h('code', null, `${location.host}/u/${u.username}`), h('a', { href: '/settings#account', 'data-link': '', onclick: () => s.close() }, 'Change username'))),
     field('Bio', bio),
@@ -254,7 +277,7 @@ function edit(u) {
     h('button', { class: 'btn primary', onclick: async () => {
       try {
         await api('/api/profile', { method: 'PATCH', body: {
-          displayName: name.value.trim(), bio: bio.value.trim(), avatarUrl,
+          displayName: name.value.trim(), bio: bio.value.trim(), avatarUrl, coverUrl,
           location: loc.value.trim(), website: website.value.trim(),
           socials: Object.fromEntries(SOCIAL_META.map(([k]) => [k, socialInputs[k].value.trim()])),
         } });

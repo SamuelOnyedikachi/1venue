@@ -12,7 +12,14 @@
   padding: 0 0.2rem;
 }
 .promo-inline {
-  margin: 0.2rem 0 1rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.promo-inline > .ev-card,
+.promo-inline > .card {
+  margin: 0;
 }
 .grid-cards > .promo-inline {
   margin: 0;
@@ -35,6 +42,13 @@
   border-radius: var(--r-pill);
   padding: 1px 7px;
   margin-bottom: 0.35rem;
+}
+.ev-tile .promo-tag {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.18);
+  border: 0;
+  margin: 0 0 0.2rem;
+  text-shadow: none;
 }
 .promo-post .body {
   display: flex;

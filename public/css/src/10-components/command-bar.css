@@ -80,7 +80,7 @@
   border: 1px solid transparent;
   background: color-mix(in srgb, var(--g) 9%, transparent);
   color: var(--g);
-  font-weight: 650;
+  font-weight: 600;
   font-size: 0.82rem;
   cursor: pointer;
   white-space: nowrap;
@@ -169,7 +169,7 @@
   .cmd-actions.compact-lbl .cmd-act .lbl {
     display: block;
     font-size: 0.58rem;
-    font-weight: 650;
+    font-weight: 600;
     line-height: 1.1;
     max-width: 4.4rem;
     overflow: hidden;
