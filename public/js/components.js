@@ -23,37 +23,27 @@ function eventPlace(ev) {
   const s = ev.settings || ev.venue || {};
   return (s && (s.venue || s.location || s.place)) || ev.venueName || ev.location || 'Online';
 }
-function eventTypeLabel(ev) {
-  if (ev.status === 'live' || ev.live) return 'Live';
-  if (ev.status === 'ended') return 'Ended';
-  return 'Upcoming';
-}
 export function eventCard(ev, { compact = false } = {}) {
-  const [cl, ci, cc] = catOf(ev.category);
-  const live = ev.status === 'live' || ev.live;
-  const c1 = ev.theme?.accent || cc, c2 = ev.theme?.accent2 || 'var(--accent-2)';
-  const attending = ev.rsvps != null ? Number(ev.rsvps) : (ev.totalJoins != null ? Number(ev.totalJoins) : null);
+  const [cl, ci] = catOf(ev.category);
   const dateLabel = ev.startsAt ? fmtDate(ev.startsAt, { weekday: undefined }) : null;
   const place = eventPlace(ev);
-  const a = h('a', { class: 'card hover ev-card ev-tile' + (compact ? ' compact' : ''), href: `/e/${ev.slug}`, 'data-link': '' },
-    h('div', { class: 'cover', style: { '--c1': c1, '--c2': c2 } },
+  const host = ev.host ? h('span', { class: 'ev-meta-item ev-host' },
+    avatar(ev.host.name, ev.host.avatarUrl, 'sm'),
+    h('span', { class: 'ev-host-name' }, ev.host.name || ''),
+    ev.host.verified ? h('span', { class: 'verified-dot', title: 'Verified host', 'aria-label': 'Verified host', html: icon('check', { size: 11 }) }) : null) : null;
+  const when = [];
+  if (dateLabel) when.push(h('span', { class: 'ev-meta-item ev-when' },
+    h('span', { class: 'ic', html: icon('calendar', { size: 13 }) }), h('span', { class: 'ev-meta-txt' }, dateLabel)));
+  if (place) when.push(h('span', { class: 'ev-meta-item ev-place' },
+    h('span', { class: 'ic', html: icon('mapPin', { size: 13 }) }), h('span', { class: 'ev-meta-txt' }, place)));
+  const meta = [host, when.length ? h('span', { class: 'ev-meta-when' }, ...when) : null].filter(Boolean);
+  return h('a', { class: 'ev-tile' + (compact ? ' compact' : ''), href: `/e/${ev.slug}`, 'data-link': '', 'aria-label': ev.title || 'Event' },
+    h('div', { class: 'cover' },
       ev.coverUrl ? h('img', { src: ev.coverUrl, alt: '', loading: 'lazy' }) : h('div', { class: 'art', html: LOGO_ART }),
-      h('span', { class: 'ev-chip ev-chip-type' + (live ? ' live' : '') }, eventTypeLabel(ev)),
-      attending != null ? h('span', { class: 'ev-chip ev-chip-count' }, fmtNum(attending) + ' attending') : null,
       h('div', { class: 'body' },
-        h('span', { class: 'cat ev-cat', style: { '--g': cc }, html: icon(ci, { size: 12 }) + esc(cl) }),
+        h('span', { class: 'ev-cat', html: icon(ci, { size: 12 }) + esc(cl) }),
         h('div', { class: 'title' }, ev.title),
-        h('div', { class: 'ev-foot' },
-          h('div', { class: 'ev-foot-main' },
-            ev.host ? h('div', { class: 'ev-host' },
-              avatar(ev.host.name, ev.host.avatarUrl, 'sm'),
-              h('span', { class: 'ev-host-name' }, ev.host.name || ''),
-              ev.host.verified ? h('span', { class: 'verified-dot', title: 'Verified host', 'aria-label': 'Verified host', html: icon('check', { size: 11 }) }) : null)
-              : null,
-            h('div', { class: 'ev-sub' },
-              ...[dateLabel, place].filter(Boolean).flatMap((bit, i) => i ? [h('span', { class: 'ev-dot', 'aria-hidden': 'true' }), bit] : [bit]))),
-          h('span', { class: 'ev-open', 'aria-hidden': 'true', html: icon('play', { size: 14 }) })))));
-  return a;
+        meta.length ? h('div', { class: 'ev-meta' }, ...meta) : null)));
 }
 
 function isLiveEvent(ev) {

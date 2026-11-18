@@ -7,17 +7,34 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 
-test('event tiles are full-bleed with overlay, chips and an open button', () => {
+test('event tiles are full-bleed theme overlays without play or corner chips', () => {
   const js = read('public/js/components.js');
   assert.match(js, /ev-tile/);
-  assert.match(js, /attending/);
-  assert.match(js, /ev-open/);
-  assert.match(js, /eventTypeLabel|Upcoming/);
+  assert.match(js, /ev-meta/);
+  assert.match(js, /mapPin/);
+  assert.doesNotMatch(js, /ev-open/);
+  assert.doesNotMatch(js, /attending/);
   const css = read('public/css/src/10-components/cards.css');
   assert.match(css, /ev-tile \.cover::after/);
+  assert.match(css, /aspect-ratio:\s*4 \/ 3/);
+  assert.match(css, /height:\s*38%/);
+  assert.match(css, /max-height:\s*35%/);
   assert.match(css, /linear-gradient\(\s*to top/);
-  assert.match(css, /ev-chip-count/);
-  assert.match(css, /\.card\.ev-card/);
+  assert.match(css, /var\(--accent-2\)/);
+  assert.doesNotMatch(css, /ev-chip-count/);
+  assert.doesNotMatch(css, /ev-open/);
+});
+
+test('promoted sidebar rows are compact links with no RSVP button', () => {
+  const js = read('public/js/promo.js');
+  assert.match(js, /promoCompact/);
+  assert.match(js, /class: 'feed-promo'/);
+  assert.doesNotMatch(js, /feed-promo-rsvp/);
+  assert.doesNotMatch(js, /btn\.textContent = going/);
+  assert.match(js, /promoCompact\(it\)/);
+  assert.match(read('public/js/pages/profile.js'), /promoCompact/);
+  assert.match(read('public/js/pages/event.js'), /promoCompact/);
+  assert.match(read('public/js/pages/feed.js'), /promoCompact/);
 });
 
 test('UI typography uses one family and title weight 600', () => {
@@ -55,8 +72,8 @@ test('explanatory blurbs are gone; session header and Pricing icon are in place'
   assert.match(sess, /sess-meta/);
   assert.match(sess, /transcript line/);
   assert.match(read('public/js/pages/upgrade.js'), /icon\('sparkles'[\s\S]*Pricing/);
-  assert.match(read('public/index.html'), /app\.css\?v=34/);
-  assert.match(read('public/sw.js'), /VERSION = 'v45-2026-11-18'/);
+  assert.match(read('public/index.html'), /app\.css\?v=36/);
+  assert.match(read('public/sw.js'), /VERSION = 'v47-2026-11-18'/);
 });
 
 test('home full-bleed bands do not use 100vw', () => {

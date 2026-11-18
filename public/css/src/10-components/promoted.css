@@ -47,7 +47,8 @@
   color: #fff;
   background: rgba(255, 255, 255, 0.18);
   border: 0;
-  margin: 0 0 0.2rem;
+  margin: 0;
+  flex: none;
   text-shadow: none;
 }
 .promo-post .body {
@@ -74,8 +75,15 @@
   overflow: hidden;
   margin: 0;
 }
-.promo-rail .ev-card .title {
-  font-size: 0.95rem;
+.promo-inline-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.promo-rail .feed-promo,
+.profile-promoted .feed-promo,
+.ev-rail-block .feed-promo {
+  margin-inline: 0;
 }
 
 @media (min-width: 1180px) {
@@ -98,7 +106,8 @@
     position: sticky;
     top: calc(var(--top-h, 64px) + 1rem);
   }
-  .promo-inline {
+  .promo-inline,
+  .promo-inline-rows {
     display: none;
   }
   .grid-cards > .promo-inline,

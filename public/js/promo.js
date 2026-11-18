@@ -2,9 +2,8 @@
 // Wide screens: a right sidebar with up to 3 cards. Phones / narrow: one inline card in the page.
 // Views are counted only when a card actually scrolls into view; clicks via sendBeacon.
 import { icon } from './icons.js';
-import { h, api, avatar, esc, profilePath, toastErr } from './ui.js';
+import { h, api, avatar, esc, profilePath } from './ui.js';
 import { eventCard } from './components.js';
-import { requireLogin } from './app.js';
 
 const cache = new Map(); // placement -> { at, p }
 const TTL = 60_000;
@@ -44,7 +43,15 @@ export function promoCard(item, { compact = false, tagged = true } = {}) {
   if (item.type === 'event' && item.event) {
     el = eventCard(item.event, { compact });
     el.classList.add('promo-card');
-    if (tagged) el.querySelector('.body')?.prepend(tag());
+    if (tagged) {
+      const body = el.querySelector('.body');
+      if (body) {
+        const cat = body.querySelector('.ev-cat');
+        const pills = h('div', { class: 'ev-pills' }, tag());
+        if (cat) pills.append(cat);
+        body.prepend(pills);
+      }
+    }
   } else if (item.post) {
     const p = item.post; const img = (p.media || []).find((m) => /^image\//.test(m.mime || 'image/') && m.url);
     el = h('a', { class: 'card hover promo-card promo-post', href: profilePath(p.author), 'data-link': '' },
@@ -69,17 +76,21 @@ export function attachPromoRail(view, placement, { inline = true } = {}) {
   view.append(h('div', { class: 'rail-layout' }, mainCol, aside));
   loadPromos(placement).then((items) => {
     if (!items.length || !aside.isConnected) { view.querySelector('.rail-layout')?.classList.add('no-rail'); return; }
-    aside.append(h('div', { class: 'promo-rail-head tiny faint' }, 'Promoted'), ...items.slice(0, 3).map((it) => promoCard(it, { compact: true, tagged: false })).filter(Boolean));
+    aside.append(h('div', { class: 'promo-rail-head tiny faint' }, 'Promoted'), ...items.slice(0, 3).map((it) => promoCompact(it)).filter(Boolean));
     // Generic inline card for pages without their own slot (Books, Venues): right after the page title.
     if (inline && !window.matchMedia(WIDE).matches) {
       const head = mainCol.querySelector('.page-head, .venues-head') || mainCol.firstElementChild;
-      const card = promoCard(items[0], { compact: true });
-      if (card && head) { const box = h('div', { class: 'promo-inline' }, card); head.after(box); }
+      const rows = items.slice(0, 3).map((it) => promoCompact(it)).filter(Boolean);
+      if (rows.length && head) {
+        const box = h('section', { class: 'promo-inline promo-inline-rows', 'aria-label': 'Promoted' },
+          h('div', { class: 'promo-rail-head tiny faint' }, 'Promoted'), ...rows);
+        head.after(box);
+      }
     }
   });
 }
 
-/** Compact rail card: small thumbnail, title, date, RSVP. Reuses view / click counting. */
+/** Compact rail row: thumbnail, 2-line title, "host · date". The whole row is one link. */
 export function promoCompact(item) {
   const ev = item.type === 'event' ? item.event : null;
   const post = item.post;
@@ -91,28 +102,14 @@ export function promoCompact(item) {
   const thumb = h('div', { class: 'feed-promo-thumb' },
     thumbSrc ? h('img', { src: thumbSrc, alt: '', loading: 'lazy' }) : h('div', { class: 'feed-promo-ph', html: icon('calendar', { size: 16 }) }));
   const sub = [host, date].filter(Boolean).join(' · ');
-  const body = h('div', { class: 'feed-promo-body' },
+  const el = h('a', {
+    class: 'feed-promo',
+    href,
+    'data-link': '',
+    'aria-label': `Promoted: ${title}`,
+  }, thumb, h('div', { class: 'feed-promo-body' },
     h('div', { class: 'feed-promo-title' }, title),
-    sub ? h('div', { class: 'tiny muted' }, sub) : null);
-  const el = h('div', { class: 'feed-promo', 'aria-label': `Promoted: ${title}` });
-  const link = h('a', { class: 'feed-promo-link', href, 'data-link': '' }, thumb, body);
-  el.append(link);
-  if (ev) {
-    let going = !!ev.rsvped;
-    const btn = h('button', { class: 'feed-promo-rsvp', type: 'button' });
-    const paint = () => { btn.textContent = going ? 'Going' : 'RSVP'; btn.classList.toggle('is-going', going); };
-    paint();
-    btn.onclick = async (e) => {
-      e.preventDefault(); e.stopPropagation();
-      if (!requireLogin('Sign in to RSVP')) return;
-      btn.disabled = true;
-      try {
-        const r = await api(`/api/events/${ev.id}/rsvp`, { method: 'POST' });
-        going = !!r.going; ev.rsvped = going; paint();
-      } catch (er) { toastErr(er); } finally { btn.disabled = false; }
-    };
-    el.append(btn);
-  }
+    sub ? h('div', { class: 'tiny muted feed-promo-sub' }, sub) : null));
   el.dataset.promo = item.id;
   el.addEventListener('click', () => click(item.id));
   io && io.observe(el);
