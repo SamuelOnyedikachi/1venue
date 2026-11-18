@@ -26,6 +26,9 @@
 
 ## Quick start (local)
 
+For local settings, copy `.env.example` to `.env` and edit it; `server.js` loads
+`.env` automatically. Environment variables already set by the shell take precedence.
+
 ```bash
 npm install
 # a local Postgres, e.g.:

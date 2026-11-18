@@ -319,7 +319,7 @@
 }
 .au-primary {
   background: var(--brand);
-  color: #fff;
+  color: var(--accent-ink);
   border: 0;
 }
 .au-primary:hover {

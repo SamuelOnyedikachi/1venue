@@ -1,6 +1,7 @@
 /**
  * SMTP mailer. Settings (all env):
- *   SMTP_HOST, SMTP_PORT (587), SMTP_SECURE (true for port 465), SMTP_USER, SMTP_PASS, MAIL_FROM, MAIL_REPLY_TO
+ *   SMTP_HOST, SMTP_PORT (587), SMTP_SECURE (true for port 465), SMTP_TLS_SERVERNAME,
+ *   SMTP_USER, SMTP_PASS, MAIL_FROM, MAIL_REPLY_TO
  * Without SMTP_HOST nothing is sent: outside production the message (with its link) is printed
  * to the console so local sign-up / reset can be tested; in production only a warning is logged
  * (never the link, which would put live reset links in logs) unless MAIL_LOG_LINKS=true.
@@ -14,6 +15,7 @@ function settings() {
   const appName = config.APP_NAME || '1venue';
   return {
     host: env('SMTP_HOST', ''),
+    tlsServername: env('SMTP_TLS_SERVERNAME', '').trim(),
     port,
     secure: config.bool('SMTP_SECURE', port === 465),
     user: env('SMTP_USER', ''),
@@ -33,6 +35,7 @@ function getTransport(s) {
   transport = nodemailer.createTransport({
     host: s.host, port: s.port, secure: s.secure,
     auth: s.user ? { user: s.user, pass: s.pass } : undefined,
+    tls: s.tlsServername ? { servername: s.tlsServername } : undefined,
     connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 30000,
   });
   return transport;

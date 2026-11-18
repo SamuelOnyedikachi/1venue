@@ -390,7 +390,7 @@ export async function mount(view, params) {
         h('span', { class: 'preview-eye', html: icon('eye', { size: 14 }) }),
         h('span', null, 'Preview')),
       prev,
-      h('div', { class: 'card pad layer small muted' }, h('strong', null, 'Just need a quick call? '), h('a', { href: '/create?instant=1', 'data-link': '', style: { color: '#2563eb', fontWeight: '700' } }, 'Start an instant meeting')))));
+      h('div', { class: 'card pad layer small muted' }, h('strong', null, 'Just need a quick call? '), h('a', { href: '/create?instant=1', 'data-link': '', style: { color: 'var(--accent)', fontWeight: '700' } }, 'Start an instant meeting')))));
 }
 
 // /create?instant=1 opened directly (bookmark, shared link, old PWA shortcut): show the home page

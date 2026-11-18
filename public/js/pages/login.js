@@ -227,6 +227,7 @@ export function openAuth({ next, mode = 'login', email = '', error = '', message
     inp.oninput = () => { err.textContent = ''; };
     const google = googlePill(next);
     box.replaceChildren(...head('Log in or sign up', AUTH_SUB).filter(Boolean), msg || '', google || '', google ? orLine() : '', form,
+      h('p', { class: 'au-swap' }, h('a', { href: '/forgot-password', class: 'au-link' }, 'Forgot password?')),
       canSignup ? h('p', { class: 'au-swap' }, 'New to 1venue? ', h('a', { href: `/signup?next=${encodeURIComponent(next)}`, 'data-link': '', onclick: () => close(true) }, 'Create an account')) : '',
       legalLinks());
     setTimeout(() => inp.focus(), 40);
@@ -262,27 +263,57 @@ export function openAuth({ next, mode = 'login', email = '', error = '', message
   }
 
   function forgot() {
-    const em = h('input', { type: 'email', autocomplete: 'email', inputmode: 'email', maxlength: 320, value: /@/.test(ident) ? ident : '' });
-    const f = field(em, 'Email address');
+    const em = h('input', { type: 'text', autocomplete: 'username', inputmode: 'text', maxlength: 320, value: ident });
+    const f = field(em, 'Username or email');
     const btn = brandBtn('Continue');
     const form = h('form', { class: 'au-form', novalidate: true }, f.el, btn);
+    const requestLink = async (identifier) => {
+      try {
+        await api('/api/auth/forgot', { method: 'POST', body: { identifier } });
+        ident = identifier;
+        return { ok: true };
+      } catch (er) {
+        if (er.status === 429) return { ok: false, error: 'Too many requests. Wait a minute before trying again.' };
+        if (er.status && er.status < 500) return { ok: false, error: er.message };
+        toastErr(er);
+        return { ok: false, error: 'We couldn’t request a reset email. Check your connection and try again.' };
+      }
+    };
     const send = async () => {
       const v = em.value.trim();
-      if (!/^\S+@\S+\.\S+$/.test(v)) { f.setError('Enter the email you signed up with.'); em.focus(); return false; }
+      if (!v) { f.setError('Enter your username or email.'); em.focus(); return false; }
       btn.disabled = true;
-      try { await api('/api/auth/forgot', { method: 'POST', body: { email: v } }); ident = v; return true; } catch (er) { if (er.status && er.status < 500) f.setError(er.message); else toastErr(er); return false; } finally { btn.disabled = false; }
+      try {
+        const result = await requestLink(v);
+        if (!result.ok) f.setError(result.error);
+        return result.ok;
+      } finally { btn.disabled = false; }
     };
     form.onsubmit = async (e) => { e.preventDefault(); if (await send()) inbox(send); };
-    box.replaceChildren(...head('Reset your password', 'We’ll email you a link to choose a new one.').filter(Boolean), form,
+    box.replaceChildren(...head('Reset your password', 'Enter your username or email and we’ll send a link to choose a new password.').filter(Boolean), form,
       h('p', { class: 'au-swap' }, h('a', { href: '#', class: 'au-link', onclick: (e) => { e.preventDefault(); start(); } }, 'Back to log in')), legalLinks());
     setTimeout(() => em.focus(), 40);
   }
 
   function inbox(resend) {
     const again = h('button', { class: 'au-plain', type: 'button' }, 'Resend email');
-    again.onclick = async () => { again.disabled = true; if (await resend()) toast('Sent again', { icon: 'mail' }); setTimeout(() => { again.disabled = false; }, 30000); };
+    const status = h('div', { class: 'au-msg', role: 'status', 'aria-live': 'polite', hidden: true });
+    again.onclick = async () => {
+      again.disabled = true;
+      if (await resend()) {
+        status.className = 'au-msg ok';
+        status.textContent = 'If that username or email has an account, a new link is on its way.';
+        status.hidden = false;
+        setTimeout(() => { again.disabled = false; }, 30000);
+      } else {
+        status.className = 'au-msg error';
+        status.textContent = 'We couldn’t request another email. Please try again.';
+        status.hidden = false;
+        again.disabled = false;
+      }
+    };
     box.replaceChildren(...head('Check your inbox', `If ${ident} has a 1venue account, a reset link is on its way.`).filter(Boolean),
-      h('button', { class: 'au-btn au-primary', type: 'button', onclick: () => start() }, 'Back to log in'), again, legalLinks());
+      h('button', { class: 'au-btn au-primary', type: 'button', onclick: () => start() }, 'Back to log in'), status, again, legalLinks());
   }
 
   const go = (m, o = {}) => { if (o.email) ident = o.email; if (o.next) next = safeNext(o.next); if (m === 'forgot') forgot(); else start(); };

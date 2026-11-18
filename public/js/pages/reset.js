@@ -24,8 +24,8 @@ export async function mount(view, params) {
       await api('/api/auth/reset', { method: 'POST', body: { token, password: pw.input.value } });
       history.replaceState({}, '', '/reset-password'); // drop the token from the address bar
       await refreshSession();
-      toast('Password saved. Other devices were signed out.', { icon: 'check' });
-      navigate(state.user ? '/dashboard' : '/login?reset=1', { replace: true });
+      toast('Password saved. Sign in with your new password.', { icon: 'check' });
+      navigate('/login?reset=1', { replace: true });
     } catch (er) {
       if (er.status === 400) pw2.setError(er.message);
       else toastErr(er);

@@ -47,8 +47,8 @@
     0 8px 24px -8px rgba(15, 23, 42, 0.18), 0 2px 6px rgba(15, 23, 42, 0.06);
   --shadow-3: 0 24px 60px -18px rgba(15, 23, 42, 0.35);
   --art-opacity: 0.55;
-  --brand: #003ea8;
-  --brand-hi: #0a4fc7;
+  --brand: var(--accent);
+  --brand-hi: var(--brand);
 }
 [data-theme="dark"] {
   color-scheme: dark;
@@ -67,8 +67,6 @@
   --shadow-2: 0 10px 30px -10px rgba(0, 0, 0, 0.7);
   --shadow-3: 0 30px 70px -20px rgba(0, 0, 0, 0.85);
   --art-opacity: 0.4;
-  --brand: #2f6fe4;
-  --brand-hi: #4a84ee;
 }
 html {
   font-size: calc(16px * var(--font-scale));

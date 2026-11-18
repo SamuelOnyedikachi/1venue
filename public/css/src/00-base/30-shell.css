@@ -227,7 +227,7 @@
     border-radius: 18px;
     display: grid;
     place-items: center;
-    color: #fff;
+    color: var(--accent-ink);
     background: linear-gradient(135deg, var(--accent), var(--accent-2));
     box-shadow: 0 10px 24px -8px var(--accent);
   }

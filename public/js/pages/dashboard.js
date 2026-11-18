@@ -1,7 +1,7 @@
 import { icon } from '../icons.js';
-import { h, api, esc, fmtNum, fmtDur, timeAgo, avatar } from '../ui.js';
+import { h, api, fmtNum, fmtDur, timeAgo, avatar } from '../ui.js';
 import { state, requireLogin } from '../app.js';
-import { eventCard, sectionHead, empty, personRow } from '../components.js';
+import { eventCard, empty, personRow } from '../components.js';
 
 function listMore(items, render, { limit = 5, moreHref, moreLabel = 'See more' } = {}) {
   const shown = items.slice(0, limit);
@@ -19,75 +19,114 @@ function listMore(items, render, { limit = 5, moreHref, moreLabel = 'See more' }
   return box;
 }
 
-function dashHead(ic, label, extra) {
-  return h('div', { class: 'dash-list-head row between' },
-    h('div', { class: 'row', style: { gap: '.45rem', alignItems: 'center' } },
-      h('span', { style: { color: 'var(--accent)', display: 'inline-flex' }, html: icon(ic, { size: 18 }) }),
-      h('strong', null, label)),
-    extra || null);
-}
-
 export async function mount(view) {
   if (!requireLogin('Sign in to see your dashboard')) return;
   view.append(h('div', { class: 'skel', style: { height: '160px', marginBottom: '1rem' } }), h('div', { class: 'skel', style: { height: '320px' } }));
   const d = await api('/api/dashboard');
   view.innerHTML = '';
   const s = d.stats || {};
-  const stat = (ic, g, label, val, sub) => h('div', { class: 'stat', 'data-group': g },
-    h('span', { class: 'ico-tile', style: { color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 12%, transparent)' }, html: icon(ic, { size: 20 }) }),
-    h('div', null, h('div', { class: 'v' }, val), h('div', { class: 'l' }, label), sub ? h('div', { class: 'tiny faint' }, sub) : null));
   const max = Math.max(1, ...(d.activity || []).map((a) => a.n));
   const spark = h('div', { class: 'spark', 'aria-label': 'Sessions joined, last 14 days' }, (d.activity || []).map((a) => h('i', { style: { height: `${8 + (a.n / max) * 92}%` }, 'data-tip': `${a.day}: ${a.n} session${a.n === 1 ? '' : 's'}` })));
   const hour = new Date().getHours();
-  view.append(
-    h('section', { class: 'dash-hero card' },
-      avatar(state.user.displayName, state.user.avatarUrl, 'xl ring'),
-      h('div', { class: 'grow' },
-        h('div', { class: 'muted small' }, hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'),
-        h('h1', null, state.user.displayName),
-        h('div', { class: 'row wrap small muted', style: { gap: '1rem', marginTop: '.3rem' } },
-          h('span', null, h('strong', null, fmtNum(s.followers)), ' followers'),
-          h('span', null, h('strong', null, fmtNum(s.following)), ' following'))),
-      h('div', { class: 'row wrap', style: { gap: '.5rem' } },
-        h('a', { class: 'btn primary', href: '/create', 'data-link': '', html: icon('radio', { size: 18 }) + 'Go live' }),
-        h('a', { class: 'btn', href: '/create?instant=1', 'data-link': '', 'data-group': 'media', html: icon('zap', { size: 18 }) + 'Instant' }),
-        h('a', { class: 'btn', href: '/venues', 'data-link': '', 'data-group': 'media', html: icon('door', { size: 18 }) + 'Venue' }))),
-    h('div', { class: 'stats stagger' },
-      stat('radio', 'engage', 'Hosted', fmtNum(s.hosted)),
-      stat('users', 'people', 'Attended', fmtNum(s.attended)),
-      stat('clock', 'media', 'Live time (30d)', fmtDur(Number(s.seconds30))),
-      stat('eye', 'social', 'Total audience', fmtNum(s.audience), `Peak ${fmtNum(s.peak)} live`),
-      stat('captions', 'ai', 'Transcript lines', fmtNum(s.transcriptLines || s.captions || 0))),
-    d.activity?.length ? h('div', { class: 'card pad layer dash-activity' }, h('div', { class: 'tiny muted', style: { marginBottom: '.4rem' } }, 'Activity · 14 days'), spark) : null,
-    d.live?.length ? h('div', { class: 'dash-block' }, sectionHead('Live now', 'radio', h('a', { class: 'btn sm ghost', href: '/discover?status=live', 'data-link': '' }, 'All')), h('div', { class: 'hscroll cards-row' }, d.live.map((e) => eventCard(e)))) : '',
-    h('div', { class: 'split dash-split' },
-      h('div', { class: 'col dash-main-col' },
-        h('div', { id: 'hosting', class: 'dash-block' }, sectionHead('Your events', 'calendar', h('a', { class: 'btn sm', href: '/create', 'data-link': '', html: icon('plus', { size: 15 }) + 'New' })),
+  const heroLabel = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const dashboardStats = [
+    { icon: 'radio', label: 'Hosted', value: fmtNum(s.hosted), tone: 'violet' },
+    { icon: 'users', label: 'Attended', value: fmtNum(s.attended), tone: 'cyan' },
+    { icon: 'clock', label: 'Live time · 30 days', value: fmtDur(Number(s.seconds30)), tone: 'amber' },
+    { icon: 'eye', label: 'Total audience', value: fmtNum(s.audience), sub: `Peak ${fmtNum(s.peak)} live`, tone: 'green' },
+    { icon: 'captions', label: 'Transcript lines', value: fmtNum(s.transcriptLines || s.captions || 0), tone: 'blue' },
+  ];
+  const metricCards = dashboardStats.map((m) => h('div', { class: `mini-stat mini-stat--${m.tone}` },
+    h('span', { class: 'mini-stat__icon', html: icon(m.icon, { size: 18 }) }),
+    h('div', { class: 'mini-stat__content' },
+      h('div', { class: 'mini-stat__label' }, m.label),
+      h('div', { class: 'mini-stat__value' }, m.value),
+      m.sub ? h('div', { class: 'mini-stat__sub' }, m.sub) : null)));
+  const shell = h('div', { class: 'dashboard-shell' });
+  view.append(shell);
+  shell.append(
+    h('header', { class: 'dashboard-topbar' },
+      h('div', { class: 'dashboard-page-heading' },
+        h('div', { class: 'tiny uppercase muted' }, 'Your space'),
+        h('h1', null, 'Dashboard')),
+        h('div', { class: 'dashboard-topbar__actions' },
+          h('a', { class: 'btn ghost', href: '/discover', 'data-link': '', html: icon('compass', { size: 16 }) + 'Browse' }))),
+    h('section', { class: 'dashboard-hero card' },
+      h('div', { class: 'dashboard-hero__profile' },
+        avatar(state.user.displayName, state.user.avatarUrl, 'xl ring'),
+        h('div', { class: 'dashboard-hero__meta' },
+          h('div', { class: 'tiny uppercase muted' }, heroLabel),
+          h('h2', null, state.user.displayName),
+          h('div', { class: 'row wrap small dashboard-hero__social' },
+            h('span', null, h('strong', null, fmtNum(s.followers)), ' followers'),
+            h('span', null, h('strong', null, fmtNum(s.following)), ' following')))),
+      h('div', { class: 'dashboard-hero__actions' },
+        h('a', { class: 'btn primary', href: '/create', 'data-link': '', html: icon('radio', { size: 17 }) + 'Go live' }),
+        h('a', { class: 'btn', href: '/create?instant=1', 'data-link': '', 'data-group': 'media', html: icon('zap', { size: 17 }) + 'Instant room' }),
+        h('a', { class: 'btn ghost', href: '/venues', 'data-link': '', 'data-group': 'media', html: icon('door', { size: 17 }) + 'Venue' }))),
+    h('section', { class: 'dashboard-stat-grid' }, ...metricCards),
+    h('section', { class: 'dashboard-panel dashboard-activity' },
+      h('div', { class: 'panel-head' },
+        h('div', null,
+          h('div', { class: 'tiny uppercase muted' }, 'Engagement pulse'),
+          h('h3', null, 'Activity · last 14 days')),
+        h('a', { class: 'tiny', href: '/sessions', 'data-link': '' }, 'View sessions')),
+      d.activity?.length ? spark : h('div', { class: 'empty-card' }, 'No recent sessions yet.')),
+    d.live?.length ? h('section', { class: 'dashboard-panel dashboard-live' },
+      h('div', { class: 'panel-head' },
+        h('div', null,
+          h('div', { class: 'tiny uppercase muted' }, 'Happening now'),
+          h('h3', null, 'Live events')),
+        h('a', { class: 'tiny', href: '/discover?status=live', 'data-link': '' }, 'Discover more')),
+      h('div', { class: 'dashboard-live__cards' }, ...d.live.map((e) => eventCard({ ...e, title: e.title || e.name || 'Live event' }, { compact: true })))) : '',
+    h('div', { class: 'dashboard-columns' },
+      h('div', { class: 'dashboard-column dashboard-column--main' },
+        h('section', { id: 'hosting', class: 'dashboard-panel' },
+          h('div', { class: 'panel-head' },
+            h('div', null,
+              h('div', { class: 'tiny uppercase muted' }, 'Hosting'),
+              h('h3', null, 'Your events')),
+            h('a', { class: 'btn sm', href: '/create', 'data-link': '', html: icon('plus', { size: 15 }) + 'New' })),
           d.hosting.length ? h('div', { class: 'grid-cards' }, d.hosting.map((e) => eventCard(e))) : empty('calendar', 'You haven’t hosted yet', 'Your talk shows, seminars and services will live here.')),
-        h('div', { class: 'dash-block' },
-          sectionHead('Going', 'ticket'),
-          d.going.length ? h('div', { class: 'grid-cards' }, d.going.map((e) => eventCard(e))) : empty('ticket', 'No RSVPs yet', 'Tap RSVP on any event to save it here.', h('a', { class: 'btn', href: '/discover', 'data-link': '' }, 'Discover'))),
-      ),
-      h('aside', { class: 'col dash-side-col' },
-        h('div', { class: 'card pad layer' },
-          dashHead('history', 'Recent sessions', h('a', { class: 'tiny', href: '/sessions', 'data-link': '' }, 'All')),
+        h('section', { class: 'dashboard-panel' },
+          h('div', { class: 'panel-head' },
+            h('div', null,
+              h('div', { class: 'tiny uppercase muted' }, 'RSVPs'),
+              h('h3', null, 'Going')),
+            h('a', { class: 'tiny', href: '/discover', 'data-link': '' }, 'Browse events')),
+          d.going.length ? h('div', { class: 'grid-cards' }, d.going.map((e) => eventCard(e))) : empty('ticket', 'No RSVPs yet', 'Tap RSVP on any event to save it here.', h('a', { class: 'btn', href: '/discover', 'data-link': '' }, 'Discover')))),
+      h('aside', { class: 'dashboard-column dashboard-column--side' },
+        h('section', { class: 'dashboard-panel' },
+          h('div', { class: 'panel-head' },
+            h('div', null,
+              h('div', { class: 'tiny uppercase muted' }, 'Recent'),
+              h('h3', null, 'Sessions')),
+            h('a', { class: 'tiny', href: '/sessions', 'data-link': '' }, 'All')),
           d.history.length
             ? listMore(d.history, (x) => h('a', { class: 'list-item', href: `/session/${x.id}`, 'data-link': '' },
-                h('span', { style: { color: 'var(--accent)', display: 'inline-flex' }, html: icon('fileText', { size: 16 }) }),
+                h('span', { class: 'list-item__icon', html: icon('fileText', { size: 16 }) }),
                 h('div', { class: 'grow' },
                   h('div', { class: 'ellipsis', style: { fontWeight: 600 } }, x.name || x.code),
                   h('div', { class: 'tiny faint' }, timeAgo(x.created_at || x.createdAt))),
                 h('span', { html: icon('chevronRight', { size: 16 }) })),
               { limit: 5, moreHref: '/sessions' })
-            : h('p', { class: 'tiny faint', style: { marginTop: '.5rem' } }, 'Transcripts and AI summaries of your sessions appear here.')),
-        h('div', { class: 'card pad layer' },
-          dashHead('userPlus', 'People to follow'),
+            : h('p', { class: 'tiny faint' }, 'Transcripts and AI summaries of your sessions appear here.')),
+        h('section', { class: 'dashboard-panel' },
+          h('div', { class: 'panel-head' },
+            h('div', null,
+              h('div', { class: 'tiny uppercase muted' }, 'Network'),
+              h('h3', null, 'People to follow')),
+            h('a', { class: 'tiny', href: '/discover', 'data-link': '' }, 'More')),
           d.people.length
             ? listMore(d.people, (u) => personRow(u), { limit: 5, moreHref: '/discover', moreLabel: 'See more' })
             : h('p', { class: 'tiny faint' }, 'No suggestions yet.')),
-        h('div', { class: 'card pad layer' },
-          dashHead('board', 'Personal whiteboard'),
-          h('a', { class: 'btn sm', href: '/whiteboard', 'data-link': '', style: { marginTop: '.35rem' } }, 'Open board')))));
+        h('section', { class: 'dashboard-panel' },
+          h('div', { class: 'panel-head' },
+            h('div', null,
+              h('div', { class: 'tiny uppercase muted' }, 'Workspace'),
+              h('h3', null, 'Personal whiteboard')),
+            h('a', { class: 'tiny', href: '/whiteboard', 'data-link': '' }, 'Open')),
+          h('a', { class: 'btn sm', href: '/whiteboard', 'data-link': '', style: { marginTop: '.35rem' }, html: icon('board', { size: 15 }) + 'Open board' })))));
 
   try {
     const att = await api('/api/attendance/list');
@@ -143,8 +182,11 @@ export async function mount(view) {
         more.onclick = () => { stack.replaceChildren(...lists.map(renderRow)); more.remove(); };
         stack.append(more);
       }
-      view.append(h('div', { class: 'card pad layer dash-block' },
-        dashHead('users', 'Attendance lists'),
+      shell.append(h('section', { class: 'dashboard-panel dashboard-attendance' },
+        h('div', { class: 'panel-head' },
+          h('div', null,
+            h('div', { class: 'tiny uppercase muted' }, 'Attendance'),
+            h('h3', null, 'Your lists'))),
         stack));
     }
   } catch (_) {}

@@ -286,11 +286,11 @@
   display: grid;
   place-items: center;
   border-radius: 16px;
-  color: #fff;
+  color: var(--accent-ink);
   background: linear-gradient(
     135deg,
     var(--brand),
-    color-mix(in srgb, var(--brand) 55%, #7c3aed)
+    color-mix(in srgb, var(--brand) 55%, var(--brand-hi))
   );
   box-shadow: 0 10px 24px -10px
     color-mix(in srgb, var(--brand) 70%, transparent);

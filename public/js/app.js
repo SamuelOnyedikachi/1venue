@@ -5,6 +5,7 @@ import { h, $, api, toast, sheet, menu, avatar, initTooltips, debounce, closeTop
 import { mountCommandBar, registerCommands, setBarContext, barVisible, focusBar, refreshBar } from './commands.js';
 import { surahCommands, loadSurahs, looksLikeQuran } from './quran-cmd.js';
 import { initPwa, promptInstall } from './pwa.js';
+import { accentInk } from './appearance.mjs';
 
 export const state = { config: null, user: null, session: null, prefs: null, route: null, inRoom: false };
 const LS_PREFS = 'venue.prefs';
@@ -24,6 +25,7 @@ export function applyPrefs(p = state.prefs) {
   root.style.setProperty('--accent', p.accent || '#2563eb');
   const a2 = p.accent2 || (ACCENTS.find((x) => x[1] === p.accent) || [])[2] || '#7c3aed';
   root.style.setProperty('--accent-2', a2);
+  root.style.setProperty('--accent-ink', accentInk(p.accent || '#2563eb', a2));
   root.style.setProperty('--font-scale', String(Math.min(1.5, Math.max(0.8, Number(p.fontScale) || 1))));
   root.classList.toggle('reduce-motion', !!p.reduceMotion);
   let meta = document.querySelector('meta[name="theme-color"]');
