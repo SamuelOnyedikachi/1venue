@@ -2,7 +2,7 @@
 // Wide screens: a right sidebar with up to 3 cards. Phones / narrow: one inline card in the page.
 // Views are counted only when a card actually scrolls into view; clicks via sendBeacon.
 import { icon } from './icons.js';
-import { h, api, avatar, esc, profilePath, fmtDate, toastErr } from './ui.js';
+import { h, api, avatar, esc, profilePath, toastErr } from './ui.js';
 import { eventCard } from './components.js';
 import { requireLogin } from './app.js';
 
@@ -33,20 +33,20 @@ function click(id) {
   try { if (navigator.sendBeacon && navigator.sendBeacon(url, new Blob(['{}'], { type: 'application/json' }))) return; } catch { /* fall through */ }
   fetch(url, { method: 'POST', credentials: 'same-origin', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {});
 }
-const tag = () => h('span', { class: 'promo-tag', html: icon('sparkle', { size: 11 }) + 'Promoted' });
+const tag = () => h('span', { class: 'promo-tag' }, 'Promoted');
 
 /** One promoted card (event or post). */
-export function promoCard(item, { compact = false } = {}) {
+export function promoCard(item, { compact = false, tagged = true } = {}) {
   let el;
   if (item.type === 'event' && item.event) {
     el = eventCard(item.event, { compact });
     el.classList.add('promo-card');
-    el.querySelector('.body')?.prepend(tag());
+    if (tagged) el.querySelector('.body')?.prepend(tag());
   } else if (item.post) {
     const p = item.post; const img = (p.media || []).find((m) => /^image\//.test(m.mime || 'image/') && m.url);
     el = h('a', { class: 'card hover promo-card promo-post', href: profilePath(p.author), 'data-link': '' },
       img ? h('div', { class: 'cover' }, h('img', { src: img.url, alt: '', loading: 'lazy' })) : null,
-      h('div', { class: 'body' }, tag(),
+      h('div', { class: 'body' }, tagged ? tag() : null,
         h('div', { class: 'row', style: { gap: '.5rem' } }, avatar(p.author?.name, p.author?.avatarUrl, 'sm'), h('strong', { class: 'small' }, p.author?.name || '')),
         h('p', { class: 'small promo-text', html: esc(String(p.body || '').slice(0, 180)) })));
   } else return null;
@@ -66,7 +66,7 @@ export function attachPromoRail(view, placement, { inline = true } = {}) {
   view.append(h('div', { class: 'rail-layout' }, mainCol, aside));
   loadPromos(placement).then((items) => {
     if (!items.length || !aside.isConnected) { view.querySelector('.rail-layout')?.classList.add('no-rail'); return; }
-    aside.append(h('div', { class: 'promo-rail-head tiny faint' }, 'Promoted'), ...items.slice(0, 3).map((it) => promoCard(it, { compact: true })).filter(Boolean));
+    aside.append(h('div', { class: 'promo-rail-head tiny faint' }, 'Promoted'), ...items.slice(0, 3).map((it) => promoCard(it, { compact: true, tagged: false })).filter(Boolean));
     // Generic inline card for pages without their own slot (Books, Venues): right after the page title.
     if (inline && !window.matchMedia(WIDE).matches) {
       const head = mainCol.querySelector('.page-head, .venues-head') || mainCol.firstElementChild;
@@ -83,21 +83,21 @@ export function promoCompact(item) {
   const href = ev ? `/e/${ev.slug}` : (post ? profilePath(post.author) : '#');
   const thumbSrc = ev?.coverUrl || (post && (post.media || []).find((m) => m.url && /^image\//.test(m.mime || 'image/')))?.url;
   const title = ev?.title || String(post?.body || '').slice(0, 80) || (post?.author?.name || 'Promoted');
-  const date = ev?.startsAt ? fmtDate(ev.startsAt, { weekday: undefined }) : null;
+  const date = ev?.startsAt ? new Date(ev.startsAt).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }) : null;
+  const host = ev?.host?.name;
   const thumb = h('div', { class: 'feed-promo-thumb' },
-    thumbSrc ? h('img', { src: thumbSrc, alt: '', loading: 'lazy' }) : h('div', { class: 'feed-promo-ph', html: icon('sparkle', { size: 16 }) }));
-  const tag = h('span', { class: 'promo-tag', html: icon('sparkle', { size: 11 }) + 'Promoted' });
+    thumbSrc ? h('img', { src: thumbSrc, alt: '', loading: 'lazy' }) : h('div', { class: 'feed-promo-ph', html: icon('calendar', { size: 16 }) }));
+  const sub = [host, date].filter(Boolean).join(' · ');
   const body = h('div', { class: 'feed-promo-body' },
-    tag,
     h('div', { class: 'feed-promo-title' }, title),
-    date ? h('div', { class: 'tiny muted' }, date) : null);
+    sub ? h('div', { class: 'tiny muted' }, sub) : null);
   const el = h('div', { class: 'feed-promo', 'aria-label': `Promoted: ${title}` });
   const link = h('a', { class: 'feed-promo-link', href, 'data-link': '' }, thumb, body);
   el.append(link);
   if (ev) {
     let going = !!ev.rsvped;
-    const btn = h('button', { class: 'btn sm feed-promo-rsvp', type: 'button' });
-    const paint = () => { btn.textContent = going ? 'Going' : 'RSVP'; btn.classList.toggle('primary', !going); };
+    const btn = h('button', { class: 'feed-promo-rsvp', type: 'button' });
+    const paint = () => { btn.textContent = going ? 'Going' : 'RSVP'; btn.classList.toggle('is-going', going); };
     paint();
     btn.onclick = async (e) => {
       e.preventDefault(); e.stopPropagation();

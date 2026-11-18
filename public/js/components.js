@@ -38,6 +38,117 @@ export function eventCard(ev, { compact = false } = {}) {
         ev.speakerSeats && ev.category !== 'meeting' ? h('span', { html: icon('stage', { size: 14 }) + ev.speakerSeats + ' seats' }) : null)));
   return a;
 }
+
+function isLiveEvent(ev) {
+  return ev.status === 'live' || !!ev.live;
+}
+function startOfDay(d) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+function railWhenParts(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const days = Math.round((startOfDay(d) - startOfDay(new Date())) / 864e5);
+  const clock = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  if (days === 0) {
+    const m = clock.match(/^(.*?)(\s*([AP]M))$/i);
+    return { mon: 'Today', day: m ? m[1].trim() : clock, tm: m ? m[2].trim() : '', soon: true };
+  }
+  return {
+    mon: d.toLocaleString(undefined, { weekday: 'short' }),
+    day: String(d.getDate()),
+    tm: clock,
+    soon: false,
+  };
+}
+function relativeSoon(iso) {
+  const mins = Math.round((new Date(iso) - Date.now()) / 60000);
+  if (mins < 0 || mins >= 24 * 60) return null;
+  if (mins < 60) return `in ${Math.max(1, mins)} min`;
+  const hrs = Math.round(mins / 60);
+  return `in ${hrs} hour${hrs === 1 ? '' : 's'}`;
+}
+function railCat(ev) {
+  const [cl, , cc] = catOf(ev.category);
+  return h('span', { class: 'cat', style: { '--g': cc } }, cl);
+}
+function railMeta(...bits) {
+  const parts = bits.filter(Boolean);
+  const kids = [];
+  parts.forEach((b, i) => {
+    if (i) kids.push(h('span', { class: 'rail-dot' }));
+    kids.push(typeof b === 'string' ? b : b);
+  });
+  return h('span', { class: 'rail-meta' }, ...kids);
+}
+function railWhenEl(ev) {
+  if (isLiveEvent(ev)) {
+    return h('span', { class: 'rail-when soon' }, h('span', { class: 'mon' }, 'Live'), h('span', { class: 'day' }, 'Now'));
+  }
+  const parts = ev.startsAt ? railWhenParts(ev.startsAt) : null;
+  if (!parts) return h('span', { class: 'rail-when' }, h('span', { class: 'day' }, '—'));
+  return h('span', { class: 'rail-when' + (parts.soon ? ' soon' : '') },
+    h('span', { class: 'mon' }, parts.mon),
+    h('span', { class: 'day' }, parts.day),
+    parts.tm ? h('span', { class: 'tm' }, parts.tm) : null);
+}
+function railThumb(ev, size) {
+  return h('span', { class: 'rail-thumb' + (size === 'sm' ? ' sm' : '') },
+    ev.coverUrl ? h('img', { src: ev.coverUrl, alt: '', loading: 'lazy' }) : h('span', { class: 'rail-thumb-ph' }));
+}
+
+/** Time-first compact row for the event-page "Happening soon" / "Live now" rail. */
+export function railSoonRow(ev) {
+  const live = isLiveEvent(ev);
+  const viewers = ev.live?.viewers ?? ev.liveViewers ?? 0;
+  const rel = !live && ev.startsAt ? relativeSoon(ev.startsAt) : null;
+  return h('a', { class: 'rail-row', href: `/e/${ev.slug}`, 'data-link': '' },
+    railWhenEl(ev),
+    h('span', { class: 'rail-body' },
+      h('span', { class: 'rail-title' }, ev.title),
+      railMeta(railCat(ev), rel || ev.host?.name || (live && viewers ? `${fmtNum(viewers)} watching` : null))));
+}
+
+/** Mini thumbnail row used under a featured "More from this host" card. */
+export function railMiniRow(ev) {
+  const date = ev.startsAt ? new Date(ev.startsAt).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }) : null;
+  return h('a', { class: 'rail-row', href: `/e/${ev.slug}`, 'data-link': '' },
+    railThumb(ev, 'sm'),
+    h('span', { class: 'rail-body' },
+      h('span', { class: 'rail-title sm' }, ev.title),
+      railMeta(railCat(ev), date)));
+}
+
+/** Flush 16:9 featured card with a date pill on the image. */
+export function railFeatured(ev) {
+  const [cl, , cc] = catOf(ev.category);
+  const live = isLiveEvent(ev);
+  const c1 = ev.theme?.accent || cc, c2 = ev.theme?.accent2 || 'var(--accent-2)';
+  const pill = live
+    ? h('span', { class: 'pill live' }, 'LIVE')
+    : ev.startsAt
+      ? h('span', { class: 'pill' }, new Date(ev.startsAt).toLocaleString(undefined, { day: 'numeric', month: 'short' }))
+      : null;
+  return h('a', { class: 'rail-feature', href: `/e/${ev.slug}`, 'data-link': '' },
+    h('div', { class: 'rail-cover', style: { '--c1': c1, '--c2': c2 } },
+      ev.coverUrl ? h('img', { src: ev.coverUrl, alt: '', loading: 'lazy' }) : null,
+      pill),
+    h('div', { class: 'rail-feature-body' },
+      h('span', { class: 'cat', style: { '--g': cc } }, cl),
+      h('span', { class: 'rail-title' }, ev.title)));
+}
+
+/** Featured card + up to two mini rows for "More from this host". */
+export function railHostBlock(events) {
+  const list = (events || []).slice(0, 3);
+  if (!list.length) return [];
+  const [feat, ...rest] = list;
+  return [
+    railFeatured(feat),
+    rest.length ? h('div', { class: 'rail-mini' }, ...rest.map(railMiniRow)) : null,
+  ];
+}
+
 export const skeletonCards = (n = 6) => h('div', { class: 'grid-cards' }, Array.from({ length: n }, () => h('div', { class: 'skel', style: { height: '250px' } })));
 
 export function followBtn(user, onChange) {

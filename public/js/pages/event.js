@@ -1,7 +1,7 @@
 import { icon } from '../icons.js';
 import { h, api, esc, frag, fmtDate, fmtNum, toast, toastErr, sheet, confirmDlg, avatar, md, download, copy, debounce, uploadFile, profilePath } from '../ui.js';
 import { state, navigate, requireLogin } from '../app.js';
-import { catOf, commentThread, shareLink, sectionHead, empty, followBtn, eventCard } from '../components.js';
+import { catOf, commentThread, shareLink, sectionHead, empty, followBtn, railSoonRow, railHostBlock } from '../components.js';
 import { registerCommands, unregisterCommands } from '../commands.js';
 import { promoCompact, loadPromos } from '../promo.js';
 import { loadMoney, fmtMoney, checkoutSheet } from '../money.js';
@@ -246,21 +246,21 @@ export async function mount(view, { slug }) {
     const liveEv = (liveR.events || []).filter((e) => e.id !== ev.id);
     const soon = (upR.events || []).filter((e) => e.id !== ev.id).slice(0, 3);
     if (liveEv.length) {
-      liveSlot.append(h('section', { class: 'ev-card' }, h('div', { class: 'ev-rail-head tiny faint' }, 'Live now'),
-        ...liveEv.slice(0, 3).map((e) => eventCard(e, { compact: true }))));
+      liveSlot.append(h('section', { class: 'ev-card ev-rail-block' }, h('div', { class: 'ev-rail-head tiny faint' }, 'Live now'),
+        ...liveEv.slice(0, 3).map(railSoonRow)));
     } else if (soon.length) {
-      liveSlot.append(h('section', { class: 'ev-card' }, h('div', { class: 'ev-rail-head tiny faint' }, 'Happening soon'),
-        ...soon.map((e) => eventCard(e, { compact: true }))));
+      liveSlot.append(h('section', { class: 'ev-card ev-rail-block' }, h('div', { class: 'ev-rail-head tiny faint' }, 'Happening soon'),
+        ...soon.map(railSoonRow)));
     } else {
-      liveSlot.append(h('section', { class: 'ev-card' }, h('div', { class: 'ev-rail-head tiny faint' }, 'Live now'),
+      liveSlot.append(h('section', { class: 'ev-card ev-rail-block' }, h('div', { class: 'ev-rail-head tiny faint' }, 'Live now'),
         h('p', { class: 'small muted', style: { margin: 0 } }, 'Nothing else is live right now.')));
     }
     const cards = (promos || []).slice(0, 2).map((it) => promoCompact(it)).filter(Boolean);
-    if (cards.length) promoSlot.append(h('section', { class: 'ev-card' }, h('div', { class: 'ev-rail-head tiny faint' }, 'Promoted'), ...cards));
-    const more = (moreR.events || []).filter((e) => e.id !== ev.id).slice(0, 4);
+    if (cards.length) promoSlot.append(h('section', { class: 'ev-card ev-rail-block' }, h('div', { class: 'ev-rail-head tiny faint' }, 'Promoted'), ...cards));
+    const more = (moreR.events || []).filter((e) => e.id !== ev.id).slice(0, 3);
     if (more.length) {
-      moreSlot.append(h('section', { class: 'ev-card' }, h('div', { class: 'ev-rail-head tiny faint' }, 'More from this host'),
-        ...more.map((e) => eventCard(e, { compact: true }))));
+      moreSlot.append(h('section', { class: 'ev-card ev-rail-block' }, h('div', { class: 'ev-rail-head tiny faint' }, 'More from this host'),
+        ...railHostBlock(more)));
     }
   });
 
