@@ -30,38 +30,41 @@ function initials(name) {
   return String(name || '?').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
 }
 
+function addPrompt(u, label) {
+  return h('a', { class: 'profile-add', href: '#', onclick: (e) => { e.preventDefault(); edit(u); } }, label);
+}
+function fact(icHtml, content) {
+  return h('span', { class: 'profile-about-fact' }, h('span', { class: 'ic', html: icHtml }), content);
+}
 function aboutBlock(u) {
   const socials = u.socials || {};
-  const links = SOCIAL_META.map(([k, ic, label]) => {
+  const web = safeHref(u.website);
+  const joined = joinedLabel(u.createdAt);
+  const facts = [
+    u.location ? fact(icon('mapPin', { size: 15 }), u.location) : (u.isMe ? fact(icon('mapPin', { size: 15 }), addPrompt(u, 'Add location')) : null),
+    joined ? fact(icon('calendar', { size: 15 }), joined) : null,
+    web ? fact(icon('globe', { size: 15 }), h('a', { href: web, target: '_blank', rel: 'noopener noreferrer' }, linkLabel(web)))
+      : (u.isMe ? fact(icon('globe', { size: 15 }), addPrompt(u, 'Add website')) : null),
+  ].filter(Boolean);
+  const chips = SOCIAL_META.map(([k, ic, label]) => {
     const href = safeHref(socials[k]);
     return href
-      ? h('a', { class: 'btn sm profile-social', href, target: '_blank', rel: 'noopener noreferrer', html: icon(ic, { size: 14 }) + label })
-      : (u.isMe ? h('span', { class: 'muted tiny' }, `Add ${label}`) : null);
+      ? h('a', { class: 'profile-social', href, target: '_blank', rel: 'noopener noreferrer', title: label, 'aria-label': label, html: icon(ic, { size: 16 }) })
+      : null;
   }).filter(Boolean);
-  const web = safeHref(u.website);
-  const rows = [
-    u.location ? row(icon('mapPin', { size: 16 }), u.location) : (u.isMe ? row(icon('mapPin', { size: 16 }), h('a', { class: 'profile-add', href: '#', onclick: (e) => { e.preventDefault(); edit(u); } }, 'Add location')) : null),
-    joinedLabel(u.createdAt) ? row(icon('calendar', { size: 16 }), joinedLabel(u.createdAt)) : null,
-    web ? row(icon('globe', { size: 16 }), h('a', { href: web, target: '_blank', rel: 'noopener noreferrer' }, linkLabel(web)))
-      : (u.isMe ? row(icon('globe', { size: 16 }), h('a', { class: 'profile-add', href: '#', onclick: (e) => { e.preventDefault(); edit(u); } }, 'Add website')) : null),
-    (links.length || u.isMe) ? row(icon('link', { size: 16 }), h('div', { class: 'profile-socials' },
-      ...(u.isMe && !SOCIAL_META.some(([k]) => socials[k])
-        ? [h('a', { class: 'profile-add', href: '#', onclick: (e) => { e.preventDefault(); edit(u); } }, 'Add Instagram'),
-          h('a', { class: 'profile-add', href: '#', onclick: (e) => { e.preventDefault(); edit(u); } }, 'Add X'),
-          h('a', { class: 'profile-add', href: '#', onclick: (e) => { e.preventDefault(); edit(u); } }, 'Add YouTube')]
-        : links))) : null,
-  ].filter(Boolean);
-  if (!u.bio && !rows.length) return null;
+  if (u.isMe && SOCIAL_META.some(([k]) => !safeHref(socials[k]))) {
+    chips.push(h('a', { class: 'profile-add-links', href: '#', onclick: (e) => { e.preventDefault(); edit(u); } }, '+ Add links'));
+  }
+  if (!u.bio && !facts.length && !chips.length) return null;
   return h('section', { class: 'ht-panel profile-about' },
     h('div', { class: 'ht-panel-head' },
       h('span', { class: 'ht-ico', html: icon('user', { size: 16 }) }),
       h('div', { class: 'ht-panel-title' }, h('h2', null, 'About'))),
     h('div', { class: 'ht-panel-body' },
       u.bio ? h('p', { class: 'profile-bio' }, u.bio) : null,
-      rows.length ? h('div', { class: 'profile-about-meta' }, ...rows) : null));
-}
-function row(icHtml, content) {
-  return h('div', { class: 'profile-about-row' }, h('span', { class: 'ic', html: icHtml }), content);
+      (facts.length || chips.length) ? h('div', { class: 'profile-about-meta' },
+        facts.length ? h('div', { class: 'profile-about-facts' }, ...facts) : null,
+        chips.length ? h('div', { class: 'profile-socials' }, ...chips) : null) : null));
 }
 
 function rsvpBtn(ev) {

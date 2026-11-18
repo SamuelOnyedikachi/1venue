@@ -65,13 +65,19 @@ test('profile page source: About in main, rail stacks under 1024px, edit has soc
   const css = read('public/css/src/20-pages/profile.css');
   assert.match(css, /grid-template-columns:\s*minmax\(0,\s*1fr\)\s*320px/);
   assert.match(css, /@media \(max-width:\s*1023px\)/);
+  assert.match(css, /profile-about-facts/);
+  assert.match(css, /profile-about-fact::before/);
+  assert.doesNotMatch(css, /\.profile-about-row \+ \.profile-about-row/);
+  assert.match(js, /profile-about-facts/);
+  assert.match(js, /Add links/);
+  assert.doesNotMatch(js, /Add Instagram/);
   const host = read('public/js/pages/host.js');
   assert.match(host, /profile:\s*\[\s*'Profile rail'/);
   const admin = read('public/js/pages/admin.js');
   assert.match(admin, /\['profile',\s*'Profile rail \(kobo\/day\)'\]/);
   assert.match(admin, /\['profile',\s*'Profile'\]/);
-  assert.match(read('public/index.html'), /app\.css\?v=32/);
-  assert.match(read('public/sw.js'), /VERSION = 'v43-2026-11-18'/);
+  assert.match(read('public/index.html'), /app\.css\?v=33/);
+  assert.match(read('public/sw.js'), /VERSION = 'v44-2026-11-18'/);
 });
 
 
