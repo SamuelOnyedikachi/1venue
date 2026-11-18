@@ -6,7 +6,7 @@ const { USE_PG } = require('../../../db');
 const { q, one, many } = require('../../core/db');
 const { postOut, POST_SELECT } = require('../social/data');
 
-const PLACEMENTS = ['discover', 'feed', 'venues', 'books'];
+const { PROMO_PLACEMENTS: PLACEMENTS } = require('../../lib/plans');
 const EVENT_COLS = `e.id, e.slug, e.code, e.title, e.category, e.status, e.starts_at, e.cover_url, e.theme, e.host_name, e.visibility,
   u.username AS host_username, u.avatar_url AS host_avatar`;
 
@@ -55,7 +55,69 @@ async function live(placement, { limit = 3, viewerId = 0 } = {}) {
   return out;
 }
 
+
+/** Profile-rail ads: profile-placement first, then other live promos. Skip the profile
+ *  owner's own promotions unless nothing else is available. */
+async function liveForProfile(profileUserId, { limit = 2, viewerId = 0 } = {}) {
+  const cap = Math.min(6, Math.max(1, limit));
+  const ownerId = Number(profileUserId) || 0;
+  const base = `SELECT p.*, ${EVENT_COLS}, p.id AS id, e.host_user_id AS ev_host, po.user_id AS post_user
+      FROM promotions p
+      LEFT JOIN events e ON e.id = p.event_id
+      LEFT JOIN users u ON u.id = e.host_user_id
+      LEFT JOIN posts po ON po.id = p.post_id
+     WHERE p.active AND p.starts_at <= NOW() AND (p.ends_at IS NULL OR p.ends_at > NOW())
+       AND ((p.target_type = 'event' AND e.visibility = 'public' AND e.status IN ('scheduled','live','ended'))
+         OR (p.target_type = 'post' AND po.id IS NOT NULL))`;
+  const own = `(COALESCE(p.owner_user_id,0) = $1 OR COALESCE(e.host_user_id,0) = $1 OR COALESCE(po.user_id,0) = $1)`;
+  async function fetchRows({ placement, excludeOwn, excludeIds, take }) {
+    const params = [ownerId];
+    const clauses = [base];
+    if (placement) {
+      params.push(placement);
+      clauses.push(USE_PG ? `AND $${params.length} = ANY(p.placements)` : `AND EXISTS (SELECT 1 FROM json_each(p.placements) WHERE value=$${params.length})`);
+    }
+    if (excludeOwn) clauses.push(`AND NOT ${own}`);
+    if (excludeIds && excludeIds.length) {
+      params.push(excludeIds);
+      clauses.push(`AND NOT (p.id = ANY($${params.length}::int[]))`);
+    }
+    params.push(take);
+    const rows = await many(`${clauses.join(' ')} ORDER BY p.weight DESC, random() LIMIT $${params.length}`, params);
+    return rows;
+  }
+  async function pack(rows) {
+    const out = [];
+    for (const r of rows) {
+      const baseItem = { id: Number(r.id), type: r.target_type };
+      if (r.target_type === 'event') out.push({ ...baseItem, event: eventCardOut({ ...r, id: r.event_id }) });
+      else {
+        const post = await one(`${POST_SELECT} WHERE p.id = $2`, [viewerId || 0, r.post_id]);
+        if (post) out.push({ ...baseItem, post: postOut(post) });
+      }
+    }
+    return out;
+  }
+  let items = [];
+  const fill = async (step) => {
+    if (items.length >= cap) return;
+    const have = items.map((it) => it.id);
+    const rows = await fetchRows({ ...step, excludeIds: have, take: cap - items.length });
+    items = items.concat(await pack(rows));
+  };
+  // Prefer everyone else's ads. Only fall back to the profile owner's own promo
+  // when no other live promo exists.
+  await fill({ placement: 'profile', excludeOwn: true });
+  await fill({ placement: null, excludeOwn: true });
+  if (!items.length) {
+    await fill({ placement: 'profile', excludeOwn: false });
+    await fill({ placement: null, excludeOwn: false });
+  }
+  return items.slice(0, cap);
+}
+
 async function list() {
+
   const rows = await many(`SELECT p.*, e.slug AS ev_slug, e.title AS ev_title, e.status AS ev_status, po.body AS post_body,
       COALESCE(pu.display_name, pu.username) AS post_author
       FROM promotions p LEFT JOIN events e ON e.id = p.event_id LEFT JOIN posts po ON po.id = p.post_id LEFT JOIN users pu ON pu.id = po.user_id
@@ -180,4 +242,4 @@ async function candidates(type, term) {
   return rows.map((r) => ({ id: Number(r.id), title: r.title, sub: `${r.host_name || 'host'} · ${r.status}` }));
 }
 
-module.exports = { PLACEMENTS, STATUSES, adminFilters, adminList, adminRows, live, list, create, update, remove, countViews, countClick, candidates };
+module.exports = { PLACEMENTS, STATUSES, adminFilters, adminList, adminRows, live, liveForProfile, list, create, update, remove, countViews, countClick, candidates };

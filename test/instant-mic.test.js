@@ -28,6 +28,16 @@ test('instant meeting opens as an overlay from anywhere, with the log-in look', 
   const css = read('public/css/app.css');
   assert.match(css, /\.au-scrim \{[^}]*backdrop-filter:[^;]*blur/);
   assert.match(css, /\.im-opt \{/);
+
+  const src = read('public/css/src/10-components/modals.css');
+  const im = src.slice(src.indexOf('/* Instant meeting overlay'), src.indexOf('@media (min-width: 821px)'));
+  assert.match(im, /\.im-badge \{[\s\S]*color: var\(--accent-ink\)/);
+  assert.match(im, /background: linear-gradient\([\s\S]*var\(--accent\)/);
+  assert.match(im, /var\(--accent-2\)/);
+  assert.match(im, /\.im-opt\.on \{[\s\S]*var\(--accent\)/);
+  assert.match(im, /\.im-modal \.au-primary \{[\s\S]*background: var\(--accent\)/);
+  assert.match(im, /color: var\(--accent-ink\)/);
+  assert.doesNotMatch(im, /var\(--brand\)|#7c3aed/);
 });
 
 test('feed composer mic: tap-to-talk only, clear on state, stops on typing / blur / post / silence, no auto-restart', () => {

@@ -4,6 +4,7 @@
  */
 const { USE_PG } = require('../../../db');
 const { q, tx, one, many } = require('../../core/db');
+const { normalizeProfilePatch, socialsOut } = require('./profile-fields');
 
 // ---------------------------------------------------------------- prefs
 const PREF_DEFAULTS = { theme: 'system', accent: '#2563eb', accent2: null, fontScale: 1, reduceMotion: false, bibleTranslation: 'eng_kjv', captionLang: null, extra: {} };
@@ -46,6 +47,8 @@ function userCard(r) {
     name: r.display_name || uname || (r.email ? r.email.split('@')[0] : 'User'),
     handle: r.handle || uname || null,
     avatarUrl: r.avatar_url || null, bio: r.bio || null,
+    location: r.location || null, website: r.website || null, socials: socialsOut(r.socials),
+    createdAt: r.created_at || null,
     followers: r.followers != null ? Number(r.followers) : undefined,
     following: r.following != null ? Number(r.following) : undefined,
     eventCount: r.events != null ? Number(r.events) : undefined,
@@ -60,20 +63,93 @@ async function getUserProfile(id, viewerId) {
       EXISTS(SELECT 1 FROM follows WHERE follower_id=$2 AND followee_id=u.id) AS is_following
     FROM users u WHERE u.id=$1`, [id, viewerId || 0]));
 }
-async function updateProfile(id, { displayName, bio, handle, avatarUrl }) {
-  if (handle != null && handle !== '' && !/^[a-z0-9_.]{3,30}$/i.test(handle)) {
+async function updateProfile(id, body = {}) {
+  const patch = normalizeProfilePatch(body);
+  if (patch.handle != null && patch.handle !== '' && !/^[a-z0-9_.]{3,30}$/i.test(patch.handle)) {
     const e = new Error('Handle must be 3–30 letters, numbers, dots or underscores'); e.status = 400; throw e;
   }
+  const sets = []; const vals = [];
+  const add = (col, v) => { vals.push(v); sets.push(`${col}=$${vals.length + 1}`); };
+  if (patch.displayName !== undefined) add('display_name', patch.displayName || null);
+  if (patch.bio !== undefined) add('bio', patch.bio || null);
+  if (patch.handle !== undefined) {
+    vals.push(patch.handle == null ? null : String(patch.handle));
+    sets.push(`handle=CASE WHEN $${vals.length + 1}::text IS NULL THEN handle WHEN $${vals.length + 1}='' THEN NULL ELSE $${vals.length + 1} END`);
+  }
+  if (patch.avatarUrl !== undefined) add('avatar_url', patch.avatarUrl || null);
+  if (patch.location !== undefined) add('location', patch.location);
+  if (patch.website !== undefined) add('website', patch.website);
+  if (patch.socials !== undefined) {
+    vals.push(JSON.stringify(patch.socials));
+    sets.push(`socials=$${vals.length + 1}::jsonb`);
+  }
+  if (!sets.length) return getUserProfile(id, id);
+  vals.unshift(id);
   try {
-    await q(`UPDATE users SET display_name=COALESCE($2, display_name), bio=COALESCE($3, bio),
-      handle=CASE WHEN $4::text IS NULL THEN handle WHEN $4='' THEN NULL ELSE $4 END,
-      avatar_url=COALESCE($5, avatar_url), updated_at=NOW() WHERE id=$1`,
-    [id, displayName ? String(displayName).slice(0, 80) : null, bio != null ? String(bio).slice(0, 500) : null, handle == null ? null : String(handle), avatarUrl || null]);
+    await q(`UPDATE users SET ${sets.join(', ')}, updated_at=NOW() WHERE id=$1`, vals);
   } catch (e) {
     if (e.code === '23505') { const x = new Error('That handle is taken'); x.status = 409; throw x; }
     throw e;
   }
   return getUserProfile(id, id);
+}
+
+async function upcomingForUser(userId, viewerId, limit = 3) {
+  const { eventOut, EVENT_SELECT } = require('../events/data');
+  const lim = Math.min(6, Math.max(1, limit));
+  const rows = await many(`${EVENT_SELECT('$2')} WHERE e.host_user_id=$1 AND e.visibility='public'
+      AND e.status IN ('scheduled','live')
+    ORDER BY (e.status='live') DESC, e.starts_at ASC NULLS LAST LIMIT $3`, [userId, viewerId || 0, lim]);
+  return rows.map(eventOut);
+}
+
+async function profileStats(userId) {
+  const r = await one(`SELECT
+      (SELECT COUNT(*) FROM events WHERE host_user_id=$1 AND visibility='public') AS events_hosted,
+      (SELECT COALESCE(SUM(total_joins),0) FROM events WHERE host_user_id=$1 AND visibility='public') AS attendees_reached,
+      (SELECT COUNT(*) FROM follows WHERE followee_id=$1) AS followers`, [userId]);
+  return {
+    eventsHosted: Number(r.events_hosted || 0),
+    attendeesReached: Number(r.attendees_reached || 0),
+    followers: Number(r.followers || 0),
+  };
+}
+
+async function venuesForUser(userId) {
+  const rows = await many(`SELECT v.id, v.slug, v.name, v.owner_user_id, v.brand_logo_url, v.brand_cover_url
+      FROM venues v
+     WHERE v.archived_at IS NULL
+       AND (v.owner_user_id=$1 OR EXISTS (SELECT 1 FROM venue_admins a WHERE a.venue_id=v.id AND a.user_id=$1))
+     ORDER BY (v.owner_user_id=$1) DESC, v.created_at ASC`, [userId]);
+  return rows.map((r) => ({
+    id: Number(r.id), slug: r.slug, name: r.name, logoUrl: r.brand_logo_url || null, coverUrl: r.brand_cover_url || null,
+    role: Number(r.owner_user_id) === Number(userId) ? 'owner' : 'admin',
+  }));
+}
+
+async function similarHosts(userId, viewerId, limit = 3) {
+  const rows = await many(`SELECT u.*,
+      (SELECT COUNT(*) FROM follows WHERE followee_id=u.id) AS followers,
+      EXISTS(SELECT 1 FROM follows WHERE follower_id=$2 AND followee_id=u.id) AS is_following,
+      (SELECT COUNT(*) FROM events e
+        WHERE e.host_user_id=u.id AND e.visibility='public'
+          AND e.category IN (SELECT DISTINCT category FROM events WHERE host_user_id=$1 AND visibility='public')) AS shared
+    FROM users u
+    WHERE u.id <> $1
+      AND EXISTS (SELECT 1 FROM events WHERE host_user_id=u.id AND visibility='public')
+    ORDER BY shared DESC, followers DESC, u.id DESC
+    LIMIT $3`, [userId, viewerId || 0, Math.min(6, Math.max(1, limit))]);
+  return rows.map(userCard);
+}
+
+async function profileRail(userId, viewerId) {
+  const [upcoming, stats, venues, similar] = await Promise.all([
+    upcomingForUser(userId, viewerId, 3),
+    profileStats(userId),
+    venuesForUser(userId),
+    similarHosts(userId, viewerId, 3),
+  ]);
+  return { upcoming, stats, venues, similarHosts: similar };
 }
 async function searchUsers(term, limit = 8) {
   const t = `%${String(term).toLowerCase()}%`;
@@ -166,4 +242,4 @@ async function deletePost(postId, userId) {
   return (await q('DELETE FROM posts WHERE id=$1 AND user_id=$2', [postId, userId])).rowCount > 0;
 }
 
-module.exports = { PREF_DEFAULTS, FEED_FILTERS, prefsOut, getPrefs, setPrefs, userCard, getUserProfile, updateProfile, searchUsers, follow, suggestedPeople, postOut, POST_SELECT, createPost, feed, userTimeline, togglePostLike, deletePost };
+module.exports = { PREF_DEFAULTS, FEED_FILTERS, prefsOut, getPrefs, setPrefs, userCard, getUserProfile, updateProfile, searchUsers, follow, suggestedPeople, postOut, POST_SELECT, createPost, feed, userTimeline, togglePostLike, deletePost, upcomingForUser, profileStats, venuesForUser, similarHosts, profileRail };

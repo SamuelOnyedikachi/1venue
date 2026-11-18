@@ -282,7 +282,7 @@ test('payout lifecycle and promotions with admin approval', { skip, timeout: 900
   // promotions: paid, pending review, approved by admin
   const ev = await newEvent(alice);
   const q = await alice.get('/api/promote/quote?days=3');
-  assert.equal(q.body.priceKobo, 300000);
+  assert.equal(q.body.priceKobo, 345000, 'all placements include the ₦150/day profile slot');
   const st = await alice.post('/api/promote', { eventId: ev.id, days: 3 });
   assert.equal(st.status, 201, JSON.stringify(st.body));
   const ref = refOf(st.body.authorizationUrl); pay(ref);

@@ -36,7 +36,7 @@ test('range params: presets, custom from/to, and validation', () => {
 
 test('promotion pricing: placement rates x days with duration discounts, admin-configurable', () => {
   const s = plans.envDefaults();
-  assert.equal(plans.promoQuote(s, { days: 3 }).priceKobo, 300000, 'all placements = the old ₦1,000/day');
+  assert.equal(plans.promoQuote(s, { days: 3 }).priceKobo, 345000, 'all placements include the ₦150/day profile slot');
   const q = plans.promoQuote(s, { days: 7, placements: 'feed' });
   assert.equal(q.grossKobo, 7 * 30000); assert.equal(q.discountPercent, 10); assert.equal(q.priceKobo, 189000);
   assert.equal(plans.promoQuote(s, { days: 14, placements: ['feed', 'discover'] }).discountPercent, 15);
@@ -50,7 +50,7 @@ test('promotion pricing: placement rates x days with duration discounts, admin-c
   assert.throws(() => plans.promoQuote(m, { days: 5, placements: ['books'] }), (e) => e.status === 400, 'a zero rate is switched off');
   assert.throws(() => plans.mergeSettings(s, { promoPricing: { tier1Pct: 95 } }), (e) => e.status === 400);
   assert.throws(() => plans.mergeSettings(s, { promoPricing: { hero: 1 } }), (e) => e.status === 400);
-  assert.throws(() => plans.mergeSettings(s, { promoPricing: { discover: 0, feed: 0, venues: 0, books: 0 } }), (e) => e.status === 400);
+  assert.throws(() => plans.mergeSettings(s, { promoPricing: { discover: 0, feed: 0, venues: 0, books: 0, profile: 0 } }), (e) => e.status === 400);
   process.env.PROMO_RATE_FEED_KOBO = '45000'; process.env.PROMO_TIER2_PERCENT = '20'; process.env.PLATFORM_PROMO_MAX_DAYS = '14';
   try { const e = plans.envDefaults(); assert.equal(plans.promoPricing(e).feed, 45000); assert.equal(plans.promoQuote(e, { days: 14, placements: ['feed'] }).discountPercent, 20); assert.equal(e.platform.promoMaxDays, 14); assert.throws(() => plans.promoQuote(e, { days: 15, placements: ['feed'] }), (err) => err.status === 400); }
   finally { delete process.env.PROMO_RATE_FEED_KOBO; delete process.env.PROMO_TIER2_PERCENT; delete process.env.PLATFORM_PROMO_MAX_DAYS; }

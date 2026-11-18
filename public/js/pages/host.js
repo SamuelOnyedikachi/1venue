@@ -343,6 +343,7 @@ const PLACE = {
   feed: ['Feed boost', 'feed', 'A promoted card in the home feed.'],
   venues: ['Venues sidebar', 'home', 'Beside venue pages people are already visiting.'],
   books: ['Books sidebar', 'bookOpen', 'Beside the Bible and books reader.'],
+  profile: ['Profile rail', 'user', 'On public /u profile pages, in the Promoted sidebar.'],
 };
 const STATE = { live: ['Running', 'ok', 'play'], scheduled: ['Scheduled', 'accent', 'clock'], paused: ['Paused', 'muted', 'pause'], ended: ['Ended', 'muted', 'checkCircle'], pending: ['In review', 'wait', 'hourglass'], rejected: ['Not approved', 'bad', 'xCircle'] };
 function cover(ev, cls = 'ht-cover') {

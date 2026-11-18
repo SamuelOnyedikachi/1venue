@@ -9,11 +9,14 @@ import { requireLogin } from './app.js';
 const cache = new Map(); // placement -> { at, p }
 const TTL = 60_000;
 const WIDE = '(min-width: 1180px)';
-export function loadPromos(placement) {
-  const hit = cache.get(placement);
+export function loadPromos(placement, { profileUserId } = {}) {
+  const key = profileUserId ? `${placement}:${profileUserId}` : placement;
+  const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL) return hit.p;
-  const p = api(`/api/promotions?placement=${encodeURIComponent(placement)}`).then((r) => r.items || []).catch(() => []);
-  cache.set(placement, { at: Date.now(), p });
+  const qs = new URLSearchParams({ placement });
+  if (profileUserId) qs.set('profileUserId', String(profileUserId));
+  const p = api(`/api/promotions?${qs}`).then((r) => r.items || []).catch(() => []);
+  cache.set(key, { at: Date.now(), p });
   return p;
 }
 

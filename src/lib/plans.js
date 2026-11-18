@@ -55,17 +55,20 @@ const PLATFORM_KEYS = {
 
 // Self-serve promotion pricing: a per-day rate for each placement, times days, less a duration discount.
 // Rates are kobo per day; tiers are "N+ days → P% off" (0 days or 0% turns a tier off). Env: PROMO_RATE_<PLACEMENT>_KOBO,
-// PROMO_TIER<n>_DAYS, PROMO_TIER<n>_PERCENT. The four default rates add up to the old flat promoDayKobo (₦1,000 a day).
-const PROMO_PLACEMENTS = ['discover', 'feed', 'venues', 'books'];
+// PROMO_TIER<n>_DAYS, PROMO_TIER<n>_PERCENT. The original four default rates still add up to the old flat
+// promoDayKobo (₦1,000 a day). Profile is a separate placement (default ₦150 / day) and is not part of that split.
+const PROMO_PLACEMENTS = ['discover', 'feed', 'venues', 'books', 'profile'];
+const LEGACY_PROMO_PLACEMENTS = ['discover', 'feed', 'venues', 'books'];
 const PROMO_SHARE = { discover: 35, feed: 30, venues: 20, books: 15 };
 const PROMO_KEYS = {
-  discover: [35000, 1e10], feed: [30000, 1e10], venues: [20000, 1e10], books: [15000, 1e10],
+  discover: [35000, 1e10], feed: [30000, 1e10], venues: [20000, 1e10], books: [15000, 1e10], profile: [15000, 1e10],
   tier1Days: [7, 365], tier1Pct: [10, 90], tier2Days: [14, 365], tier2Pct: [15, 90], tier3Days: [30, 365], tier3Pct: [25, 90],
 };
-/** Placement rates that add up to one flat per-day price (used when only promoDayKobo was customised). */
+/** Placement rates that add up to one flat per-day price (used when only promoDayKobo was customised).
+ *  Profile is left out so a saved flat day price keeps the same Discover/Feed/Venues/Books total. */
 function scaledRates(dayKobo) {
   const out = {}; let left = dayKobo;
-  for (const k of PROMO_PLACEMENTS.slice(1)) { out[k] = Math.floor((dayKobo * PROMO_SHARE[k]) / 100); left -= out[k]; }
+  for (const k of LEGACY_PROMO_PLACEMENTS.slice(1)) { out[k] = Math.floor((dayKobo * PROMO_SHARE[k]) / 100); left -= out[k]; }
   out.discover = left;
   return out;
 }

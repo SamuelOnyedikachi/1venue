@@ -3,6 +3,176 @@ import { h, api, toast, toastErr, avatar, fmtNum, sheet, uploadFile, profilePath
 import { state, navigate, requireLogin, refreshSession } from '../app.js';
 import { postCard, eventCard, empty, followBtn, shareLink } from '../components.js';
 import { composer } from './feed.js';
+import { loadPromos, promoCompact } from '../promo.js';
+
+const SOCIAL_META = [
+  ['x', 'socialX', 'X'],
+  ['instagram', 'instagram', 'Instagram'],
+  ['linkedin', 'linkedin', 'LinkedIn'],
+  ['tiktok', 'tiktok', 'TikTok'],
+  ['youtube', 'youtube', 'YouTube'],
+];
+
+function safeHref(url) {
+  return typeof url === 'string' && /^https:\/\//i.test(url) ? url : null;
+}
+function linkLabel(url) {
+  try { return new URL(url).hostname.replace(/^www\./, '') + (new URL(url).pathname === '/' ? '' : new URL(url).pathname.replace(/\/$/, '')); }
+  catch { return url; }
+}
+function joinedLabel(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return 'Joined ' + d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+}
+function initials(name) {
+  return String(name || '?').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
+}
+
+function aboutBlock(u) {
+  const socials = u.socials || {};
+  const links = SOCIAL_META.map(([k, ic, label]) => {
+    const href = safeHref(socials[k]);
+    return href
+      ? h('a', { class: 'btn sm profile-social', href, target: '_blank', rel: 'noopener noreferrer', html: icon(ic, { size: 14 }) + label })
+      : (u.isMe ? h('span', { class: 'muted tiny' }, `Add ${label}`) : null);
+  }).filter(Boolean);
+  const web = safeHref(u.website);
+  const rows = [
+    u.location ? row(icon('mapPin', { size: 16 }), u.location) : (u.isMe ? row(icon('mapPin', { size: 16 }), h('a', { class: 'profile-add', href: '#', onclick: (e) => { e.preventDefault(); edit(u); } }, 'Add location')) : null),
+    joinedLabel(u.createdAt) ? row(icon('calendar', { size: 16 }), joinedLabel(u.createdAt)) : null,
+    web ? row(icon('globe', { size: 16 }), h('a', { href: web, target: '_blank', rel: 'noopener noreferrer' }, linkLabel(web)))
+      : (u.isMe ? row(icon('globe', { size: 16 }), h('a', { class: 'profile-add', href: '#', onclick: (e) => { e.preventDefault(); edit(u); } }, 'Add website')) : null),
+    (links.length || u.isMe) ? row(icon('link', { size: 16 }), h('div', { class: 'profile-socials' },
+      ...(u.isMe && !SOCIAL_META.some(([k]) => socials[k])
+        ? [h('a', { class: 'profile-add', href: '#', onclick: (e) => { e.preventDefault(); edit(u); } }, 'Add Instagram'),
+          h('a', { class: 'profile-add', href: '#', onclick: (e) => { e.preventDefault(); edit(u); } }, 'Add X'),
+          h('a', { class: 'profile-add', href: '#', onclick: (e) => { e.preventDefault(); edit(u); } }, 'Add YouTube')]
+        : links))) : null,
+  ].filter(Boolean);
+  if (!u.bio && !rows.length) return null;
+  return h('section', { class: 'ht-panel profile-about' },
+    h('div', { class: 'ht-panel-head' },
+      h('span', { class: 'ht-ico', html: icon('user', { size: 16 }) }),
+      h('div', { class: 'ht-panel-title' }, h('h2', null, 'About'))),
+    h('div', { class: 'ht-panel-body' },
+      u.bio ? h('p', { class: 'profile-bio' }, u.bio) : null,
+      rows.length ? h('div', { class: 'profile-about-meta' }, ...rows) : null));
+}
+function row(icHtml, content) {
+  return h('div', { class: 'profile-about-row' }, h('span', { class: 'ic', html: icHtml }), content);
+}
+
+function rsvpBtn(ev) {
+  let going = !!ev.rsvped;
+  const btn = h('button', { class: 'feed-promo-rsvp', type: 'button' });
+  const paint = () => { btn.textContent = going ? 'Going' : 'RSVP'; btn.classList.toggle('is-going', going); };
+  paint();
+  btn.onclick = async (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (!requireLogin('Sign in to RSVP')) return;
+    btn.disabled = true;
+    try {
+      const r = await api(`/api/events/${ev.id}/rsvp`, { method: 'POST' });
+      going = !!r.going; ev.rsvped = going; paint();
+    } catch (er) { toastErr(er); } finally { btn.disabled = false; }
+  };
+  return btn;
+}
+function whenChip(ev) {
+  const live = ev.status === 'live' || ev.live;
+  if (live) return h('span', { class: 'rail-when soon' }, h('span', { class: 'mon' }, 'Live'), h('span', { class: 'day' }, 'Now'));
+  if (!ev.startsAt) return h('span', { class: 'rail-when' }, h('span', { class: 'day' }, '—'));
+  const d = new Date(ev.startsAt);
+  return h('span', { class: 'rail-when' },
+    h('span', { class: 'mon' }, d.toLocaleDateString(undefined, { month: 'short' })),
+    h('span', { class: 'day' }, String(d.getDate())),
+    h('span', { class: 'tm' }, d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })));
+}
+function upcomingRow(ev) {
+  const live = ev.status === 'live' || ev.live;
+  const bits = [];
+  if (live) bits.push('Live now');
+  else if (ev.startsAt) bits.push(new Date(ev.startsAt).toLocaleDateString(undefined, { weekday: 'short' }));
+  if (!live && ev.rsvps) bits.push(`${fmtNum(ev.rsvps)} RSVP${ev.rsvps === 1 ? '' : 's'}`);
+  const meta = bits.join(' · ');
+  return h('div', { class: 'profile-soon-row' },
+    whenChip(ev),
+    h('a', { class: 'profile-soon-body', href: `/e/${ev.slug}`, 'data-link': '' },
+      h('span', { class: 'rail-title' }, ev.title),
+      meta ? h('span', { class: 'soon-meta' }, meta) : null),
+    rsvpBtn(ev));
+}
+
+function statRow(ic, value, label) {
+  return h('div', { class: 'pr-stat' },
+    h('span', { class: 'pr-stat-ic', html: icon(ic, { size: 15 }) }),
+    h('div', null, h('strong', null, fmtNum(value)), h('span', null, label)));
+}
+
+function rail(u) {
+  const aside = h('aside', { class: 'profile-rail' });
+  const upcoming = u.upcoming || [];
+  if (upcoming.length) {
+    aside.append(h('section', { class: 'ev-card' },
+      h('div', { class: 'ev-rail-head tiny faint' }, 'Next up'),
+      h('div', { class: 'profile-rail-body' }, ...upcoming.map(upcomingRow))));
+  }
+  const st = u.stats || {};
+  aside.append(h('section', { class: 'ev-card' },
+    h('div', { class: 'ev-rail-head tiny faint' }, 'Stats'),
+    h('div', { class: 'profile-rail-body pr-stats' },
+      statRow('calendar', st.eventsHosted ?? (u.events?.length || 0), 'Events hosted'),
+      statRow('users', st.attendeesReached ?? 0, 'Attendees reached'),
+      statRow('heart', st.followers ?? u.followers ?? 0, 'Followers'))));
+
+  const promoBox = h('section', { class: 'ev-card profile-promoted', hidden: true },
+    h('div', { class: 'ev-rail-head tiny faint' }, 'Promoted'),
+    h('div', { class: 'profile-rail-body' }));
+  aside.append(promoBox);
+  loadPromos('profile', { profileUserId: u.id }).then((items) => {
+    if (!items.length || !promoBox.isConnected) return;
+    promoBox.hidden = false;
+    const body = promoBox.querySelector('.profile-rail-body');
+    body.replaceChildren(...items.slice(0, 2).map(promoCompact).filter(Boolean));
+  });
+
+  const similar = u.similarHosts || [];
+  if (similar.length) {
+    aside.append(h('section', { class: 'ev-card' },
+      h('div', { class: 'ev-rail-head tiny faint' }, 'Similar hosts'),
+      h('div', { class: 'profile-rail-body' }, ...similar.map((p) =>
+        h('div', { class: 'profile-host-row' },
+          h('a', { class: 'profile-host-link', href: profilePath(p), 'data-link': '' },
+            avatar(p.name, p.avatarUrl, 'md'),
+            h('div', { class: 'profile-host-copy' },
+              h('strong', null, p.name),
+              h('div', { class: 'handle' }, p.username || p.handle ? '@' + (p.username || p.handle) : ''),
+              p.bio ? h('p', null, p.bio) : null)),
+          state.user && state.user.id !== p.id ? followBtn(p) : null)))));
+  }
+
+  const venues = u.venues || [];
+  if (venues.length) {
+    aside.append(h('section', { class: 'ev-card' },
+      h('div', { class: 'ev-rail-head tiny faint' }, 'Venues they use'),
+      h('div', { class: 'profile-rail-body' }, ...venues.map((v) =>
+        h('a', { class: 'profile-venue-row', href: `/v/${encodeURIComponent(v.slug)}`, 'data-link': '' },
+          v.logoUrl ? h('img', { class: 'profile-venue-mark img', src: v.logoUrl, alt: '' })
+            : h('div', { class: 'profile-venue-mark' }, initials(v.name)),
+          h('div', { class: 'profile-venue-copy' }, h('strong', null, v.name), h('span', { class: 'muted' }, 'Hosted on 1venue')),
+          v.role === 'owner' ? h('span', { class: 'profile-pill' }, 'Owner') : null)))));
+  }
+
+  if (u.isMe) {
+    aside.append(h('section', { class: 'ev-card profile-promote' },
+      h('h2', null, 'Promote your profile'),
+      h('p', null, 'Reach more people on 1venue. A short boost puts you on profiles, Discover and the feed.'),
+      h('a', { class: 'btn primary sm', href: '/host?tab=promote', 'data-link': '' }, 'Promote')));
+  }
+  return aside;
+}
 
 export async function mount(view, params) {
   let id = params.id;
@@ -14,7 +184,6 @@ export async function mount(view, params) {
       h('a', { class: 'btn primary', href: '/discover', 'data-link': '', style: { margin: '1rem auto 0', width: 'fit-content' } }, 'Discover people and events')));
     return;
   }
-  // Canonical public URL is /u/<username> (lower case); /u/<id> and /u/<Handle> are rewritten.
   if (!params.me && u.username && location.pathname !== `/u/${u.username}`) history.replaceState({}, '', `/u/${encodeURIComponent(u.username)}${location.search}`);
   document.title = `${u.name}${u.username ? ` (@${u.username})` : ''} — 1venue`;
   id = u.username || u.id;
@@ -30,37 +199,63 @@ export async function mount(view, params) {
     r.posts.forEach((p) => body.append(postCard(p)));
     if (!r.posts.length) body.append(empty('feed', u.isMe ? 'Your timeline starts here' : 'Nothing posted yet', u.isMe ? 'Posts, events you host and session summaries you share appear here.' : null));
   }
-  // Message: shown only when the allow-list lets me start (or continue) a chat with this person.
   const msgBtn = h('a', { class: 'btn sm', href: `/messages/new?user=${u.id}`, 'data-link': '', style: { display: 'none' }, html: icon('chat', { size: 15 }) + 'Message' });
   if (state.user && !u.isMe && u.id) api(`/api/messages/can?userId=${u.id}`).then((r) => { msgBtn.style.display = r.ok ? '' : 'none'; }).catch(() => {});
   document.body.dataset.page = 'profile';
   view.classList.add('profile-view');
-  const evCount = Array.isArray(u.events) ? u.events.length : (u.eventCount ?? u.events);
-  view.append(h('section', { class: 'profile-hero card' },
-    h('div', { class: 'band' }),
-    h('div', { class: 'in' }, avatar(u.name, u.avatarUrl, 'xxl ring'),
-      h('div', { class: 'grow profile-copy' }, h('h1', null, u.name), u.username || u.handle ? h('div', { class: 'muted profile-handle' }, '@' + (u.username || u.handle)) : null, u.bio ? h('p', { class: 'profile-bio' }, u.bio) : null,
-        h('div', { class: 'profile-stats' },
-          h('div', { class: 'profile-stat' }, h('strong', null, fmtNum(u.followers)), h('span', null, 'Followers')),
-          h('div', { class: 'profile-stat' }, h('strong', null, fmtNum(u.following)), h('span', null, 'Following')),
-          h('div', { class: 'profile-stat' }, h('strong', null, fmtNum(evCount)), h('span', null, 'Events')))),
-      h('div', { class: 'row wrap profile-actions' },
-        u.isMe ? h('button', { class: 'btn sm', html: icon('pen', { size: 15 }) + 'Edit profile', onclick: () => edit(u) }) : state.user ? followBtn(u, (on) => { u.followers += on ? 1 : -1; }) : null,
-        msgBtn,
-        h('button', { class: 'icon-btn', 'data-group': 'content', 'data-tip': 'Share profile', 'aria-label': 'Share', html: icon('share'), onclick: () => shareLink(`${location.origin}${profilePath(u)}`, u.name) })))),
-  tabs, body);
+  view.append(
+    h('section', { class: 'profile-hero card' },
+      h('div', { class: 'band' }),
+      h('div', { class: 'in' }, avatar(u.name, u.avatarUrl, 'xxl ring'),
+        h('div', { class: 'grow profile-copy' }, h('h1', null, u.name), u.username || u.handle ? h('div', { class: 'muted profile-handle' }, '@' + (u.username || u.handle)) : null),
+        h('div', { class: 'row wrap profile-actions' },
+          u.isMe ? h('button', { class: 'btn sm', html: icon('pen', { size: 15 }) + 'Edit profile', onclick: () => edit(u) }) : state.user ? followBtn(u, (on) => { u.followers += on ? 1 : -1; }) : null,
+          msgBtn,
+          h('button', { class: 'icon-btn', 'data-group': 'content', 'data-tip': 'Share profile', 'aria-label': 'Share', html: icon('share'), onclick: () => shareLink(`${location.origin}${profilePath(u)}`, u.name) })))),
+    h('div', { class: 'profile-layout' },
+      h('div', { class: 'profile-main' }, aboutBlock(u), tabs, body),
+      rail(u)));
   paintTabs(); load();
   if (params.edit && u.isMe) edit(u);
 }
+
 function edit(u) {
   const s = sheet({ title: 'Edit profile', icon: 'user', group: 'people' });
   const name = h('input', { class: 'input', value: u.name || '', placeholder: 'Display name', maxlength: 60 });
   const bio = h('textarea', { class: 'textarea', rows: 3, placeholder: 'Short bio', maxlength: 400 }); bio.value = u.bio || '';
+  const loc = h('input', { class: 'input', value: u.location || '', placeholder: 'City, country', maxlength: 80 });
+  const website = h('input', { class: 'input', type: 'url', value: u.website || '', placeholder: 'https://', maxlength: 200 });
+  const socials = u.socials || {};
+  const socialInputs = Object.fromEntries(SOCIAL_META.map(([k, , label]) => {
+    const inp = h('input', { class: 'input', value: socials[k] || '', placeholder: `${label} handle or URL`, maxlength: 200, autocomplete: 'off' });
+    return [k, inp];
+  }));
   let avatarUrl = u.avatarUrl;
   const av = h('div', { class: 'row' }, avatar(u.name, avatarUrl, 'lg'));
   const f = h('input', { type: 'file', accept: 'image/*', class: 'hidden' });
   f.onchange = async () => { try { const r = await uploadFile(f.files[0], { purpose: 'avatar' }); avatarUrl = r.url; av.firstChild.replaceWith(avatar(u.name, avatarUrl, 'lg')); } catch (e) { toastErr(e); } };
-  s.body.append(h('div', { class: 'col' }, h('div', { class: 'row' }, av, h('button', { class: 'btn sm', html: icon('image', { size: 15 }) + 'Change photo', onclick: () => f.click() }), f),
-    h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Display name'), name), h('div', { class: 'field' }, h('span', { class: 'lbl' }, 'Public link'), h('div', { class: 'row small', style: { gap: '.5rem' } }, h('code', null, `${location.host}/u/${u.username}`), h('a', { href: '/settings#account', 'data-link': '', onclick: () => s.close() }, 'Change username'))), h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Bio'), bio),
-    h('button', { class: 'btn primary', onclick: async () => { try { await api('/api/profile', { method: 'PATCH', body: { displayName: name.value.trim(), bio: bio.value.trim(), avatarUrl } }); toast('Profile saved', { icon: 'check' }); s.close(); await refreshSession(); navigate('/me', { replace: true }); } catch (e) { toastErr(e); } } }, 'Save')));
+  const field = (lbl, el) => h('label', { class: 'field' }, h('span', { class: 'lbl' }, lbl), el);
+  s.body.append(h('div', { class: 'col' },
+    h('div', { class: 'row' }, av, h('button', { class: 'btn sm', html: icon('image', { size: 15 }) + 'Change photo', onclick: () => f.click() }), f),
+    field('Display name', name),
+    h('div', { class: 'field' }, h('span', { class: 'lbl' }, 'Public link'), h('div', { class: 'row small', style: { gap: '.5rem' } }, h('code', null, `${location.host}/u/${u.username}`), h('a', { href: '/settings#account', 'data-link': '', onclick: () => s.close() }, 'Change username'))),
+    field('Bio', bio),
+    field('Location', loc),
+    field('Website', website),
+    h('p', { class: 'lbl' }, 'Socials'),
+    field('X', socialInputs.x),
+    field('Instagram', socialInputs.instagram),
+    field('LinkedIn', socialInputs.linkedin),
+    field('TikTok', socialInputs.tiktok),
+    field('YouTube', socialInputs.youtube),
+    h('button', { class: 'btn primary', onclick: async () => {
+      try {
+        await api('/api/profile', { method: 'PATCH', body: {
+          displayName: name.value.trim(), bio: bio.value.trim(), avatarUrl,
+          location: loc.value.trim(), website: website.value.trim(),
+          socials: Object.fromEntries(SOCIAL_META.map(([k]) => [k, socialInputs[k].value.trim()])),
+        } });
+        toast('Profile saved', { icon: 'check' }); s.close(); await refreshSession(); navigate('/me', { replace: true });
+      } catch (e) { toastErr(e); }
+    } }, 'Save')));
 }
