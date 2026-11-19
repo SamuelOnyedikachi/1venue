@@ -31,6 +31,10 @@ export async function mount(view) {
     "aria-live": "polite",
   });
   const balance = h("strong", { class: "wallet-balance" });
+  const meetingPending = h("strong");
+  const meetingAvailable = h("strong");
+  const transferAmount = h("input", { class: "input", type: "number", min: "0.1", step: "0.1", value: "0.8", inputmode: "decimal" });
+  const transferButton = h("button", { class: "btn primary", type: "button", html: icon("arrowRight", { size: 16 }) + "<span>Move to spending wallet</span>" });
   const amount = h("input", {
     class: "input",
     id: "wallet-credits",
@@ -77,6 +81,13 @@ export async function mount(view) {
     balance.replaceChildren(creditsEl(wallet.balanceCredits, { size: 26 }));
     checkout.disabled = !wallet.purchasesEnabled || buying;
   }
+  function renderEarnings() {
+    const e = wallet.meetingEarnings || {};
+    meetingPending.replaceChildren(creditsEl(e.pendingCredits || 0));
+    meetingAvailable.replaceChildren(creditsEl(e.availableCredits || 0));
+    transferAmount.max = String(e.availableCredits || 0);
+    transferButton.disabled = !(Number(e.availableCredits) >= Number(transferAmount.value) && Number(transferAmount.value) > 0);
+  }
   function renderEntries(list, append = false) {
     if (!append) entries.replaceChildren();
     if (!list.length && !append)
@@ -84,18 +95,26 @@ export async function mount(view) {
         h(
           "p",
           { class: "small muted" },
-          "No credit transactions yet. Completed purchases will appear here.",
+          "Credit additions and meeting usage will appear here.",
         ),
       );
     for (const entry of list) {
       const title =
         entry.type === "usage"
           ? entry.meetingName || entry.meetingCode || "Meeting usage"
-          : "Credit purchase";
+          : entry.type === "welcome" ? "Welcome credits"
+            : entry.type === "entry" ? (entry.meetingName || "Paid meeting entry")
+              : entry.type === "entry_refund" ? (entry.meetingName || "Paid meeting refund")
+                : entry.type === "extension" ? (entry.meetingName || "Meeting extension")
+                : entry.type === "earning_transfer" ? "Meeting earnings transfer" : "Credit purchase";
       const detail =
         entry.type === "usage"
           ? `Meeting usage · ${timeAgo(entry.createdAt)}`
-          : timeAgo(entry.createdAt);
+          : entry.type === "welcome" ? `New account bonus · ${timeAgo(entry.createdAt)}`
+            : entry.type === "entry" ? `Paid meeting entry · ${timeAgo(entry.createdAt)}`
+              : entry.type === "entry_refund" ? `Meeting refund · ${timeAgo(entry.createdAt)}`
+                : entry.type === "extension" ? `Added meeting time · ${timeAgo(entry.createdAt)}`
+                : entry.type === "earning_transfer" ? `Host earnings moved to spending wallet · ${timeAgo(entry.createdAt)}` : timeAgo(entry.createdAt);
       entries.append(
         h(
           "div",
@@ -133,6 +152,7 @@ export async function mount(view) {
     if (!alive) return;
     wallet = summary;
     renderBalance();
+    renderEarnings();
     refreshCredits();
     renderEntries(ledger.entries);
     cursor = ledger.nextBefore;
@@ -269,6 +289,16 @@ export async function mount(view) {
     clearTimeout(quoteTimer);
     quoteTimer = setTimeout(updateQuote, 250);
   };
+  transferAmount.oninput = renderEarnings;
+  transferButton.onclick = async () => {
+    transferButton.disabled = true;
+    try {
+      const moved = await api("/api/wallet/meeting-earnings/transfer", { method: "POST", body: { credits: Number(transferAmount.value) } });
+      notify(`${credits(moved.credits)} credits moved to your spending wallet.`);
+      await refresh();
+    } catch (e) { notify(e.message, true); }
+    finally { renderEarnings(); }
+  };
   const form = h(
     "form",
     {
@@ -350,11 +380,6 @@ export async function mount(view) {
       "div",
       { class: "page-head" },
       h("h1", { html: icon("creditCard", { size: 26 }) + "Credit wallet" }),
-      h(
-        "p",
-        { class: "muted" },
-        `${fmtMoney(wallet.pricePerCreditKobo)} per credit. Purchased credits never expire.`,
-      ),
     ),
     h(
       "section",
@@ -362,6 +387,15 @@ export async function mount(view) {
       h("span", { class: "small muted" }, "Available balance"),
       balance,
     ),
+    h("section", { class: "card pad" },
+      h("h2", null, "Meeting earnings"),
+      h("p", { class: "small muted" }, "Paid-entry meeting earnings become available after the meeting ends and refunds are settled. Your share is 80% of retained entry credits."),
+      h("div", { class: "row between wrap", style: { gap: ".8rem", margin: ".8rem 0" } },
+        h("div", null, h("span", { class: "tiny muted" }, "Pending"), h("br"), meetingPending),
+        h("div", null, h("span", { class: "tiny muted" }, "Available to transfer"), h("br"), meetingAvailable)),
+      h("div", { class: "row wrap", style: { gap: ".6rem", alignItems: "end" } },
+        h("label", { class: "field", style: { maxWidth: "12rem" } }, h("span", { class: "lbl" }, "Credits to move"), transferAmount),
+        transferButton)),
     message,
     h("section", { class: "card pad" }, h("h2", null, "Buy credits"), form,
       h("a", { class: "tiny wallet-auto", href: "/settings#auto-topup", "data-link": "", html: icon("zap", { size: 14 }) + "Auto top-up when my balance runs low" })),

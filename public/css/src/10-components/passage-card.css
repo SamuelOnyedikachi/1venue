@@ -33,7 +33,7 @@
   display: inline-grid;
 }
 .passage-card .pc-ref {
-  font-weight: 650;
+  font-weight: 600;
   color: var(--text);
   text-decoration: none;
 }

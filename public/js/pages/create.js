@@ -19,6 +19,7 @@ export async function mount(view, params) {
   const editing = params.edit ? await api(`/api/events/${encodeURIComponent(params.edit)}`).catch(() => null) : null;
   const ev = editing || { category: params.category || 'talk_show', visibility: 'public', speakerSeats: 4, theme: { accent: state.prefs.accent, accent2: state.prefs.accent2 || ACCENTS.find((a) => a[1] === state.prefs.accent)?.[2] || '#7c3aed' }, tags: [] };
   let category = ev.category, visibility = ev.visibility, seats = ev.speakerSeats || 4, coverUrl = ev.coverUrl || null;
+  let meetingAccessMode = ev.meetingAccessMode || 'host_funded';
   let catTouched = !!editing, themeTouched = !!editing;
   let acc = ev.theme?.accent || '#2563eb', acc2 = ev.theme?.accent2 || '#7c3aed';
   let materialIds = [];
@@ -49,7 +50,27 @@ export async function mount(view, params) {
     if (k === category) o.selected = true;
     catSel.append(o);
   });
-  catSel.onchange = () => { category = catSel.value; catTouched = true; preview(); };
+  const accessMode = h('select', { class: 'input' },
+    h('option', { value: 'host_funded' }, 'Host-funded'),
+    h('option', { value: 'paid_entry' }, 'Paid entry'));
+  accessMode.value = meetingAccessMode;
+  const meetingDuration = h('input', { class: 'input', type: 'number', min: 1, max: 720, step: 1, value: String(ev.meetingDurationMin || 60), inputmode: 'numeric' });
+  const entryPrice = h('input', { class: 'input', type: 'number', min: 1, step: 1, value: String(ev.meetingEntryPriceCredits || 30), inputmode: 'numeric' });
+  const paidEntryFields = h('div', { class: 'grid2', hidden: meetingAccessMode !== 'paid_entry' },
+    field('Advertised duration (minutes)', 'clock', meetingDuration),
+    field('Entry price (credits)', 'coin', entryPrice));
+  const meetingAccess = h('div', { class: 'card pad layer col', style: { gap: '.8rem' }, hidden: category !== 'meeting' },
+    field('Who pays for this meeting?', 'wallet', accessMode),
+    h('p', { class: 'tiny muted' }, 'Paid-entry attendees must sign in. They are charged when you accept them. You receive 80% of entry credits after refunds are settled.'),
+    paidEntryFields);
+  const syncMeetingAccess = () => {
+    meetingAccess.hidden = category !== 'meeting';
+    if (category !== 'meeting') { meetingAccessMode = 'host_funded'; accessMode.value = 'host_funded'; }
+    else meetingAccessMode = accessMode.value;
+    paidEntryFields.hidden = meetingAccessMode !== 'paid_entry';
+  };
+  accessMode.onchange = () => { meetingAccessMode = accessMode.value; paidEntryFields.hidden = meetingAccessMode !== 'paid_entry'; };
+  catSel.onchange = () => { category = catSel.value; catTouched = true; syncMeetingAccess(); preview(); };
 
   const visSeg = h('div', { class: 'seg' }, [['public', 'Public', 'globe'], ['unlisted', 'Unlisted', 'link'], ['private', 'Private', 'lock']].map(([v, l, ic]) =>
     h('button', { type: 'button', class: visibility === v ? 'on' : '', 'data-v': v, html: icon(ic, { size: 15 }) + l, onclick: () => { visibility = v; visSeg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === v)); } })));
@@ -227,7 +248,7 @@ export async function mount(view, params) {
     if (apply.title && r.title) title.value = r.title;
     if (apply.description && r.description) desc.value = r.description;
     if (apply.tags && Array.isArray(r.tags) && r.tags.length) tags.value = r.tags.join(', ');
-    if (apply.category && r.category) { category = r.category; catSel.value = r.category; catTouched = true; }
+    if (apply.category && r.category) { category = r.category; catSel.value = r.category; catTouched = true; syncMeetingAccess(); }
     if (apply.theme && r.theme && r.theme.accent) setTheme(r.theme.accent, r.theme.accent2);
     if (apply.starts && r.start) starts.value = r.start;
     if (apply.ends && r.end) ends.value = r.end;
@@ -339,6 +360,9 @@ export async function mount(view, params) {
     startsAt: starts.value ? new Date(starts.value).toISOString() : null,
     endsAt: ends.value ? new Date(ends.value).toISOString() : null,
     speakers: speakers.map((s) => ({ userId: s.userId || null, name: s.name, headline: s.headline || null, avatarUrl: s.avatarUrl || null, email: s.email || null })),
+    meetingAccessMode: category === 'meeting' ? meetingAccessMode : 'host_funded',
+    meetingDurationMin: category === 'meeting' && meetingAccessMode === 'paid_entry' ? Number(meetingDuration.value) : null,
+    meetingEntryPriceCredits: category === 'meeting' && meetingAccessMode === 'paid_entry' ? Number(entryPrice.value) : null,
   });
 
   async function save(goLive) {
@@ -354,7 +378,7 @@ export async function mount(view, params) {
       }
       toast(editing ? 'Saved' : 'Event published', { icon: 'check', group: 'engage' });
       if (goLive) {
-        sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, eventId: r.id, name: r.title, stage: category !== 'meeting', speakerSeats: seats, code: r.code }));
+        sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, eventId: r.id, name: r.title, stage: category !== 'meeting', speakerSeats: seats, code: r.code, meetingAccessMode: r.meetingAccessMode, meetingDurationMin: r.meetingDurationMin, meetingEntryPriceCredits: r.meetingEntryPriceCredits }));
         navigate('/' + String(r.code).toLowerCase());
       } else navigate(`/e/${r.slug}`);
     } catch (e) { toastErr(e); }
@@ -367,6 +391,7 @@ export async function mount(view, params) {
       field('Description', 'notes', desc),
       field('Category', 'tag', catSel),
       field('Tags', 'hash', tags)),
+    meetingAccess,
     h('div', { class: 'card pad layer col has-suggest', style: { gap: '1rem' } },
       h('div', { class: 'grid2' }, field('Starts', 'calendar', starts), field('Ends', 'clock', ends)),
       field('Visibility', 'eye', visSeg),

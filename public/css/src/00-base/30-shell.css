@@ -3,6 +3,8 @@
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
 }
 .topbar {
   position: sticky;
@@ -13,6 +15,10 @@
   display: flex;
   align-items: center;
   gap: 1rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   background: var(--glass);
   backdrop-filter: saturate(1.6) blur(18px);
   -webkit-backdrop-filter: saturate(1.6) blur(18px);
@@ -100,7 +106,7 @@
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-weight: 650;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   transition:
@@ -185,6 +191,9 @@
     scrollbar-width: none;
   }
   .topnav::-webkit-scrollbar {
+    display: none;
+  }
+  .topbar .brand span {
     display: none;
   }
   .topnav a,

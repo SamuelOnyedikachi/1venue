@@ -45,9 +45,14 @@ test('all routed pages fit across responsive breakpoints at default and largest 
     assert.ok(ev.status === 200 || ev.status === 201, JSON.stringify(ev.body));
     const slug = ev.body.slug;
     assert.ok(slug);
-    const cookies = u.jar.header().split('; ').map((cookie) => {
-      const i = cookie.indexOf('=');
-      return { name: cookie.slice(0, i), value: cookie.slice(i + 1), url: s.base };
+    const username = signed.body.user.username;
+    assert.ok(username);
+
+    const baseUrl = new URL(s.base);
+    const raw = u.jar && u.jar.header ? u.jar.header() : '';
+    const cookies = raw.split(';').map((x) => x.trim()).filter(Boolean).flatMap((pair) => {
+      const i = pair.indexOf('=');
+      return i > 0 ? [{ name: pair.slice(0, i), value: pair.slice(i + 1), domain: baseUrl.hostname, path: '/' }] : [];
     });
 
     browser = await puppeteer.launch({
@@ -56,13 +61,13 @@ test('all routed pages fit across responsive breakpoints at default and largest 
       args: ['--no-sandbox', '--disable-dev-shm-usage', '--hide-scrollbars'],
     });
     const page = await browser.newPage();
-    await page.setCookie(...cookies);
+    if (cookies.length) await page.setCookie(...cookies);
     await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
     const widths = [320, 360, 375, 390, 414, 430, 480, 600, 640, 768, 820, 821, 834, 900, 960, 1023, 1024, 1100, 1150, 1200, 1280, 1320, 1366, 1400, 1401, 1440, 1600, 1920];
     const routes = [
       '/', '/discover', '/search?q=responsive', '/e/' + slug, '/create', '/materials', '/materials/1',
       '/dashboard', '/a/' + 'a'.repeat(32), '/feed', '/messages', '/messages/1',
-      '/u/' + signed.body.user.username, '/me', '/wallet', '/upgrade', '/billing', '/host', '/replay/1',
+      '/u/' + username, '/me', '/wallet', '/upgrade', '/billing', '/host', '/replay/1',
       '/settings', '/books', '/bible', '/sessions', '/session/1', '/whiteboard', '/login', '/admin',
       '/signup', '/forgot-password', '/reset-password', '/verify-email', '/venues', '/v/lagos-venue',
       '/new', '/ABC-234',

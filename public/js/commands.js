@@ -155,7 +155,7 @@ function run(c) {
 }
 
 export function mountCommandBar(host) {
-  input = h('input', { type: 'search', enterkeyhint: 'go', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Search commands, events, people, scripture' });
+  input = h('input', { type: 'text', role: 'searchbox', inputmode: 'search', enterkeyhint: 'search', autocapitalize: 'off', autocorrect: 'off', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Search commands, events, people, scripture' });
   actionsEl = h('div', { class: 'cmd-actions', role: 'toolbar', 'aria-label': 'Quick actions' });
   bar = h('div', { class: 'cmdbar', id: 'cmdbar' },
     h('label', { class: 'cmd-in', html: icon('search', { size: 18 }) }, input, h('span', { class: 'cmd-kbd' }, '/')),

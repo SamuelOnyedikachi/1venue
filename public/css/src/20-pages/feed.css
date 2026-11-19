@@ -181,7 +181,7 @@
   background: transparent;
   color: var(--muted);
   font: inherit;
-  font-weight: 650;
+  font-weight: 600;
   font-size: 0.9rem;
   padding: 0.45rem 0.65rem;
   border-radius: 11px;
@@ -227,13 +227,13 @@
   color: #e11d48;
 }
 .feed-mini-title {
-  font-weight: 700;
+  font-weight: 600;
   font-size: 0.88rem;
   line-height: 1.25;
 }
 .feed-live-dot {
   color: #e11d48;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.04em;
   font-size: 0.68rem;
 }
@@ -242,7 +242,7 @@
 }
 .feed-promo {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.6rem;
   padding: 0.4rem 0;
 }
@@ -289,7 +289,7 @@
   margin: 0;
 }
 .feed-promo-title {
-  font-weight: 700;
+  font-weight: 600;
   font-size: 0.86rem;
   line-height: 1.25;
   display: -webkit-box;
@@ -299,6 +299,28 @@
 }
 .feed-promo-rsvp {
   flex: none;
+  align-self: center;
+  margin-top: 0.15rem;
+  min-height: 0;
+  padding: 0.2rem 0.15rem;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.feed-promo-rsvp:hover {
+  transform: none;
+  box-shadow: none;
+  text-decoration: underline;
+}
+.feed-promo-rsvp.is-going {
+  color: var(--muted);
+  font-weight: 600;
 }
 .feed-suggested .list-item {
   padding: 0.45rem 0;
@@ -313,7 +335,7 @@
   text-decoration: none;
 }
 .feed-verse-ref {
-  font-weight: 700;
+  font-weight: 600;
   font-size: 0.9rem;
   margin-bottom: 0.35rem;
 }
@@ -413,7 +435,7 @@
   min-width: 0;
 }
 .feed-post-meta .name {
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text);
 }
 .feed-post-kind {
@@ -516,7 +538,7 @@
   background: rgba(15, 23, 42, 0.72);
   color: #fff;
   font-size: 0.72rem;
-  font-weight: 650;
+  font-weight: 600;
   backdrop-filter: blur(6px);
 }
 .feed-event-pill.live {
@@ -536,13 +558,13 @@
   padding: 0.2rem 0.55rem;
   border-radius: 999px;
   font-size: 0.68rem;
-  font-weight: 750;
+  font-weight: 600;
   letter-spacing: 0.04em;
   color: var(--g, var(--accent));
   background: color-mix(in srgb, var(--g, var(--accent)) 12%, transparent);
 }
 .feed-event-title {
-  font-weight: 750;
+  font-weight: 600;
   font-size: 1.08rem;
   line-height: 1.3;
   letter-spacing: -0.01em;
@@ -668,5 +690,47 @@ body[data-page="feed"] .main {
   }
   .feed-compose-bar .feed-post-btn {
     margin-left: auto;
+  }
+}
+
+/* Premium compactness for the feed chrome; cards stay as they are. */
+body[data-page="feed"] .main {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+.feed-shell,
+.feed-center,
+.feed-head,
+.feed-stream,
+.feed-compose {
+  min-width: 0;
+  max-width: 100%;
+}
+.feed-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0 0 0.65rem;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+.feed-compose {
+  box-shadow: var(--shadow-1);
+}
+.feed-card {
+  box-shadow: var(--shadow-1);
+}
+.feed-stream .post,
+.feed-stream .card {
+  box-shadow: var(--shadow-1);
+}
+
+@media (max-width: 420px) {
+  .feed-title {
+    font-size: 1.12rem;
+  }
+  .feed-compose-input {
+    font-size: 0.95rem;
   }
 }

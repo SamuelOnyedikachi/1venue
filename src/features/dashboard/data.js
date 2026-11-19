@@ -48,4 +48,59 @@ async function dashboard(userId) {
   return { stats, activity };
 }
 
-module.exports = { dashboard };
+
+// Personal dashboard analytics (every signed-in account). Reuses the host-tools date range
+// (?days=7|30|90 or ?from&to) and the same day-bucket helper.
+async function analytics(userId, params = {}) {
+  const { parseRange, bucket, rangeOut } = require('../exports/service');
+  const range = typeof params === 'object' && params ? parseRange(params) : parseRange({ days: params });
+  const args = [userId, range.from, range.until];
+  const start = range.from.getTime();
+  const hostedRows = await many('SELECT created_at, max_participants FROM meeting_history WHERE host_user_id=$1 AND created_at >= $2 AND created_at < $3', args);
+  const joinedRows = await many('SELECT joined_at, meeting_history_id FROM meeting_participants_log WHERE user_id=$1 AND joined_at >= $2 AND joined_at < $3 LIMIT 200000', args);
+  const rsvpRows = await many('SELECT r.created_at FROM event_rsvps r JOIN events e ON e.id=r.event_id WHERE e.host_user_id=$1 AND r.created_at >= $2 AND r.created_at < $3 LIMIT 200000', args);
+  const audienceRows = await many('SELECT l.joined_at FROM meeting_participants_log l JOIN meeting_history h ON h.id=l.meeting_history_id WHERE h.host_user_id=$1 AND l.joined_at >= $2 AND l.joined_at < $3 LIMIT 200000', args);
+  let seconds = 0, transcriptLines = 0, eventPeak = 0;
+  if (!USE_PG) {
+    const sec = await one(`SELECT COALESCE(SUM((julianday(COALESCE(left_at, strftime('%Y-%m-%dT%H:%M:%fZ','now'))) - julianday(joined_at))*86400),0) AS seconds
+      FROM meeting_participants_log WHERE user_id=$1 AND joined_at >= $2 AND joined_at < $3`, args);
+    seconds = Number(sec && sec.seconds) || 0;
+    const tx = await one(`SELECT COUNT(*) AS n FROM transcript_segments t JOIN meeting_history h ON h.id=t.meeting_history_id
+      WHERE h.host_user_id=$1 AND h.created_at >= $2 AND h.created_at < $3`, args);
+    transcriptLines = Number(tx && tx.n) || 0;
+    const pk = await one(`SELECT COALESCE(MAX(peak_viewers),0) AS peak FROM events
+      WHERE host_user_id=$1 AND COALESCE(starts_at, created_at) >= $2 AND COALESCE(starts_at, created_at) < $3`, args);
+    eventPeak = Number(pk && pk.peak) || 0;
+  } else {
+    const sec = await one(`SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(left_at, NOW()) - joined_at))),0)::bigint AS seconds
+      FROM meeting_participants_log WHERE user_id=$1 AND joined_at >= $2 AND joined_at < $3`, args);
+    seconds = Number(sec && sec.seconds) || 0;
+    const tx = await one(`SELECT COUNT(*)::int AS n FROM transcript_segments t JOIN meeting_history h ON h.id=t.meeting_history_id
+      WHERE h.host_user_id=$1 AND h.created_at >= $2 AND h.created_at < $3`, args);
+    transcriptLines = Number(tx && tx.n) || 0;
+    const pk = await one(`SELECT COALESCE(MAX(peak_viewers),0)::int AS peak FROM events
+      WHERE host_user_id=$1 AND COALESCE(starts_at, created_at) >= $2 AND COALESCE(starts_at, created_at) < $3`, args);
+    eventPeak = Number(pk && pk.peak) || 0;
+  }
+  const hostedPeak = hostedRows.reduce((m, r) => Math.max(m, Number(r.max_participants) || 0), 0);
+  const attended = new Set(joinedRows.map((r) => String(r.meeting_history_id))).size;
+  return {
+    range: rangeOut(range),
+    totals: {
+      hosted: hostedRows.length,
+      attended,
+      joins: joinedRows.length,
+      seconds: Math.round(seconds),
+      audience: audienceRows.length,
+      peak: Math.max(hostedPeak, eventPeak),
+      rsvps: rsvpRows.length,
+      transcriptLines,
+    },
+    hostedByDay: bucket(hostedRows.map((r) => r.created_at), range.days, start).map((d) => ({ day: d.day, hosted: d.n })),
+    joinedByDay: bucket(joinedRows.map((r) => r.joined_at), range.days, start).map((d) => ({ day: d.day, joined: d.n })),
+    rsvpsByDay: bucket(rsvpRows.map((r) => r.created_at), range.days, start).map((d) => ({ day: d.day, rsvps: d.n })),
+    audienceByDay: bucket(audienceRows.map((r) => r.joined_at), range.days, start).map((d) => ({ day: d.day, joins: d.n })),
+  };
+}
+
+module.exports = { dashboard, analytics };

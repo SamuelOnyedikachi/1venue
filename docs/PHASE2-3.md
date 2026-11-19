@@ -25,7 +25,7 @@ the owner's venue limit applies.
 ## Admin settings (/admin)
 
 * **Plans card**: per-plan limits and prices (Phase 1), then per-plan feature switches (1/0) and numbers,
-  then platform settings: `feeBps` (default 500 = 5%), `promoDayKobo` (₦1,000/day), `promoMaxDays` (30),
+  then platform settings: `feeBps` (default 500 = 5%), `promoDayKobo` (₦1,000/day), `promoMaxDays` (90, or `PLATFORM_PROMO_MAX_DAYS`),
   `promoApproval` (1: paid promotions wait for approval), `payoutMinKobo` (₦5,000), `ticketMaxPerOrder` (10),
   `donationMinKobo` (₦100), `reminderLeadA` (1440 min), `reminderLeadB` (60 min, 0 = off),
   `whatsappEnabled` (1, still needs env keys), `verifiedBoost` (1), `replayUploadMB` (500), `seriesMax` (52).

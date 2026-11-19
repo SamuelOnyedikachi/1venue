@@ -4,7 +4,16 @@ const { quote, BUNDLES, PRICE_PER_CREDIT_KOBO } = require('./rules');
 module.exports = function routes(route, { requireUser, httpError, rateLimit }) {
   route('GET', '/api/wallet', async (ctx) => {
     const u = await requireUser(ctx.req, ctx.res);
-    return { userId:u.id, ...await require('./billing-data').current(u.id), pricePerCreditKobo: PRICE_PER_CREDIT_KOBO, currency: 'NGN', feePercent: require('../../lib/money').feePercent(), bundles: BUNDLES, purchasesEnabled: gateway.enabled(), expires: false };
+    return { userId:u.id, ...await require('./billing-data').current(u.id), meetingEarnings: await require('./paid-entry').earnings(u.id), pricePerCreditKobo: PRICE_PER_CREDIT_KOBO, currency: 'NGN', feePercent: require('../../lib/money').feePercent(), bundles: BUNDLES, purchasesEnabled: gateway.enabled(), expires: false };
+  });
+  route('POST', '/api/wallet/meeting-earnings/transfer', async (ctx) => {
+    const u = await requireUser(ctx.req, ctx.res);
+    const body = await ctx.body();
+    return require('./paid-entry').transfer(u.id, body.credits);
+  });
+  route('POST', '/api/wallet/welcome-notice', async (ctx) => {
+    const u = await requireUser(ctx.req, ctx.res);
+    return data.claimWelcomeNotice(u.id);
   });
   route('POST', '/api/wallet/quote', async (ctx) => {
     await requireUser(ctx.req, ctx.res);

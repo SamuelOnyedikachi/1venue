@@ -1,82 +1,188 @@
-/* Attendance list page */
-.att-page {
-  max-width: 860px;
-  margin: 0 auto;
+/* Attendance list UI and the printed/PDF export: compact, striped, branded. */
+.main.att-view,
+body[data-page="attendance"] .main {
+  width: min(100%, 860px);
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+.att-page,
+.att-hero,
+.att-panel {
+  min-width: 0;
+  max-width: 100%;
 }
 .att-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 1.1rem 1.2rem 1rem;
+  margin-bottom: 1rem;
   background: linear-gradient(
     135deg,
-    color-mix(in srgb, var(--accent) 18%, var(--s1)),
-    color-mix(in srgb, var(--accent-2, var(--accent)) 12%, var(--s1))
+    color-mix(in srgb, var(--accent) 14%, var(--s1)),
+    color-mix(in srgb, var(--accent-2, var(--accent)) 8%, var(--s1))
   );
-  border-radius: var(--r-xl);
-  padding: clamp(1.6rem, 4vw, 2.8rem);
-  margin-bottom: 1.2rem;
-  text-align: center;
+  box-shadow: var(--shadow-1);
 }
 .att-brand {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  font-weight: 750;
-  letter-spacing: 0.04em;
-  margin-bottom: 0.6rem;
-  color: var(--accent);
-}
-.att-hero h1 {
-  margin: 0.2rem 0 0.4rem;
-  font-size: clamp(1.6rem, 4vw, 2.2rem);
-}
-.host-card {
   display: inline-flex;
   align-items: center;
-  gap: 0.8rem;
-  margin-top: 1rem;
-  padding: 0.6rem 1rem;
-  background: color-mix(in srgb, var(--s1) 80%, transparent);
+  gap: 0.4rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  font-size: 0.82rem;
+  color: var(--accent);
+  margin-bottom: 0.45rem;
+}
+.att-kicker {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+.att-hero h1 {
+  margin: 0.15rem 0 0.2rem;
+  font-size: clamp(1.15rem, 3.2vw, 1.55rem);
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+.att-date {
+  margin: 0;
+}
+.att-host {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+  padding: 0.4rem 0.7rem 0.4rem 0.4rem;
+  background: color-mix(in srgb, var(--s1) 82%, transparent);
+  border: 1px solid var(--line);
   border-radius: 999px;
 }
-.att-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.92rem;
+.att-count {
+  margin: 0.55rem 0 0;
 }
-.att-table th,
-.att-table td {
-  padding: 0.65rem 0.5rem;
-  text-align: left;
-  border-bottom: 1px solid var(--line-2);
-  vertical-align: top;
+.att-person {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
 }
-.att-table th {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
-  font-weight: 700;
+.att-person-txt {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 0.05rem;
+}
+.att-actions {
+  gap: 0.45rem;
+  margin-top: 0.15rem;
+}
+.att-print-foot {
+  margin: 0.8rem 0 0;
+  display: none;
+}
+
+@media (max-width: 420px) {
+  .att-hero {
+    padding: 0.95rem;
+  }
+  .att-actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
 }
 
 @media print {
+  @page {
+    size: A4;
+    margin: 12mm 12mm 14mm;
+  }
+  html,
+  body {
+    background: #fff !important;
+    color: #111 !important;
+  }
   .no-print,
   .topbar,
   .bottomnav,
-  .btn {
+  .cmdbar,
+  .toast,
+  .sheet,
+  [data-cmdbar],
+  .install-overlay {
     display: none !important;
+  }
+  body[data-page="attendance"] .main,
+  .main.att-view {
+    width: 100%;
+    max-width: none;
+    padding: 0;
+    margin: 0;
   }
   .att-page {
     max-width: none;
   }
-  .att-hero {
-    background: #f8fafc !important;
-    color: #111;
+  .att-hero,
+  .att-panel,
+  .att-page .card,
+  .att-page .ht-panel {
+    box-shadow: none !important;
+    border: 1px solid #d4d4d8 !important;
+    background: #fff !important;
+    break-inside: avoid;
     -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
-  .card {
-    box-shadow: none;
-    border: 1px solid #ddd;
+  .att-hero {
+    padding: 0.8rem 0.9rem;
+    margin-bottom: 0.7rem;
   }
-  body {
-    background: #fff;
+  .att-hero h1 {
+    font-size: 16pt;
+    color: #111;
+  }
+  .att-brand,
+  .att-kicker,
+  .muted,
+  .tiny {
+    color: #52525b !important;
+  }
+  .att-page .ht-panel-head {
+    padding: 0.55rem 0.75rem;
+  }
+  .att-page .ht-panel-body {
+    padding: 0.4rem 0;
+  }
+  .att-page .ht-table-wrap {
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
+  }
+  .att-page .ht-table {
+    font-size: 8.5pt;
+  }
+  .att-page .ht-table th,
+  .att-page .ht-table td {
+    padding: 0.32rem 0.5rem;
+    border-bottom: 1px solid #e4e4e7;
+  }
+  .att-page .ht-table tbody tr:nth-child(even) td {
+    background: #f4f4f5 !important;
+  }
+  .att-print-foot {
+    display: block;
+    margin-top: 0.8rem;
+    font-size: 8pt;
+    color: #71717a !important;
+  }
+  .ht-pill {
+    border: 1px solid #d4d4d8;
+    background: #fafafa !important;
+    color: #18181b !important;
+  }
+  a {
+    color: inherit !important;
+    text-decoration: none;
   }
 }

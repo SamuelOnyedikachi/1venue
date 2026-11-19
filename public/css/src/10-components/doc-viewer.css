@@ -9,7 +9,7 @@
 .doc-table-wrap { overflow: auto; border-radius: var(--r-md); border: 1px solid var(--line); }
 .doc-table { border-collapse: collapse; width: 100%; font-size: .88rem; }
 .doc-table th, .doc-table td { padding: .45rem .7rem; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
-.doc-table thead th { position: sticky; top: 0; background: var(--s2); font-weight: 700; z-index: 1; }
+.doc-table thead th { position: sticky; top: 0; background: var(--s2); font-weight: 600; z-index: 1; }
 .doc-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .doc-table .doc-rn { color: var(--faint); width: 1%; text-align: right; font-variant-numeric: tabular-nums; }
 .doc-table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--s2) 50%, transparent); }

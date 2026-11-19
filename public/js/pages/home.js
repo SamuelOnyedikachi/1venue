@@ -3,9 +3,11 @@ import { h, api, esc, frag, fmtNum } from '../ui.js';
 import { state, navigate, CATS, joinPrompt, parseCode } from '../app.js';
 import { eventCard, skeletonCards, sectionHead, empty, catOf } from '../components.js';
 
+let heroCarouselFrame = 0;
+
 /** Homepage hero visual — lightweight preview cards around the join-first hero. */
-function heroVisual() {
-  return h('div', { class: 'hero-visual', 'aria-label': 'Preview of a 1venue room' },
+function previewCards() {
+  return [
     h('div', { class: 'hero-preview preview-poll' },
       h('div', { class: 'preview-kicker' }, 'POLL · 24 VOTES'),
       h('strong', null, 'What should we take first?'),
@@ -16,11 +18,60 @@ function heroVisual() {
     h('div', { class: 'hero-preview preview-live' },
       h('div', { class: 'live-thumb' }, h('span', { class: 'live-badge' }, '● LIVE'), h('img', { src: '/img/hero/meeting.png', alt: '' })),
       h('div', { class: 'preview-row' }, h('span', null, '128 viewers'), h('b', null, '16:45'))),
-  );
+  ];
+}
+
+function mobileImageCards() {
+  const images = [
+    ['/img/hero/messages.png', 'messages'],
+    ['/img/hero/amara-call.png', 'amara-call'],
+    ['/img/hero/people-follow.png', 'people-follow'],
+  ];
+  return [...images, ...images].map(([src, name]) => h('article', { class: `mobile-image-card mobile-image-card--${name}` },
+    h('img', { src, alt: '', loading: 'eager', decoding: 'async', draggable: 'false' })));
+}
+
+function heroVisual(extraClass = '') {
+  const cards = previewCards();
+  const children = extraClass
+    ? [h('div', { class: 'hero-carousel-track', 'aria-hidden': 'true' },
+      h('div', { class: 'hero-carousel-group' }, ...mobileImageCards()),
+      h('div', { class: 'hero-carousel-group', 'aria-hidden': 'true' }, ...mobileImageCards()))]
+    : cards;
+  return h('div', { class: `hero-visual ${extraClass}`.trim(), 'aria-label': 'Preview of a 1venue room' },
+    ...children);
 }
 
 function band(cls, ...kids) {
   return h('section', { class: `home-band ${cls}` }, h('div', { class: 'band-inner' }, ...kids));
+}
+
+function startHeroCarousel(root) {
+  if (heroCarouselFrame) cancelAnimationFrame(heroCarouselFrame);
+  const carousel = root.querySelector('.hero-mobile-carousel');
+  const group = carousel?.querySelector('.hero-carousel-group');
+  if (!carousel || !group) return;
+
+  const systemReduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  let lastFrame = 0;
+  const step = (now) => {
+    if (!carousel.isConnected) {
+      heroCarouselFrame = 0;
+      return;
+    }
+    const reduceMotion = systemReduceMotion.matches || document.documentElement.classList.contains('reduce-motion');
+    if (!reduceMotion && document.visibilityState === 'visible') {
+      const loopWidth = group.getBoundingClientRect().width;
+      const elapsed = lastFrame ? Math.min(now - lastFrame, 50) : 0;
+      if (loopWidth > 0 && elapsed > 0) {
+        const next = carousel.scrollLeft + elapsed * 0.03;
+        carousel.scrollLeft = next >= loopWidth ? next % loopWidth : next;
+      }
+    }
+    lastFrame = now;
+    heroCarouselFrame = requestAnimationFrame(step);
+  };
+  heroCarouselFrame = requestAnimationFrame(step);
 }
 
 export async function mount(view) {
@@ -40,7 +91,8 @@ export async function mount(view) {
         h('div', { class: 'row wrap hero-ctas' },
           h('a', { class: 'btn primary lg', href: '/create', 'data-link': '', html: icon('radio', { size: 20 }) + 'Go live' }),
           h('a', { class: 'btn lg hero-cta-icon', href: '/create?instant=1', 'data-link': '', 'data-group': 'media', 'data-tip': 'Instant meeting', 'aria-label': 'Instant meeting', html: icon('zap', { size: 20 }) + '<span class="lbl">Instant meeting</span>' }),
-          h('a', { class: 'btn lg hero-cta-icon', href: '/venues', 'data-link': '', 'data-group': 'media', 'data-tip': 'Venue', 'aria-label': 'Venue', html: icon('door', { size: 20 }) + '<span class="lbl">Venue</span>' })))));
+          h('a', { class: 'btn lg hero-cta-icon', href: '/venues', 'data-link': '', 'data-group': 'media', 'data-tip': 'Venue', 'aria-label': 'Venue', html: icon('door', { size: 20 }) + '<span class="lbl">Venue</span>' })),
+        heroVisual('hero-mobile-carousel'))));
 
   const liveWrap = h('div', null, skeletonCards(3));
   const upWrap = h('div', null, skeletonCards(3));
@@ -75,6 +127,7 @@ export async function mount(view) {
         h('div', { class: 'row' }, h('span', { class: 'ico-tile', style: { color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 14%, transparent)' }, html: icon(ic, { size: 22 }) }), h('strong', null, t)),
         h('p', { class: 'muted small', style: { marginTop: '.5rem' } }, d))))),
     h('div', { style: { height: '2rem' } }));
+  startHeroCarousel(view);
 
   const [live, up] = await Promise.all([
     api('/api/discover?status=live&limit=6').catch(() => ({ events: [] })),
@@ -92,4 +145,8 @@ export async function mount(view) {
     : empty('calendar', 'No upcoming events yet', 'Schedule a talk show, seminar or service and it will show up here.'));
 }
 export const barPinned = null;
-export function unmount() { if (document.body.dataset.page === 'home') delete document.body.dataset.page; }
+export function unmount() {
+  if (heroCarouselFrame) cancelAnimationFrame(heroCarouselFrame);
+  heroCarouselFrame = 0;
+  if (document.body.dataset.page === 'home') delete document.body.dataset.page;
+}

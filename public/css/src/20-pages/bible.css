@@ -7,7 +7,7 @@
 }
 .verse sup {
   color: var(--g-faith);
-  font-weight: 700;
+  font-weight: 600;
   font-family: Inter, system-ui, sans-serif;
   font-size: 0.7em;
   margin-right: 0.3rem;
@@ -31,7 +31,7 @@
   background: none;
   padding: 0;
   font: inherit;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 1.02rem;
   color: var(--g-faith, var(--accent));
   cursor: pointer;
@@ -92,7 +92,7 @@
 }
 .surah-meaning {
   font-size: 0.78rem;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
@@ -117,7 +117,7 @@
 }
 .verse-wrap sup {
   color: var(--g-faith);
-  font-weight: 700;
+  font-weight: 600;
   font-family: Inter, system-ui, sans-serif;
   font-size: 0.65em;
   margin-right: 2px;

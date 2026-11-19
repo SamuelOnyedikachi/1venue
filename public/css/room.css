@@ -193,9 +193,14 @@ body.in-room .cmdbar {
   .prejoin {
     grid-template-columns: 1fr;
     align-content: start;
-    padding: 0.8rem 0.8rem calc(var(--cmd-h) + 28px);
+    padding: 0.8rem 0.8rem calc(var(--nav-h, 0px) + var(--cmd-h, 0px) + var(--safe-b, 0px) + 1rem);
     gap: 1rem;
     min-height: auto;
+    max-height: calc(100vh - var(--top-h, 64px) - var(--safe-t, 0px));
+    max-height: calc(100dvh - var(--top-h, 64px) - var(--safe-t, 0px));
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
   }
   .pj-preview {
     aspect-ratio: 4/3.4;
@@ -498,6 +503,22 @@ body.in-room .cmdbar {
 .stage[data-layout="speaker"] .tiles {
   display: flex;
   flex-direction: column;
+}
+/* Spotlight has one expanding video and a compact horizontal filmstrip. Use explicit grid tracks
+   so the main tile keeps the available stage height even when the room has only a few participants. */
+.stage[data-layout="spotlight"] .tiles {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  align-content: stretch;
+}
+.stage[data-layout="spotlight"] .tile-main {
+  min-width: 0;
+  min-height: 0;
+}
+.stage[data-layout="spotlight"] .filmstrip {
+  width: 100%;
+  min-width: 0;
 }
 .stage.presenting .tiles {
   flex: 0 0 auto;

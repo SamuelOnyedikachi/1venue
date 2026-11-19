@@ -1,20 +1,21 @@
 import { icon } from '../icons.js';
-import { h, api, esc, toast, toastErr, md, timeAgo, fmtDate, fmtDur, copy, hue, debounce } from '../ui.js';
-import { state, requireLogin, navigate } from '../app.js';
-import { empty } from '../components.js';
+import { h, api, toast, toastErr, md, timeAgo, fmtDate, fmtDur, copy, hue, debounce } from '../ui.js';
+import { requireLogin, navigate } from '../app.js';
+import { panel, table, iconBtn, empty, pill } from '../host-kit.js';
 import { registerCommands, unregisterCommands } from '../commands.js';
 
 export async function mount(view, params) {
+  document.body.dataset.page = params.list ? 'sessions' : 'session';
+  view.classList.add('ht-view', 'sess-view');
   if (params.list) return list(view);
   const s = await api(`/api/sessions/${params.id}`).catch((e) => { view.append(empty('lock', 'Can’t open this session', e.message, h('a', { class: 'btn', href: '/dashboard', 'data-link': '' }, 'Dashboard'))); return null; });
   if (!s) return;
-  // merge consecutive segments into "Name: text" lines
   const lines = [];
   for (const g of s.segments) { const l = lines[lines.length - 1]; if (l && l.name === g.speakerName && new Date(g.at) - l.at < 20000) { l.text += ' ' + g.text; l.at = new Date(g.at); } else lines.push({ name: g.speakerName, text: g.text, at: new Date(g.at), t0: new Date(g.at) }); }
   const start = new Date(s.startedAt);
   const sums = Object.fromEntries((s.summaries || []).map((x) => [x.kind, x]));
   const filter = h('input', { class: 'input sm', placeholder: 'Search transcript…', 'aria-label': 'Search transcript' });
-  const tx = h('div', { class: 'transcript' });
+  const tx = h('div', { class: 'transcript sess-transcript' });
   const paint = () => {
     const q = filter.value.trim().toLowerCase();
     tx.innerHTML = '';
@@ -24,47 +25,76 @@ export async function mount(view, params) {
   };
   filter.addEventListener('input', debounce(paint, 120)); paint();
   const sumBox = (kind, title, ic) => {
-    const box = h('div', { class: 'card pad layer group-tint', 'data-group': 'ai' });
+    const box = h('div', { class: 'card ht-panel sess-ai', 'data-group': 'ai' });
     const render = () => {
       box.innerHTML = '';
       const cur = sums[kind];
       const btn = h('button', { class: `btn sm${cur ? '' : ' primary'}`, html: icon('sparkles', { size: 15 }) + (cur ? 'Regenerate' : `Generate ${title.toLowerCase()}`) });
       btn.onclick = async () => { btn.disabled = true; btn.innerHTML = icon('loader', { size: 15, cls: 'spin' }) + 'Thinking…'; try { sums[kind] = await api(`/api/sessions/${s.id}/summary`, { method: 'POST', body: { kind } }); render(); toast(`${title} ready`, { icon: 'sparkles', group: 'ai' }); } catch (e) { toastErr(e); render(); } };
-      box.append(h('div', { class: 'row between' }, h('strong', { html: icon(ic, { size: 18 }) + ' ' + esc(title) }), btn),
-        cur ? h('div', { class: 'prose', style: { marginTop: '.6rem' }, html: md(cur.content) }) : h('p', { class: 'small muted', style: { marginTop: '.4rem' } }, 'One click — AI reads the transcript for you.'),
-        cur ? h('div', { class: 'row between tiny faint', style: { marginTop: '.5rem' } }, h('span', null, `${cur.provider || 'ai'} · ${timeAgo(cur.createdAt)}`), h('button', { class: 'btn xs ghost', html: icon('copy', { size: 13 }) + 'Copy', onclick: () => copy(cur.content, 'Copied') })) : null);
+      box.append(
+        h('header', { class: 'ht-panel-head' },
+          h('span', { class: 'ico-tile ht-ico', html: icon(ic, { size: 18 }) }),
+          h('div', { class: 'grow ht-panel-title' }, h('h2', null, title)),
+          h('div', { class: 'ht-panel-actions' }, btn)),
+        h('div', { class: 'ht-panel-body' },
+          cur ? h('div', { class: 'prose', html: md(cur.content) }) : h('p', { class: 'small muted', style: { margin: 0 } }, 'One click — AI reads the transcript for you.'),
+          cur ? h('div', { class: 'row between tiny faint' }, h('span', null, `${cur.provider || 'ai'} · ${timeAgo(cur.createdAt)}`), h('button', { class: 'btn xs ghost', html: icon('copy', { size: 13 }) + 'Copy', onclick: () => copy(cur.content, 'Copied') })) : null));
     };
     render(); return box;
   };
-  const dl = (href, label, ic) => h('a', { class: 'btn sm', href, download: '', html: icon(ic, { size: 15 }) + label });
-  view.append(h('div', { class: 'page-head' }, h('div', { class: 'tiny muted', html: icon('history', { size: 14 }) + ` Session · ${String(s.code).toLowerCase()}` }), h('h1', null, s.name || 'Session'),
-    h('p', { class: 'muted small' }, `${fmtDate(s.startedAt)}${s.endedAt ? ' · ' + fmtDur((new Date(s.endedAt) - start) / 1000) : ' · in progress'} · ${lines.length} transcript lines`)),
-    h('div', { class: 'row wrap', style: { gap: '.5rem', marginBottom: '1rem' } }, dl(`/api/sessions/${s.id}/transcript.txt`, 'Transcript .txt', 'download'), Object.keys(sums).length ? dl(`/api/sessions/${s.id}/summary.md`, 'Summary .md', 'fileText') : null,
-      h('button', { class: 'btn sm', onclick: async () => {
+  const duration = s.endedAt ? fmtDur((new Date(s.endedAt) - start) / 1000) : 'in progress';
+  view.append(
+    h('div', { class: 'page-head ht-head sess-head' },
+      h('h1', { html: icon('history', { size: 26 }) + (s.name || 'Session') }),
+      h('p', { class: 'muted small sess-meta' }, [String(s.code).toLowerCase(), fmtDate(s.startedAt), duration, `${lines.length} transcript line${lines.length === 1 ? '' : 's'}`].join(' · '))),
+    h('div', { class: 'sess-toolbar' },
+      h('a', { class: 'btn sm', href: `/api/sessions/${s.id}/transcript.txt`, download: '', html: icon('download', { size: 15 }) + 'Transcript .txt' }),
+      Object.keys(sums).length ? h('a', { class: 'btn sm', href: `/api/sessions/${s.id}/summary.md`, download: '', html: icon('fileText', { size: 15 }) + 'Summary .md' }) : null,
+      h('button', { class: 'btn sm', type: 'button', html: icon('users', { size: 15 }) + 'Attendance list', onclick: async () => {
         try {
           const r = await api('/api/attendance/generate', { method: 'POST', body: { historyId: s.id, public: true } });
           navigate(r.url);
-        } catch (e) { alert(e.message || 'Could not generate'); }
-      } , html: icon('users', { size: 15 }) + ' Attendance list' }),
-      h('button', { class: 'btn sm', html: icon('copy', { size: 15 }) + 'Copy transcript', onclick: () => copy(lines.map((l) => `${l.name}: ${l.text}`).join('\n'), 'Transcript copied') })),
-    h('div', { class: 'split' }, h('section', { class: 'card pad layer' }, h('div', { class: 'row between', style: { marginBottom: '.6rem' } }, h('strong', { html: icon('captions', { size: 18 }) + ' Transcript' }), filter), tx),
-      h('aside', { class: 'col sticky', style: { gap: '1rem' } }, sumBox('summary', 'Summary', 'sparkles'), sumBox('action_items', 'Action items', 'listChecks'))));
+        } catch (e) { toastErr(e); }
+      } }),
+      h('button', { class: 'btn sm', type: 'button', html: icon('copy', { size: 15 }) + 'Copy transcript', onclick: () => copy(lines.map((l) => `${l.name}: ${l.text}`).join('\n'), 'Transcript copied') })),
+    h('div', { class: 'sess-split' },
+      panel({ icon: 'captions', title: 'Transcript', actions: filter, cls: 'sess-tx-panel' }, tx),
+      h('aside', { class: 'col sess-aside' }, sumBox('summary', 'Summary', 'sparkles'), sumBox('action_items', 'Action items', 'listChecks'))));
   registerCommands('page', [
     { id: 's-sum', label: 'Generate AI summary', icon: 'sparkles', group: 'ai', run: () => view.querySelectorAll('[data-group=ai] .btn')[0]?.click() },
     { id: 's-act', label: 'Extract action items', icon: 'listChecks', group: 'ai', run: () => view.querySelectorAll('[data-group=ai] .btn')[1]?.click() },
     { id: 's-dl', label: 'Download transcript', icon: 'download', group: 'content', run: () => { location.href = `/api/sessions/${s.id}/transcript.txt`; } },
     { id: 's-find', label: 'Search in transcript', icon: 'search', group: 'content', run: () => filter.focus() },
   ]);
-  return { unmount: () => unregisterCommands('page') };
+  return { unmount: () => { unregisterCommands('page'); if (document.body.dataset.page === 'session') delete document.body.dataset.page; } };
 }
 
 async function list(view) {
   if (!requireLogin('Sign in to see your sessions')) return;
   const r = await api('/api/history?limit=100');
-  view.append(h('div', { class: 'page-head' }, h('h1', { html: icon('history', { size: 28 }) + 'Sessions' }), h('p', { class: 'muted' }, 'Every meeting and event you joined — transcripts, AI summaries and downloads.')),
-    r.history.length ? h('div', { class: 'card layer list stagger' }, r.history.map((x) => h('a', { class: 'list-item', href: `/session/${x.id}`, 'data-link': '' },
-      h('span', { class: 'ico-tile', 'data-group': x.wasHost ? 'engage' : 'content', html: icon(x.wasHost ? 'radio' : 'fileText', { size: 18 }) }),
-      h('div', { class: 'grow' }, h('div', { style: { fontWeight: 650 } }, x.name || String(x.code).toLowerCase()), h('div', { class: 'tiny faint' }, `${fmtDate(x.createdAt)} · ${x.wasHost ? 'Hosted' : 'Joined'}${x.endedAt ? ' · ' + fmtDur((new Date(x.endedAt) - new Date(x.createdAt)) / 1000) : ' · live'}${x.maxParticipants ? ` · ${x.maxParticipants} people` : ''}`)),
-      h('span', { html: icon('chevronRight', { size: 18 }) }))))
-      : empty('history', 'No sessions yet', 'Join or host a meeting and it’ll show up here with its transcript.', h('a', { class: 'btn primary', href: '/create?instant=1', 'data-link': '' }, 'Start a meeting')));
+  const rows = (r.history || []).map((x) => {
+    const dur = x.endedAt ? fmtDur((new Date(x.endedAt) - new Date(x.createdAt)) / 1000) : 'Live';
+    return [
+      h('a', { href: `/session/${x.id}`, 'data-link': '', class: 'ht-strong sess-name' },
+        h('span', null, x.name || String(x.code).toLowerCase()),
+        h('span', { class: 'tiny faint' }, String(x.code).toLowerCase())),
+      fmtDate(x.createdAt),
+      pill(x.wasHost ? 'Hosted' : 'Joined', x.wasHost ? 'accent' : 'muted', x.wasHost ? 'radio' : 'users'),
+      x.maxParticipants ? String(x.maxParticipants) : '—',
+      dur,
+      iconBtn('chevronRight', 'Open session', { href: `/session/${x.id}` }),
+    ];
+  });
+  view.append(
+    h('div', { class: 'page-head ht-head' },
+      h('h1', { html: icon('history', { size: 26 }) + 'Sessions' })),
+    panel({ icon: 'history', title: 'Your sessions', desc: r.history.length ? `${r.history.length} session${r.history.length === 1 ? '' : 's'}` : 'None yet.' },
+      r.history.length
+        ? table(
+          [{ label: 'Session' }, { label: 'When' }, { label: 'Role' }, { label: 'People', num: true }, { label: 'Duration' }, { label: '', cls: 'ht-act' }],
+          rows,
+          { caption: 'Your sessions' },
+        )
+        : empty('history', 'No sessions yet', 'Join or host a meeting and it’ll show up here with its transcript.', h('a', { class: 'btn primary sm', href: '/create?instant=1', 'data-link': '' }, 'Start a meeting'))));
+  return { unmount() { if (document.body.dataset.page === 'sessions') delete document.body.dataset.page; } };
 }

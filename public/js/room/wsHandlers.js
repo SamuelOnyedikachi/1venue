@@ -18,6 +18,8 @@ export function handle(R, m) {
     case 'participant-left': case 'participant-removed': roster(); break;
     case 'waiting-request': roster(); if (R.isMod()) { chime(520); const t = toast(`${m.participant.name} is waiting to join`, { icon: 'door', group: 'people', ms: 8000 }); t && t.append && t.append(h('button', { class: 'btn xs primary', onclick: () => R.send('admit-participant', { targetId: m.participant.id }) }, 'Admit')); } break;
     case 'waiting-updated': R.waiting = m.waiting || []; break;
+    case 'admission-failed': toast(m.reason || `${m.participantName || 'The participant'} could not be admitted`, { icon: 'wallet', group: 'people', ms: 7000 }); return;
+    case 'paid-entry-extension': if (R.paidEntry) { R.paidEntry.runtimeEndMs = Number(m.runtimeEndMs); R.paidEntryWarned = false; R.syncPaidEntry?.(); } break;
     case 'permissions-updated': if (R.meP()) R.meP().permissions = m.permissions; R.applyPerms(); break;
     case 'force-stop-share': R.media.setShare(false).catch(() => {}); toast('The host stopped your screen share', { icon: 'screenOff', group: 'media' }); break;
     case 'share-started': case 'share-stopped': roster(); break;

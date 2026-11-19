@@ -16,8 +16,17 @@
 }
 .pr-head h1 {
   margin: 0;
-  font-size: clamp(2rem, 4.5vw, 2.8rem);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.2rem;
+  font-weight: 600;
   letter-spacing: -0.02em;
+}
+.pr-head h1 .ic {
+  width: 22px;
+  height: 22px;
+  color: var(--accent);
 }
 .pr-head p {
   margin: 0;
@@ -79,7 +88,7 @@
   padding: 0.3rem 0.7rem;
   border-radius: var(--r-pill);
   font-size: 0.8rem;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
@@ -121,7 +130,7 @@
   padding: 0.3rem 0.85rem;
   border-radius: var(--r-pill);
   font-size: 0.75rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.02em;
   white-space: nowrap;
   color: var(--accent-ink);
@@ -140,7 +149,7 @@
   padding: 0.15rem 0.55rem;
   border-radius: var(--r-pill);
   font-size: 0.7rem;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
@@ -172,7 +181,7 @@
   padding: 0.15rem 0.5rem;
   border-radius: var(--r-pill);
   font-size: 0.75rem;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
@@ -185,7 +194,7 @@
   width: 100%;
   min-height: 46px;
   margin-top: 0.4rem;
-  font-weight: 700;
+  font-weight: 600;
 }
 .pr-note {
   margin: 0;
@@ -242,7 +251,7 @@
   background: none;
   color: var(--accent);
   font: inherit;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   padding: 0.4rem 0.6rem;
   border-radius: var(--r-xs);

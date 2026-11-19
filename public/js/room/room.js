@@ -55,6 +55,7 @@ class Room {
     let ev = null;
     if (this.code && !creating) { ev = await api(`/api/events/${this.code}?optional=1`).catch(() => null); }
     this.event = ev;
+    this.meetingInfo = this.code && !creating ? await api(`/api/meeting/${this.code}`).catch(() => null) : null;
     if (this.code && !creating && !ev) {
       const vr = await api(`/api/venues/by-code/${this.code}`).catch(() => null);
       if (vr && vr.venue && vr.venue.isOwner) { this.venueOwnerSlug = vr.venue.slug; this.venueName = vr.venue.name; }
@@ -101,12 +102,14 @@ class Room {
       joinB.disabled = true; joinB.classList.add('loading');
       stopPrev();
       try { await this.join({ name: n, mic, cam, creating }); }
-      catch (err) { if (err.status === 401) requireLogin(); if (err.status === 402) toast('Top up your wallet to at least 30 credits before opening a meeting.', {icon:'creditCard',ms:8000}); joinB.disabled = false; joinB.classList.remove('loading'); toastErr(err); preview(); }
+      catch (err) { if (err.status === 401) requireLogin(); joinB.disabled = false; joinB.classList.remove('loading'); toastErr(err); preview(); }
     } }, h('div', { class: 'eyebrow' }, creating ? 'You’re hosting' : ev ? (ev.live ? '● Live now' : 'Event') : 'Joining'), h('h1', { class: 'pj-title' }, title),
       ev && ev.host ? h('div', { class: 'row gap-s muted small' }, avatar(ev.host.name, ev.host.avatarUrl, 'xs'), `Hosted by ${ev.host.name}`) : null,
       h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Display name'), name),
       !state.user ? h('p', { class: 'tiny muted' }, 'Joining as a guest. ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); requireLogin('Sign in to keep your history'); } }, 'Sign in'), ' to save transcripts and history.') : null,
-      (creating && !this.intent?.venue) || (ev?.isHost && !ev.live) ? h('p',{class:'small muted'},'1 credit per minute while open. Minimum 30 credits to start. ',h('a',{href:'/wallet',target:'_blank',rel:'noopener'},'Open wallet')) : null,
+      (creating && this.intent?.meetingAccessMode === 'paid_entry') || (this.meetingInfo?.paidEntry?.enabled) || (ev?.meetingAccessMode === 'paid_entry')
+        ? h('p', { class: 'small muted' }, `Paid entry: ${this.intent?.meetingEntryPriceCredits || this.meetingInfo?.paidEntry?.entryCredits || ev?.meetingEntryPriceCredits} credits for ${this.intent?.meetingDurationMin || this.meetingInfo?.paidEntry?.durationMin || ev?.meetingDurationMin} minutes. Sign in; credits are charged when the host accepts you. Your payment covers rejoining this meeting.`)
+        : null,
       joinB,
       h('div', { class: 'row gap-s tiny muted center' }, h('span', { html: icon('lock', { size: 12 }) }), 'Recordings stay on your device. Captions are processed privately.'));
     this.view.replaceChildren(h('div', { class: 'prejoin' }, h('div', { class: 'pj-art', 'aria-hidden': 'true' }), pv, form));
@@ -122,8 +125,9 @@ class Room {
     if (creating) {
       const it = this.intent;
       try {
-        r = await api('/api/create', { method: 'POST', body: { name: it.name || 'Meeting', participantName: name, eventId: it.eventId, venue: it.venue || undefined, code: it.venue ? (it.code || this.code || undefined) : undefined, stage: !!it.stage, speakerSeats: it.speakerSeats, waitingRoom: !!it.waitingRoom, device: deviceKind() } });
+        r = await api('/api/create', { method: 'POST', body: { name: it.name || 'Meeting', participantName: name, eventId: it.eventId, venue: it.venue || undefined, code: it.venue ? (it.code || this.code || undefined) : undefined, stage: !!it.stage, speakerSeats: it.speakerSeats, waitingRoom: !!it.waitingRoom, meetingAccessMode: it.meetingAccessMode, meetingDurationMin: it.meetingDurationMin, meetingEntryPriceCredits: it.meetingEntryPriceCredits, device: deviceKind() } });
       } catch (e) {
+        if (e.status === 401) { requireLogin(); return; }
         if (e.status === 409 && (e.data?.code || it.code)) { this.code = e.data?.code || it.code; sessionStorage.removeItem('venue.intent'); return this.join({ name, mic, cam, creating: false }); }
         throw e;
       }
@@ -136,8 +140,9 @@ class Room {
       try {
         r = await api('/api/join', { method: 'POST', body: { code: this.code, participantName: name, key: this.params.key, participantId: pid, device: deviceKind() } });
       } catch (e) {
+        if (e.status === 401 && e.data?.signInRequired) { requireLogin(); return; }
         if (e.status === 404 && this.event && this.event.isHost) {
-          if (await confirmDlg('This event isn’t live yet. Start it now?', { ok: 'Go live' })) { this.intent = { create: true, eventId: this.event.id, name: this.event.title, stage: this.event.category !== 'meeting', speakerSeats: this.event.speakerSeats, code: this.event.code }; return this.join({ name, mic, cam, creating: true }); }
+          if (await confirmDlg('This event isn’t live yet. Start it now?', { ok: 'Go live' })) { this.intent = { create: true, eventId: this.event.id, name: this.event.title, stage: this.event.category !== 'meeting', speakerSeats: this.event.speakerSeats, code: this.event.code, meetingAccessMode: this.event.meetingAccessMode, meetingDurationMin: this.event.meetingDurationMin, meetingEntryPriceCredits: this.event.meetingEntryPriceCredits }; return this.join({ name, mic, cam, creating: true }); }
         }
         if (e.status === 404 && this.venueOwnerSlug) { this.intent = { create: true, venue: this.venueOwnerSlug, code: this.code, waitingRoom: true, name: this.venueName || 'Meeting' }; return this.join({ name, mic, cam, creating: true }); }
         if (e.status === 404 && this.event) throw new Error('This event hasn’t started yet — we’ll be here when it goes live.');
@@ -147,6 +152,8 @@ class Room {
       if (this.params.key) this.inviteKey = this.params.key;
     }
     this.joinRes = r;
+    this.billingFreeUntil = Number(r.freeUntilMs || 0) || null;
+    this.paidEntry = r.paidEntry || this.paidEntry || null;
     this.me = { id: r.participantId, name, role: r.role || 'participant' };
     this.wsCredential = r.wsCredential;
     saveRoom(this.code, { participantId: r.participantId, wsCredential: r.wsCredential, name });
@@ -155,11 +162,12 @@ class Room {
     this.enter(r);
   }
   waitingScreen(r) {
-    this.view.replaceChildren(h('div', { class: 'waiting' }, h('div', { class: 'wait-orb', html: LOGO(64) }), h('h2', null, r.venue ? `You’re at ${r.venue.name}` : 'Waiting for the host to let you in'), h('p', { class: 'muted' }, r.venue ? `The host will let you in to ${r.name || 'the meeting'} shortly — this venue always uses a waiting room.` : `${r.name || fmtCode(this.code)} · we’ll bring you in automatically.`),
+    this.view.replaceChildren(h('div', { class: 'waiting' }, h('div', { class: 'wait-orb', html: LOGO(64) }), h('h2', null, r.venue ? `You’re at ${r.venue.name}` : 'Waiting for the host to let you in'), h('p', { class: 'muted' }, r.venue ? `The host will let you in to ${r.name || 'the meeting'} shortly — this venue always uses a waiting room.` : r.paidEntry?.enabled ? `The host must accept you. ${r.paidEntry.paid ? 'Your entry is paid; rejoining this meeting will not charge you again.' : `${r.paidEntry.entryCredits} credits will be charged when the host accepts you.`}` : `${r.name || fmtCode(this.code)} · we’ll bring you in automatically.`),
       h('div', { class: 'dots-loader' }, h('i'), h('i'), h('i')), h('button', { class: 'btn ghost', onclick: () => { this.destroy(); navigate('/'); } }, 'Cancel')));
     this.waitingMode = true;
     this.connectWs((m) => {
       if (m.type === 'admitted') { this.waitingMode = false; chime(880); api('/api/join', { method: 'POST', body: { code: this.code, participantName: this.me.name, participantId: this.me.id, key: this.params.key, device: deviceKind() } }).then((r2) => { this.wsCredential = r2.wsCredential || this.wsCredential; this.joinRes = r2; this.ws && this.ws.close(); this.ws = null; this.enter(r2); }).catch(toastErr); return true; }
+      if (m.type === 'admission-payment-failed') { toast(m.reason || 'The host could not admit you. Check your wallet and ask them to try again.', { icon: 'wallet', group: 'people', ms: 7000 }); return true; }
       if (m.type === 'declined') { this.view.replaceChildren(h('div', { class: 'waiting' }, h('h2', null, 'The host declined your request'), h('a', { class: 'btn primary', href: '/' }, 'Back home'))); this.destroy(); return true; }
       return false;
     });
@@ -206,10 +214,30 @@ export { Room, fmtCode, ibtn, lsGet, lsSet, deviceKind };
 
 /* ======================================================================= in-room state & layout */
 Object.assign(Room.prototype, {
+  async syncBilling() {
+    if (!this.alive || !this.billingFreeUntil || this.me?.role !== 'host') return;
+    const left = this.billingFreeUntil - Date.now();
+    if (left <= 2 * 60 * 1000 && !this.billingWarned) {
+      this.billingWarned = true;
+      toast('Your free 15 minutes end soon. Make sure your wallet has credits to continue.', { icon: 'wallet', group: 'billing', ms: 7000 });
+    }
+    if (left <= 0) { clearInterval(this.billingSyncTimer); return; }
+    if (this.billingClaimed || this.billingClaimBusy) return;
+    this.billingClaimBusy = true;
+    try {
+      const claim = await api('/api/meeting/billing/claim', { method: 'POST', body: { code: this.code, participantId: this.me.id, wsCredential: this.wsCredential } });
+      if (claim.claimed) {
+        this.billingFreeUntil = Number(claim.freeUntilMs || this.billingFreeUntil);
+        this.billingClaimed = true;
+      }
+    } catch (_) { /* keep the room available; the timer still ends at the server deadline */ }
+    finally { this.billingClaimBusy = false; }
+  },
   enter(r) {
     this.creditControl?.unsubscribe();
     this.cleanupPrejoin && this.cleanupPrejoin();
     this.inRoom = true;
+    this.billingFreeUntil = Number(r.freeUntilMs || this.billingFreeUntil || 0) || null;
     this.roomName = r.name || fmtCode(this.code);
     this.data = { chat: [], dms: [], groups: new Map(), polls: [], questions: [], comments: [], captions: [], activity: [] };
     this.unread = { chat: 0, dm: 0, engage: 0, comments: 0 };
@@ -252,6 +280,10 @@ Object.assign(Room.prototype, {
     this.connectMedia().then(() => this.applyWant());
     this.registerCmds();
     this.tick = setInterval(() => this.paintHead(), 1000);
+    if (this.me.role === 'host' && this.billingFreeUntil) {
+      this.billingSyncTimer = setInterval(() => this.syncBilling(), 8000);
+      this.syncBilling();
+    }
     this.onKey = (e) => this.shortcut(e); window.addEventListener('keydown', this.onKey);
     this.onUnload = () => { navigator.sendBeacon && navigator.sendBeacon('/api/leave', new Blob([JSON.stringify({ code: this.code, participantId: this.me.id })], { type: 'application/json' })); };
     window.addEventListener('pagehide', this.onUnload);
@@ -433,6 +465,36 @@ Object.assign(Room.prototype, {
 
 /* ======================================================================= chrome, commands, lifecycle */
 Object.assign(Room.prototype, {
+  syncPaidEntry() {
+    if (!this.alive || !this.paidEntry?.enabled) return;
+    const leftMs = Number(this.paidEntry.runtimeEndMs || this.paidEntry.advertisedEndMs) - Date.now();
+    const leftMin = Math.max(0, Math.ceil(leftMs / 60000));
+    if (leftMs <= 0) { clearInterval(this.paidEntrySyncTimer); return; }
+    if (this.me?.role === 'host' && leftMs <= 10 * 60000 && leftMs > 0 && !this.paidEntryWarned) {
+      this.paidEntryWarned = true;
+      toast(`This paid-entry meeting ends in about ${leftMin} minutes.`, {
+        icon: 'wallet', group: 'wallet', ms: 10000,
+        action: { label: 'Extend 15 min', run: () => this.extendPaidEntry() },
+      });
+    }
+  },
+  async extendPaidEntry() {
+    if (this.paidEntryExtending) return;
+    if (!(await confirmDlg('Add 15 minutes to this meeting for 15 credits?', { ok: 'Extend meeting' }))) return;
+    this.paidEntryExtending = true;
+    try {
+      const result = await api('/api/meeting/paid-entry/extend', { method: 'POST', body: { code: this.code, participantId: this.me.id, wsCredential: this.wsCredential, minutes: 15 } });
+      this.paidEntry.runtimeEndMs = Number(result.session.runtimeEndMs);
+      this.paidEntryWarned = false;
+      this.syncPaidEntry();
+      refreshCredits();
+      toast(`Meeting extended by 15 minutes. ${result.balanceCredits} credits remain in your wallet.`, { icon: 'wallet', ms: 6000 });
+    } catch (error) {
+      toast(error.message || 'Could not extend this meeting', { icon: 'alert', ms: 6000 });
+    } finally {
+      this.paidEntryExtending = false;
+    }
+  },
   buildUi() {
     this.headEl = h('header', { class: 'room-head' });
     this.creditControl=creditBadge({inRoom:true,roomCode:this.code});
@@ -442,6 +504,10 @@ Object.assign(Room.prototype, {
     this.main = h('div', { class: 'room-main' }, this.stageR.el, this.stageR.sideEl, this.panel.el);
     this.root = h('div', { class: 'room', 'data-layout': this.layout }, h('div', { class: 'room-art', 'aria-hidden': 'true' }), this.headEl, this.creditControl.notice, this.netEl, this.main, this.peekHost);
     this.view.replaceChildren(this.root);
+    if (this.paidEntry?.enabled) {
+      this.syncPaidEntry();
+      this.paidEntrySyncTimer = setInterval(() => this.syncPaidEntry(), 10000);
+    }
     this.paintHead(true); this.renderStage(true);
     if (this.netNote) this.netBanner(true, this.netNote, true);
   },
@@ -620,19 +686,19 @@ Object.assign(Room.prototype, {
     const s = roomsStore(); delete s[this.code]; localStorage.setItem('venue.rooms', JSON.stringify(s));
     this.destroy();
     refreshCredits();
-    toast(m.reason === 'credits-exhausted' ? 'The meeting ended because the host ran out of credits.' : 'The session has ended', { icon: 'phoneOff', ms: 7000 });
+    toast(m.reason === 'credits-exhausted' ? 'The meeting ended because the host ran out of credits.' : m.reason === 'credits-required' ? 'The free 15 minutes ended. Sign in and use credits before starting another meeting.' : 'The session has ended', { icon: 'phoneOff', ms: 7000 });
     if (m.reason === 'credits-exhausted' && this.me?.role === 'host') { navigate('/wallet'); return; }
     navigate(m.historyId ? '/session/' + m.historyId : m.eventSlug ? '/e/' + m.eventSlug : '/'); setTimeout(() => maybeShowBanner('after-room'), 1500);
   },
   kicked(m) {
     this.destroy();
-    this.view.replaceChildren(h('div', { class: 'waiting' }, h('span', { class: 'ico-tile lg', 'data-group': 'danger', html: icon('userX', { size: 30 }) }), h('h2', null, 'You were removed from the room'), h('p', { class: 'muted' }, m.byName ? `Removed by ${m.byName}` : ''), h('a', { class: 'btn primary', href: '/' }, 'Back home')));
+    this.view.replaceChildren(h('div', { class: 'waiting' }, h('span', { class: 'ico-tile lg', 'data-group': 'danger', html: icon('userX', { size: 30 }) }), h('h2', null, 'You were removed from the room'), h('p', { class: 'muted' }, m.byName ? `Removed by ${m.byName}` : ''), m.paidEntryRefundPending ? h('p', { class: 'small muted' }, 'If you stay out, the unused portion of your advertised time will be refunded after the meeting ends. If the host accepts you again, your original payment covers rejoining.') : null, h('a', { class: 'btn primary', href: '/' }, 'Back home')));
   },
   destroy() {
     if (!this.alive) return; this.alive = false;
     this.creditControl?.unsubscribe();
     this.cleanupPrejoin && this.cleanupPrejoin();
-    clearInterval(this.tick); window.removeEventListener('keydown', this.onKey); window.removeEventListener('pagehide', this.onUnload); window.removeEventListener('resize', this.onResize);
+    clearInterval(this.tick); clearInterval(this.billingSyncTimer); clearInterval(this.paidEntrySyncTimer); window.removeEventListener('keydown', this.onKey); window.removeEventListener('pagehide', this.onUnload); window.removeEventListener('resize', this.onResize);
     try { this.ws && this.ws.close(); } catch { /* */ }
     this.captioner && this.captioner.stop(); this.media && this.media.disconnect().catch(() => {});
     setRoomBridge(null);
@@ -806,6 +872,7 @@ Object.assign(Room.prototype, {
     const s = sheet({ title: 'More', icon: 'more' });
     const it = (ic, label, g, run) => h('button', { class: 'tool-card', 'data-group': g, type: 'button', onclick: () => { s.close(); run(); } }, h('span', { class: 'ico-tile', 'data-group': g, html: icon(ic, { size: 20 }) }), h('b', null, label));
     s.body.append(h('div', { class: 'tool-grid' },
+      R.me.role === 'host' && R.paidEntry?.enabled ? it('clock', 'Extend 15 minutes · 15 credits', 'wallet', () => R.extendPaidEntry()) : null,
       it('captions', R.captioner.on ? 'Stop captions' : 'Captions', 'content', () => (R.captioner.on ? R.captioner.stop() : R.captioner.start(), R.changed())),
       it('record', 'Record', 'media', () => R.panel.open('tools', 'record')),
       it('pip', 'Mini window', 'media', () => R.pip()),

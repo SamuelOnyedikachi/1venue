@@ -125,7 +125,7 @@
 .admin-sec-head h2 {
   margin: 0;
   font-size: 1.08rem;
-  font-weight: 700;
+  font-weight: 600;
 }
 .admin-sec-head p {
   margin: 0.2rem 0 0;
@@ -150,7 +150,7 @@
 .admin-sub-h {
   margin: 0;
   font-size: 0.8rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted);

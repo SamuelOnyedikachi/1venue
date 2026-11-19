@@ -1,11 +1,356 @@
-.profile-hero .band,
+/* Public /u/:username profile: lean hero, About in the main column, right rail. */
+.main.profile-view,
+body[data-page="profile"] .main {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+.profile-view,
+.profile-hero,
+.profile-hero .in,
+.profile-copy,
+.profile-actions {
+  min-width: 0;
+  max-width: 100%;
+}
+.profile-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 0 0 1.05rem;
+  margin-bottom: 1.1rem;
+  box-shadow: var(--shadow-1);
+}
+.profile-cover {
+  position: relative;
+  height: 140px;
+  overflow: hidden;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+.profile-cover .band,
+.profile-cover-prev .band {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  opacity: 0.92;
+}
 .speaker-card .band {
   position: absolute;
   inset: 0 0 auto;
-  height: 64px;
+  height: 88px;
   background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  opacity: 0.9;
+  opacity: 0.92;
 }
-.profile-hero > :not(.band) {
+.profile-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.profile-hero .in {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 1.1rem;
+  align-items: flex-end;
+  padding: 0 1.15rem 0;
   position: relative;
+}
+.profile-hero .av {
+  width: 88px;
+  height: 88px;
+  margin-top: -44px;
+  flex: none;
+  z-index: 1;
+  box-shadow: 0 0 0 4px var(--s1);
+}
+.profile-copy {
+  flex: 1 1 12rem;
+  padding-top: 0.35rem;
+  min-width: 0;
+}
+.profile-hero h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+.profile-handle {
+  margin-top: 0.1rem;
+}
+.profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-left: auto;
+  padding-top: 0.35rem;
+}
+.profile-cover-prev {
+  position: relative;
+  height: 88px;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  margin: 0.3rem 0 0.45rem;
+}
+.profile-cover-prev img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.profile-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 1.15rem;
+  align-items: start;
+}
+.profile-main,
+.profile-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.profile-about .profile-bio {
+  margin: 0 0 0.85rem;
+  max-width: 40rem;
+  overflow-wrap: anywhere;
+}
+.profile-about-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+/* Inline facts: location | joined | website. A left-edge rule on each item is
+   clipped by overflow + a matching negative margin, so a wrapped line never
+   starts with an orphan separator. */
+.profile-about-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  overflow: hidden;
+  margin-left: -0.9rem;
+  row-gap: 0.4rem;
+  font-size: 0.9rem;
+}
+.profile-about-fact {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  position: relative;
+  padding: 0.15rem 0.9rem 0.15rem 0.9rem;
+  min-width: 0;
+  max-width: 100%;
+}
+.profile-about-fact::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 0.85em;
+  background: color-mix(in srgb, var(--line-2) 90%, transparent);
+}
+.profile-about-fact .ic {
+  color: var(--accent);
+  flex: none;
+}
+.profile-about-fact .ic svg { display: block; }
+.profile-add {
+  color: var(--muted);
+  font-weight: 600;
+}
+.profile-socials {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.profile-social {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: inherit;
+  background: var(--s2);
+}
+.profile-social:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  color: var(--accent);
+}
+.profile-add-links {
+  display: inline-flex;
+  align-items: center;
+  height: 2rem;
+  padding: 0 0.7rem;
+  border-radius: 999px;
+  border: 1px dashed color-mix(in srgb, var(--line) 80%, transparent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.profile-add-links:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+
+.profile-tabs { margin: 0; width: fit-content; max-width: 100%; }
+.profile-body { gap: 0.8rem; min-width: 0; }
+
+.profile-rail-body { padding: 0 0.9rem 0.85rem; }
+.profile-soon-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+  padding: 0.5rem 0.1rem;
+}
+.profile-soon-row + .profile-soon-row {
+  border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+.profile-soon-body {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  color: inherit;
+}
+.profile-soon-body .soon-meta {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.pr-stats { display: grid; gap: 0.5rem; }
+.pr-stat {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem 0.75rem;
+  border-radius: var(--r-md);
+  background: var(--s2);
+  border: 1px solid var(--line);
+}
+.pr-stat strong {
+  display: block;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.pr-stat span {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.pr-stat-ic {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  flex: none;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.profile-host-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0.1rem;
+}
+.profile-host-row + .profile-host-row {
+  border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+.profile-host-link {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  flex: 1;
+  color: inherit;
+}
+.profile-host-copy { min-width: 0; flex: 1; }
+.profile-host-copy strong { display: block; font-size: 0.88rem; }
+.profile-host-copy .handle { color: var(--muted); font-size: 0.75rem; }
+.profile-host-copy p {
+  margin: 0.15rem 0 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.profile-host-row .btn { flex: none; }
+
+.profile-venue-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.2rem 0.1rem 0.15rem;
+  color: inherit;
+}
+.profile-venue-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--accent-ink);
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  object-fit: cover;
+}
+.profile-venue-copy strong { display: block; font-size: 0.9rem; }
+.profile-venue-copy span { font-size: 0.75rem; }
+.profile-pill {
+  margin-left: auto;
+  flex: none;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: var(--r-pill);
+  padding: 0.2rem 0.5rem;
+}
+
+.profile-promote {
+  padding: 0.9rem 1rem 1rem;
+  background: color-mix(in srgb, var(--accent) 8%, var(--s1));
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+}
+.profile-promote h2 { margin: 0; font-size: 0.95rem; }
+.profile-promote p { margin: 0.2rem 0 0.7rem; color: var(--muted); font-size: 0.82rem; }
+.profile-promote .btn { width: 100%; justify-content: center; }
+
+@media (max-width: 1023px) {
+  .profile-layout { grid-template-columns: 1fr; }
+}
+@media (max-width: 620px) {
+  .profile-cover { height: 120px; }
+  .profile-hero .in { padding: 0 0.9rem 0; }
+  .profile-hero .av {
+    width: 72px;
+    height: 72px;
+    margin-top: -36px;
+  }
+  .profile-copy {
+    flex: 1 1 100%;
+    padding-top: 0.15rem;
+  }
+  .profile-actions {
+    flex: 1 1 100%;
+    margin-left: 0;
+    padding-top: 0.1rem;
+  }
 }

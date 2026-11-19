@@ -88,7 +88,8 @@ module.exports = function routes(route, kit) {
     const p = await data.getUserProfile(uid, u && u.id);
     if (!p) throw httpError(404, 'User not found');
     const events = (await data.myEvents(p.id)).filter((e) => e.visibility === 'public' && e.status !== 'draft');
-    return { ...p, isMe: !!(u && u.id === p.id), events: events.slice(0, 12).map((e) => ({ ...e, live: liveInfo(e) })) };
+    const rail = await data.profileRail(p.id, u && u.id);
+    return { ...p, isMe: !!(u && u.id === p.id), events: events.slice(0, 12).map((e) => ({ ...e, live: liveInfo(e) })), ...rail };
   });
   route('GET', '/api/users/([\\w.-]+)/timeline', async (ctx, [idOrName]) => {
     const uid = await resolveUserId(idOrName);

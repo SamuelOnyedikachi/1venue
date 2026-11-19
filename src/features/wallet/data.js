@@ -5,6 +5,14 @@ const one = async (sql, args) => (await q(sql, args)).rows[0] || null;
 const credits = (value) => Number(value) / U;
 const paymentOut = (p) => ({ reference: p.reference, credits: credits(p.credit_units), priceKobo: Number(p.price_kobo), subtotalKobo: Number(p.subtotal_kobo ?? p.price_kobo), feeKobo: Number(p.processing_fee_kobo || 0), feePercent: p.fee_percent == null ? 0 : Number(p.fee_percent), displayCurrency: p.display_currency || p.currency, displayTotalMinor: p.display_total_minor == null ? Number(p.price_kobo) : Number(p.display_total_minor), source: p.source || 'checkout', currency: p.currency, status: p.status, createdAt: p.created_at, paidAt: p.paid_at, authorizationUrl: p.authorization_url || null });
 const getPayment = (ref) => one('SELECT * FROM credit_payments WHERE reference=$1', [ref]);
+async function claimWelcomeNotice(userId) {
+  return tx(async (c) => {
+    const welcome = (await c.query("SELECT delta_units FROM credit_ledger WHERE user_id=$1 AND kind='welcome' LIMIT 1", [userId])).rows[0];
+    if (!welcome) return { show: false };
+    const claimed = (await c.query('UPDATE credit_wallets SET welcome_notice_shown_at=NOW() WHERE user_id=$1 AND welcome_notice_shown_at IS NULL RETURNING user_id', [userId])).rows[0];
+    return { show: !!claimed, credits: credits(welcome.delta_units) };
+  });
+}
 async function balance(userId) {
   const row = await one('SELECT balance_units FROM credit_wallets WHERE user_id=$1', [userId]);
   return credits(row ? row.balance_units : 0);
@@ -68,6 +76,23 @@ async function history(userId, before) {
       SELECT id,user_id,'usage',delta_units,balance_after_units,NULL,meeting_code,meeting_name,created_at
       FROM usage_entries
       UNION ALL
+      SELECT l.id,l.user_id,l.kind,l.delta_units,l.balance_after_units,NULL,NULL,NULL,l.created_at
+      FROM credit_ledger l
+      WHERE l.user_id=$1 AND l.kind='welcome'
+      UNION ALL
+      SELECT l.id,l.user_id,l.kind,l.delta_units,l.balance_after_units,NULL,b.code,m.name,l.created_at
+      FROM credit_ledger l JOIN paid_meeting_entries e ON e.id=l.paid_entry_id
+      JOIN paid_meeting_sessions b ON b.code=e.code LEFT JOIN meeting_history m ON m.id=b.history_id
+      WHERE l.user_id=$1 AND l.kind IN ('entry','entry_refund')
+      UNION ALL
+      SELECT l.id,l.user_id,l.kind,l.delta_units,l.balance_after_units,NULL,b.code,m.name,l.created_at
+      FROM credit_ledger l JOIN paid_meeting_extensions x ON x.id=l.paid_extension_id
+      JOIN paid_meeting_sessions b ON b.code=x.code LEFT JOIN meeting_history m ON m.id=b.history_id
+      WHERE l.user_id=$1 AND l.kind='extension'
+      UNION ALL
+      SELECT l.id,l.user_id,l.kind,l.delta_units,l.balance_after_units,NULL,NULL,NULL,l.created_at
+      FROM credit_ledger l WHERE l.user_id=$1 AND l.kind='earning_transfer'
+      UNION ALL
       SELECT l.id,l.user_id,l.kind,l.delta_units,l.balance_after_units,NULL,b.code,NULL,l.created_at
       FROM credit_ledger l LEFT JOIN credit_billing_sessions b ON b.id=l.billing_session_id
       WHERE l.user_id=$1 AND l.kind='usage' AND l.billing_session_id IS NULL
@@ -82,4 +107,4 @@ async function assertCanDelete(c, userId) {
   const active = (await c.query("SELECT id FROM credit_billing_sessions WHERE user_id=$1 AND state<>'closed' LIMIT 1", [userId])).rows[0];
   if (Number(wallet?.balance_units || 0) > 0 || unsettled || active) throw fail(409, 'Resolve your credit balance and unfinished purchases before deleting your account. Please contact support if you need help.');
 }
-module.exports = { assertCanDelete, balance, createPayment, getPayment, checkoutReady, mark, settle, payments, history, paymentOut };
+module.exports = { assertCanDelete, balance, claimWelcomeNotice, createPayment, getPayment, checkoutReady, mark, settle, payments, history, paymentOut };

@@ -40,6 +40,7 @@ module.exports = {
   setPrefs: social.setPrefs,
   getUserProfile: social.getUserProfile,
   updateProfile: social.updateProfile,
+  profileRail: social.profileRail,
   searchUsers: social.searchUsers,
   createEvent: events.createEvent,
   updateEvent: events.updateEvent,

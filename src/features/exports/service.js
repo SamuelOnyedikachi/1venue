@@ -215,4 +215,4 @@ async function analytics(userId, params = {}) {
     promotions: promos.map((p) => ({ id: Number(p.id), eventId: p.event_id ? Number(p.event_id) : null, views: Number(p.views), clicks: Number(p.clicks), ctr: p.views ? Math.round((p.clicks / p.views) * 1000) / 10 : 0, active: !!p.active, review: p.review_status, startsAt: p.starts_at, endsAt: p.ends_at })),
   };
 }
-module.exports = { attendanceRows, daily, bucket, parseRange, attendanceExport, transcriptExport, chatExport, sessionsExport, attendanceRangeExport, transcriptsRangeExport, chatRangeExport, registrationsExport, exportSummary, analytics, meetingFor };
+module.exports = { attendanceRows, daily, bucket, parseRange, rangeOut, attendanceExport, transcriptExport, chatExport, sessionsExport, attendanceRangeExport, transcriptsRangeExport, chatRangeExport, registrationsExport, exportSummary, analytics, meetingFor };

@@ -24,7 +24,12 @@ module.exports = function routes(route, kit) {
     const placement = String(ctx.url.searchParams.get('placement') || '').toLowerCase();
     if (!promos.PLACEMENTS.includes(placement)) throw httpError(400, 'Unknown placement');
     const u = await getAuthUser(ctx.req, ctx.res);
-    return { items: await promos.live(placement, { limit: Math.min(3, int(ctx.url.searchParams.get('limit'), 3)), viewerId: u && u.id }) };
+    const limit = Math.min(3, int(ctx.url.searchParams.get('limit'), placement === 'profile' ? 2 : 3));
+    const profileUserId = int(ctx.url.searchParams.get('profileUserId'), 0);
+    const items = placement === 'profile' && profileUserId
+      ? await promos.liveForProfile(profileUserId, { limit, viewerId: u && u.id })
+      : await promos.live(placement, { limit, viewerId: u && u.id });
+    return { items };
   });
   route('POST', '/api/promotions/seen', async (ctx) => {
     if (!rateLimit(`promo-seen:${clientIp(ctx.req)}`, 30)) return { ok: true, counted: 0 };

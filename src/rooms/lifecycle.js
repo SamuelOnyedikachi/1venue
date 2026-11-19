@@ -12,7 +12,11 @@ const {
 const ending = new Map();
 function endMeeting(code, reason = 'ended') {
   if (ending.has(code)) return ending.get(code);
-  const promise = finishMeeting(code,reason,Date.now()).finally(() => ending.delete(code));
+  const meeting = getMeeting(code);
+  const requested = meeting && meeting.paidEntry && meeting.paidEntry.enabled
+    ? (meeting._paidEndRequested ||= { reason, endedAt: Date.now() })
+    : { reason, endedAt: Date.now() };
+  const promise = finishMeeting(code,requested.reason,requested.endedAt).finally(() => ending.delete(code));
   ending.set(code,promise);
   return promise;
 }
@@ -22,6 +26,10 @@ async function finishMeeting(code, reason, endedAt) {
   const billing = require('../features/wallet/billing');
   const session = await billing.end(meeting,reason,endedAt);
   if (session?.end_reason) reason=session.end_reason;
+  if (meeting.paidEntry && meeting.paidEntry.enabled) {
+    try { await require('../features/wallet/paid-entry').settle(code, endedAt); }
+    catch (e) { console.error('[paid entry] settlement', code, e.message); throw e; }
+  }
   clearInterval(meeting.content?.slideshowTimer);
   if (meeting.historyId) {
     try {

@@ -1,7 +1,7 @@
 import { icon } from '../icons.js';
 import { h, api, esc, frag, fmtDate, fmtNum, toast, toastErr, sheet, confirmDlg, avatar, md, download, copy, debounce, uploadFile, profilePath } from '../ui.js';
 import { state, navigate, requireLogin } from '../app.js';
-import { catOf, commentThread, shareLink, sectionHead, empty, followBtn, eventCard } from '../components.js';
+import { catOf, commentThread, shareLink, sectionHead, empty, followBtn, railSoonRow, railHostBlock } from '../components.js';
 import { registerCommands, unregisterCommands } from '../commands.js';
 import { promoCompact, loadPromos } from '../promo.js';
 import { loadMoney, fmtMoney, checkoutSheet } from '../money.js';
@@ -57,13 +57,16 @@ export async function mount(view, { slug }) {
   const live = ev.status === 'live';
   const c1 = ev.theme?.accent || cc, c2 = ev.theme?.accent2 || 'var(--accent-2)';
   document.title = `${ev.title} · 1venue`;
-  const goLive = () => { sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, eventId: ev.id, name: ev.title, stage: ev.category !== 'meeting', speakerSeats: ev.speakerSeats, code: ev.code })); navigate(roomPath(ev.code)); };
+  const goLive = () => { sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, eventId: ev.id, name: ev.title, stage: ev.category !== 'meeting', speakerSeats: ev.speakerSeats, code: ev.code, meetingAccessMode: ev.meetingAccessMode, meetingDurationMin: ev.meetingDurationMin, meetingEntryPriceCredits: ev.meetingEntryPriceCredits })); navigate(roomPath(ev.code)); };
   const join = () => navigate(roomPath(ev.code));
   const rsvpBtns = [];
   const paintRsvp = () => {
     for (const b of rsvpBtns) {
-      b.className = `btn lg ${ev.rsvped ? '' : 'primary'}`;
-      b.innerHTML = ev.rsvped ? icon('check', { size: 18 }) + 'Going' : icon('ticket', { size: 18 }) + 'RSVP';
+      const label = ev.rsvped ? 'Going' : 'RSVP';
+      b.className = `btn ev-act ${ev.rsvped ? '' : 'primary'}`;
+      b.setAttribute('aria-label', label);
+      b.setAttribute('data-tip', label);
+      b.innerHTML = (ev.rsvped ? icon('check', { size: 18 }) : icon('ticket', { size: 18 })) + `<span class="ev-act-lbl">${label}</span>`;
     }
   };
   const onRsvp = async () => {
@@ -81,9 +84,20 @@ export async function mount(view, { slug }) {
     b.onclick = onRsvp;
     return b;
   }
+  function actionButton({ label, ic, primary = false, pulse = false, group, onclick }) {
+    return h('button', {
+      class: `btn ev-act${primary ? ' primary' : ''}${pulse ? ' pulse-btn' : ''}`,
+      type: 'button',
+      'data-group': group || undefined,
+      'data-tip': label,
+      'aria-label': label,
+      onclick,
+      html: icon(ic, { size: 18 }) + `<span class="ev-act-lbl">${label}</span>`,
+    });
+  }
   function primaryButton() {
-    if (live) return h('button', { class: 'btn primary lg pulse-btn', type: 'button', onclick: ev.isHost ? goLive : join, html: icon('radio', { size: 20 }) + (ev.isHost ? 'Return to stage' : 'Join live') });
-    if (ev.isHost) return h('button', { class: 'btn primary lg', type: 'button', onclick: goLive, html: icon('radio', { size: 20 }) + 'Go live now' });
+    if (live) return actionButton({ label: ev.isHost ? 'Return to stage' : 'Join live', ic: 'radio', primary: true, pulse: true, onclick: ev.isHost ? goLive : join });
+    if (ev.isHost) return actionButton({ label: 'Go live now', ic: 'radio', primary: true, onclick: goLive });
     return rsvpButton();
   }
   const ics = () => {
@@ -103,22 +117,9 @@ export async function mount(view, { slug }) {
     ? (fmtDate(ev.startsAt) + (ev.endsAt ? ' – ' + fmtDate(ev.endsAt, { weekday: undefined, month: undefined, day: undefined }) : ''))
     : (live ? 'Live now' : 'Time to be announced');
 
-  function factsCard() {
-    return h('div', { class: 'ev-card ev-facts' },
-      h('div', { class: 'ev-meta-row' }, h('span', { html: icon('calendar', { size: 16 }) }), h('div', { class: 'grow min0' }, h('div', { class: 'tiny muted' }, 'Date & time'), h('strong', null, whenLine))),
-      h('a', { class: 'ev-meta-row', href: venueLabel ? undefined : onlineHref, 'data-link': venueLabel ? null : '' },
-        h('span', { html: icon(venueLabel ? 'pin' : 'radio', { size: 16 }) }),
-        h('div', { class: 'grow min0' }, h('div', { class: 'tiny muted' }, venueLabel ? 'Venue' : 'Online'), h('strong', null, venueLabel || '1venue'))),
-      h('a', { class: 'ev-meta-row', href: profilePath(ev.host), 'data-link': '' },
-        avatar(ev.host.name, ev.host.avatarUrl, 'sm'),
-        h('div', { class: 'grow min0' }, h('div', { class: 'tiny muted' }, 'Host'), h('strong', { class: 'ellipsis' }, ev.host.name))),
-      h('div', { class: 'ev-actions' },
-        primaryButton(),
-        h('div', { class: 'ev-actions-row' },
-          ev.startsAt && !live ? h('button', { class: 'btn', type: 'button', 'data-group': 'nav', html: icon('calendarPlus', { size: 16 }) + 'Calendar', onclick: ics }) : null,
-          h('button', { class: 'btn', type: 'button', 'data-group': 'content', html: icon('share', { size: 16 }) + 'Share', onclick: share }),
-          h('button', { class: 'btn', type: 'button', 'data-group': 'content', 'aria-label': 'QR invite', html: icon('qr', { size: 16 }), onclick: () => qrSheet(ev) }))));
-  }
+  const placeMeta = venueLabel
+    ? h('span', { html: icon('pin', { size: 16 }) + esc(venueLabel) })
+    : h('a', { class: 'row', href: onlineHref, 'data-link': '', html: icon('radio', { size: 16 }) + 'Online' });
 
   const hero = h('section', { class: 'ev-hero ev-hero-slim', style: { '--c1': c1, '--c2': c2 } },
     ev.coverUrl ? h('img', { class: 'bg', src: ev.coverUrl, alt: '' }) : null,
@@ -129,8 +130,15 @@ export async function mount(view, { slug }) {
       h('h1', null, ev.title),
       h('div', { class: 'row wrap ev-meta' },
         h('a', { class: 'row', href: profilePath(ev.host), 'data-link': '' }, avatar(ev.host.name, ev.host.avatarUrl, 'sm ring'), h('strong', null, ev.host.name), ev.host.verified ? h('span', { class: 'chip tiny verified-badge', title: 'Verified host', html: icon('check', { size: 12 }) + 'Verified' }) : null),
-        ev.startsAt ? h('span', { html: icon('calendar', { size: 16 }) + esc(fmtDate(ev.startsAt)) }) : null,
+        h('span', { html: icon('calendar', { size: 16 }) + esc(whenLine) }),
+        placeMeta,
         h('span', { html: icon('ticket', { size: 16 }) + fmtNum(ev.rsvps || 0) + ' going' }))));
+
+  const actionBar = h('div', { class: 'ev-actionbar', 'aria-label': 'Event actions' },
+    primaryButton(),
+    ev.startsAt && !live ? actionButton({ label: 'Add to calendar', ic: 'calendarPlus', group: 'nav', onclick: ics }) : null,
+    actionButton({ label: 'Share', ic: 'share', group: 'content', onclick: share }),
+    actionButton({ label: 'QR invite', ic: 'qr', group: 'content', onclick: () => qrSheet(ev) }));
 
   const speakers = ev.speakers || [];
   const agendaItems = Array.isArray(ev.settings?.agenda) ? ev.settings.agenda : [];
@@ -143,36 +151,56 @@ export async function mount(view, { slug }) {
       h('div', { class: 'ev-meta-row' }, h('span', { html: icon('clock', { size: 16 }) }),
         h('div', { class: 'grow' }, h('strong', null, ev.title), h('div', { class: 'tiny muted' }, whenLine)))) : null);
 
-  const matsSlot = h('div');
-  const ticketSlot = h('div');
-  const replaySlot = h('div');
+  const matsSlot = h('section', { class: 'ev-panel ev-slot' });
+  const ticketSlot = h('section', { class: 'ev-panel ev-slot' });
+  const replaySlot = h('section', { class: 'ev-panel ev-slot' });
+  const meetingAccess = ev.category === 'meeting' && ev.meetingAccessMode === 'paid_entry'
+    ? h('div', { class: 'ev-card' }, sectionHead('Paid meeting entry', 'wallet'),
+      h('p', { class: 'small', style: { margin: 0 } }, `${ev.meetingEntryPriceCredits} credits · ${ev.meetingDurationMin} minutes advertised. Sign in and ask to join; credits are charged only when the host accepts you.`))
+    : null;
   const speakersBlock = speakers.length ? h('div', null, sectionHead('Speakers', 'stage'), h('div', { class: 'speaker-cards' }, speakers.map((sp) => h(sp.userId ? 'a' : 'div', { class: 'card speaker-card', href: sp.userId ? profilePath({ username: sp.username, id: sp.userId }) : null, 'data-link': sp.userId ? '' : null, style: { '--c1': c1, '--c2': c2 } },
     h('div', { class: 'band' }), avatar(sp.name, sp.avatarUrl, 'xl ring'), h('strong', null, sp.name), h('span', { class: 'muted small' }, sp.headline || 'Speaker'))))) : null;
 
-  const center = h('div', { class: 'ev-center' },
-    hero,
-    h('div', { class: 'ev-summary' }, factsCard()),
-    hostMenu,
-    ticketSlot,
-    replaySlot,
-    ev.description ? h('div', { class: 'card pad prose', html: md(ev.description) }) : null,
-    ev.tags?.length ? h('div', { class: 'chips' }, ev.tags.map((t) => h('a', { class: 'chip', href: `/discover?q=${encodeURIComponent(t)}`, 'data-link': '' }, '#' + t))) : null,
-    speakersBlock,
-    agendaSection,
-    matsSlot,
-    h('div', null, sectionHead('Conversation', 'chats'), commentThread('events', ev.id, { isHost: ev.isHost })));
-
+  const panel = (...nodes) => h('section', { class: 'ev-panel' }, ...nodes.filter(Boolean));
   const liveSlot = h('div');
   const promoSlot = h('div');
   const moreSlot = h('div');
-  const left = h('aside', { class: 'ev-rail ev-left', 'aria-label': 'Event details' }, factsCard());
+  const comments = h('div', null, sectionHead('Conversation', 'chats'), commentThread('events', ev.id, { isHost: ev.isHost }));
+  const about = (ev.description || ev.tags?.length)
+    ? panel(
+      ev.description ? h('div', { class: 'prose ev-desc', html: md(ev.description) }) : null,
+      ev.tags?.length ? h('div', { class: 'chips' }, ev.tags.map((t) => h('a', { class: 'chip', href: `/discover?q=${encodeURIComponent(t)}`, 'data-link': '' }, '#' + t))) : null,
+    )
+    : null;
+  const center = h('div', { class: 'ev-center' },
+    hero,
+    panel(actionBar, hostMenu),
+    meetingAccess ? panel(meetingAccess) : null,
+    ticketSlot,
+    replaySlot,
+    about,
+    speakersBlock ? panel(speakersBlock) : null,
+    agendaSection ? panel(agendaSection) : null,
+    matsSlot,
+    panel(comments));
+  const paintPanels = () => {
+    const visible = [...center.children].filter((el) => el.classList.contains('ev-panel') && el.childElementCount);
+    visible.forEach((p, i) => {
+      p.classList.toggle('ev-panel-a', i % 2 === 0);
+      p.classList.toggle('ev-panel-b', i % 2 === 1);
+    });
+  };
+  const fillSlot = (slot, ...nodes) => {
+    if (!slot.isConnected) return;
+    if (!nodes.length) { slot.replaceChildren(); paintPanels(); return; }
+    slot.replaceChildren(...nodes);
+    paintPanels();
+  };
   const right = h('aside', { class: 'ev-rail ev-right', 'aria-label': 'More events' }, liveSlot, promoSlot, moreSlot);
-  const pin = h('div', { class: 'ev-pin', 'aria-label': 'Event actions' }, primaryButton());
-  const shell = h('div', { class: 'ev-shell' }, left, center, right);
+  const shell = h('div', { class: 'ev-shell' }, center, right);
   const page = h('div', { class: 'ev-page' }, shell);
   view.append(page);
-  // Mount the pin on body so position:fixed is not trapped by #view.page-enter's transform.
-  document.body.append(pin);
+  paintPanels();
 
   const slim = (el) => {
     let t = 0;
@@ -180,14 +208,14 @@ export async function mount(view, { slug }) {
     el.addEventListener('scroll', on, { passive: true });
     return () => { el.removeEventListener('scroll', on); clearTimeout(t); };
   };
-  const stopScroll = [slim(left), slim(right)];
+  const stopScroll = [slim(right)];
 
   // Tickets, donations and replays (Phase 3). Returning from Paystack carries ?reference=1vc-…
   const naira = (k) => fmtMoney(k);
   async function paintTickets() {
     await loadMoney();
     const t = await api(`/api/events/${ev.id}/tickets`).catch(() => null);
-    if (!t || !ticketSlot.isConnected || (!t.tiers.length && !t.donations)) { ticketSlot.replaceChildren(); return; }
+    if (!t || !ticketSlot.isConnected || (!t.tiers.length && !t.donations)) { fillSlot(ticketSlot); return; }
     const buy = async (tier, qty) => {
       if (!requireLogin('Sign in to get a ticket')) return;
       if (tier.priceKobo > 0) { await checkoutSheet({ title: 'Ticket checkout', what: `${qty} × ${tier.name}`, subtotalKobo: tier.priceKobo * qty, start: () => api(`/api/events/${ev.id}/tickets`, { method: 'POST', body: { tierId: tier.id, quantity: qty } }) }); return; }
@@ -196,7 +224,7 @@ export async function mount(view, { slug }) {
       toast('You have a ticket', { icon: 'ticket' }); paintTickets();
     };
     const gift = h('input', { class: 'input', type: 'number', min: t.donationMinKobo / 100, step: 100, value: Math.max(1000, t.donationMinKobo / 100), style: { maxWidth: '8rem' }, 'aria-label': 'Gift amount in naira' });
-    ticketSlot.replaceChildren(h('div', { class: 'ev-card' }, sectionHead(t.tiers.length ? 'Tickets' : 'Support this event', 'ticket'),
+    fillSlot(ticketSlot, h('div', { class: 'ev-card' }, sectionHead(t.tiers.length ? 'Tickets' : 'Support this event', 'ticket'),
       t.mine && t.mine.length ? h('p', { class: 'small' }, `You have ${t.mine.length} ticket${t.mine.length === 1 ? '' : 's'}${t.mine[0].tier ? ' · ' + t.mine[0].tier : ''}.`) : null,
       ...t.tiers.map((tier) => {
         const qty = h('input', { class: 'input', type: 'number', min: 1, max: Math.min(t.maxPerOrder, tier.remaining ?? t.maxPerOrder), value: 1, style: { maxWidth: '4.5rem' }, 'aria-label': 'Quantity', hidden: tier.priceKobo === 0 });
@@ -216,14 +244,14 @@ export async function mount(view, { slug }) {
   paintTickets();
   api(`/api/events/${ev.id}/replays`).then(({ replays }) => {
     if (!replays.length || !replaySlot.isConnected) return;
-    replaySlot.append(h('div', { class: 'ev-card' }, sectionHead('Replay', 'play'),
+    fillSlot(replaySlot, h('div', { class: 'ev-card' }, sectionHead('Replay', 'play'),
       ...replays.map((r) => h('a', { class: 'ev-meta-row', href: '/replay/' + r.id, 'data-link': '' }, h('span', { html: icon('play', { size: 16 }) }), h('strong', { class: 'grow' }, r.title)))));
   }).catch(() => {});
 
   api(`/api/events/${ev.id}/materials`).then((r) => {
     const mats = r.materials || [];
     if (!mats.length || !matsSlot.isConnected) return;
-    matsSlot.append(h('div', { class: 'ev-card' }, sectionHead('Materials', 'folder'),
+    fillSlot(matsSlot, h('div', { class: 'ev-card' }, sectionHead('Materials', 'folder'),
       ...mats.map((m) => h('div', { class: 'ev-meta-row' },
         h('span', { html: icon(m.kind === 'video' ? 'video' : (m.kind === 'image' ? 'image' : 'file'), { size: 16 }) }),
         h('div', { class: 'grow min0' }, h('strong', { class: 'ellipsis' }, m.title || 'Material'), h('div', { class: 'tiny muted' }, m.kind || ''))))));
@@ -241,25 +269,25 @@ export async function mount(view, { slug }) {
     const liveEv = (liveR.events || []).filter((e) => e.id !== ev.id);
     const soon = (upR.events || []).filter((e) => e.id !== ev.id).slice(0, 3);
     if (liveEv.length) {
-      liveSlot.append(h('section', { class: 'ev-card' }, h('div', { class: 'ev-rail-head tiny faint' }, 'Live now'),
-        ...liveEv.slice(0, 3).map((e) => eventCard(e, { compact: true }))));
+      liveSlot.append(h('section', { class: 'ev-card ev-rail-block' }, h('div', { class: 'ev-rail-head tiny faint' }, 'Live now'),
+        ...liveEv.slice(0, 3).map(railSoonRow)));
     } else if (soon.length) {
-      liveSlot.append(h('section', { class: 'ev-card' }, h('div', { class: 'ev-rail-head tiny faint' }, 'Happening soon'),
-        ...soon.map((e) => eventCard(e, { compact: true }))));
+      liveSlot.append(h('section', { class: 'ev-card ev-rail-block' }, h('div', { class: 'ev-rail-head tiny faint' }, 'Happening soon'),
+        ...soon.map(railSoonRow)));
     } else {
-      liveSlot.append(h('section', { class: 'ev-card' }, h('div', { class: 'ev-rail-head tiny faint' }, 'Live now'),
+      liveSlot.append(h('section', { class: 'ev-card ev-rail-block' }, h('div', { class: 'ev-rail-head tiny faint' }, 'Live now'),
         h('p', { class: 'small muted', style: { margin: 0 } }, 'Nothing else is live right now.')));
     }
     const cards = (promos || []).slice(0, 2).map((it) => promoCompact(it)).filter(Boolean);
-    if (cards.length) promoSlot.append(h('section', { class: 'ev-card' }, h('div', { class: 'ev-rail-head tiny faint' }, 'Promoted'), ...cards));
-    const more = (moreR.events || []).filter((e) => e.id !== ev.id).slice(0, 4);
+    if (cards.length) promoSlot.append(h('section', { class: 'ev-card ev-rail-block' }, h('div', { class: 'ev-rail-head tiny faint' }, 'Promoted'), ...cards));
+    const more = (moreR.events || []).filter((e) => e.id !== ev.id).slice(0, 3);
     if (more.length) {
-      moreSlot.append(h('section', { class: 'ev-card' }, h('div', { class: 'ev-rail-head tiny faint' }, 'More from this host'),
-        ...more.map((e) => eventCard(e, { compact: true }))));
+      moreSlot.append(h('section', { class: 'ev-card ev-rail-block' }, h('div', { class: 'ev-rail-head tiny faint' }, 'More from this host'),
+        ...railHostBlock(more)));
     }
   });
 
-  const primary = pin.querySelector('.btn');
+  const primary = actionBar.querySelector('.ev-act');
   registerCommands('page', [
     { id: 'ev-primary', label: live ? 'Join live' : ev.isHost ? 'Go live now' : 'RSVP', icon: 'radio', group: 'engage', run: () => primary?.click() },
     { id: 'ev-qr', label: 'Event QR code', icon: 'qr', group: 'content', keywords: ['poster', 'invite'], run: () => qrSheet(ev) },
@@ -268,7 +296,7 @@ export async function mount(view, { slug }) {
     { id: 'ev-comment', label: 'Write a comment', icon: 'chat', group: 'social', run: () => view.querySelector('.composer textarea')?.focus() },
     ...(ev.isHost ? [{ id: 'ev-edit', label: 'Edit event', icon: 'pen', group: 'engage', run: () => navigate(`/create?edit=${ev.slug}`) }, { id: 'ev-speakers', label: 'Edit speakers', icon: 'users', group: 'people', run: () => editSpeakers(ev) }] : []),
   ]);
-  return { unmount: () => { pin.remove(); stopScroll.forEach((fn) => fn()); unregisterCommands('page'); if (document.body.dataset.page === 'event') delete document.body.dataset.page; } };
+  return { unmount: () => { stopScroll.forEach((fn) => fn()); unregisterCommands('page'); if (document.body.dataset.page === 'event') delete document.body.dataset.page; } };
 }
 export const barPinned = null;
 

@@ -212,7 +212,7 @@ function plansCard() {
       field('graceDays', 'Grace days after failed renewal', s.graceDays, d.graceDays), field('aiGuestPerIpDaily', 'Guest AI points per IP / day', s.aiGuestPerIpDaily, d.aiGuestPerIpDaily)));
     const pp = s.promoPricing || {}; const pd = d.promoPricing || {};
     const promo = sub('plans-promo', 'Promotion pricing (per day per placement, then a duration discount)',
-      grid(...[['discover', 'Discover top (kobo/day)'], ['feed', 'Feed boost (kobo/day)'], ['venues', 'Venues sidebar (kobo/day)'], ['books', 'Books sidebar (kobo/day)']].map(([k, l]) => field(`promoPricing.${k}`, l, pp[k], pd[k]))),
+      grid(...[['discover', 'Discover top (kobo/day)'], ['feed', 'Feed boost (kobo/day)'], ['venues', 'Venues sidebar (kobo/day)'], ['books', 'Books sidebar (kobo/day)'], ['profile', 'Profile rail (kobo/day)']].map(([k, l]) => field(`promoPricing.${k}`, l, pp[k], pd[k]))),
       grid(...[1, 2, 3].flatMap((n) => [field(`promoPricing.tier${n}Days`, `Discount ${n}: from days`, pp[`tier${n}Days`], pd[`tier${n}Days`]), field(`promoPricing.tier${n}Pct`, `Discount ${n}: % off`, pp[`tier${n}Pct`], pd[`tier${n}Pct`])])),
       h('p', { class: 'tiny muted' }, 'A rate of 0 hides that placement. Days or % of 0 turns a discount off. The best discount the days reach applies. Hosts see the processing fee on top.'));
     const features = sub('plans-features', 'Plan features (1 = on, 0 = off)', ...Object.keys(PLAN_LABEL).map((p) => h('div', { class: 'col', style: { gap: '.35rem' } }, h('strong', { class: 'small' }, PLAN_LABEL[p]), grid(...FEATURE_FIELDS.map(([k, l]) => field(`features.${p}.${k}`, l, s.features[p][k], d.features[p][k]))))));
@@ -321,7 +321,7 @@ function userPlanCard() {
 }
 
 // ---------------------------------------------------------------- promotions
-const PLACES = [['discover', 'Discover'], ['feed', 'Feed'], ['venues', 'Venues'], ['books', 'Books']];
+const PLACES = [['discover', 'Discover'], ['feed', 'Feed'], ['venues', 'Venues'], ['books', 'Books'], ['profile', 'Profile']];
 const STATUS_LABEL = { live: 'Live', scheduled: 'Scheduled', ended: 'Ended', paused: 'Paused' };
 const dtLocal = (d) => { if (!d) return ''; const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset()); return x.toISOString().slice(0, 16); };
 function promoCard() {
@@ -357,7 +357,7 @@ function promoCard() {
   };
   const current = currentPromotions();
   pick.run();
-  return section('promotions', 'sparkle', 'Promotions', 'Shown as “Promoted” in the Discover, Feed, Venues and Books sidebars (3 per sidebar), and as one inline card on phones.',
+  return section('promotions', 'sparkle', 'Promotions', 'Shown as “Promoted” in the Discover, Feed, Venues, Books and Profile sidebars, and as one inline card on phones.',
     sub('promo-new', 'New promotion',
       h('div', { class: 'admin-search-row' }, typeSel, q), pick.el,
       pickedEl,

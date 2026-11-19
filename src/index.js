@@ -19,6 +19,7 @@ async function start() {
     await db.ensureReady();
   }
   const billing = require('./features/wallet/billing');
+  const paidEntry = require('./features/wallet/paid-entry');
   await billing.recover();
   const handleRequest = createRequestHandler();
   const server = http.createServer((req, res) => {
@@ -52,6 +53,7 @@ async function start() {
 
   const timers = [
     setInterval(() => billing.tick().catch(e => console.error('[billing]', e.message)), 1000),
+    setInterval(() => paidEntry.tick().catch(e => console.error('[paid entry]', e.message)), 1000),
     setInterval(() => { cleanupInactiveMeetings(); snapshot.expireSnapshots().catch(() => {}); }, config.MEETING_CLEANUP_INTERVAL_MS),
     setInterval(syncViewerCounts, 15000),
     setInterval(pruneLeftParticipants, 60_000),

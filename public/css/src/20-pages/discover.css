@@ -119,6 +119,43 @@ body[data-page="discover"] .main {
   overflow-x: clip;
 }
 
+/* Feed entry (phones: Messages took Feed's bottom-nav slot) */
+.dz-feed {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.75rem 0 1.25rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--r-md);
+  background: var(--s1);
+  border: 1px solid var(--line);
+  color: var(--text);
+  box-shadow: var(--shadow-1);
+}
+.dz-feed:hover {
+  border-color: var(--line-2);
+}
+.dz-feed-ic {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  color: var(--g-social);
+  background: color-mix(in srgb, var(--g-social) 12%, transparent);
+  flex: none;
+}
+.dz-feed-txt {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.dz-feed-txt span {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 @media (min-width: 821px) {
   .dz-head {
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -155,6 +192,9 @@ body[data-page="discover"] .main {
     min-width: 5.6rem;
     max-width: 9rem;
   }
+  .dz-feed {
+    display: none;
+  }
 }
 
 @media (max-width: 380px) {
@@ -171,5 +211,48 @@ body[data-page="discover"] .main {
   .dz-txt.in {
     animation: none;
     transition: none;
+  }
+}
+
+/* Premium compactness + overflow safety (keep the phone Feed entry above). */
+body[data-page="discover"] .main,
+body[data-page="search"] .main {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+.dz-head,
+.dz-title,
+.dz-filters,
+.search-line {
+  min-width: 0;
+  max-width: 100%;
+}
+.dz-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+.dz-head .search-line {
+  border-radius: 14px;
+  box-shadow: var(--shadow-1);
+}
+.dz-feed {
+  box-shadow: var(--shadow-1);
+}
+body[data-page="discover"] .grid-cards,
+body[data-page="search"] .grid-cards {
+  min-width: 0;
+}
+
+@media (max-width: 420px) {
+  .dz-title {
+    font-size: 1.12rem;
+  }
+  .dz-filters {
+    max-width: 100%;
   }
 }

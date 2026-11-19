@@ -55,10 +55,17 @@ async function usernameSuggestions(base, exceptId) {
 }
 
 async function createUser({ username, email, passwordHash = null, displayName = null, avatarUrl = null, verified = false, phone = null, phoneVerified = false }) {
-  return one(
+  const db = require('../../../db');
+  return db.tx(async c => {
+    const user = (await c.query(
     `INSERT INTO users (username, email, password_hash, display_name, avatar_url, email_verified_at, password_changed_at, phone, phone_verified)
      VALUES ($1, $2, $3, $4, $5, CASE WHEN $6 THEN NOW() END, CASE WHEN $3::text IS NOT NULL THEN NOW() END, $7, $8) RETURNING *`,
-    [username, normEmail(email), passwordHash, displayName, avatarUrl, !!verified, phone || null, !!phoneVerified]);
+    [username, normEmail(email), passwordHash, displayName, avatarUrl, !!verified, phone || null, !!phoneVerified])).rows[0];
+    const units = 60 * 60000;
+    await c.query('INSERT INTO credit_wallets(user_id,balance_units) VALUES($1,$2)', [user.id, units]);
+    await c.query("INSERT INTO credit_ledger(user_id,kind,delta_units,balance_after_units) VALUES($1,'welcome',$2,$2)", [user.id, units]);
+    return user;
+  });
 }
 
 async function setUsername(userId, username) {
