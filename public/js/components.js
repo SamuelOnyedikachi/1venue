@@ -19,29 +19,22 @@ export const CAT = {
 };
 export const catOf = (k) => CAT[k] || CAT.other;
 
-function eventPlace(ev) {
-  const s = ev.settings || ev.venue || {};
-  return (s && (s.venue || s.location || s.place)) || ev.venueName || ev.location || 'Online';
-}
 export function eventCard(ev, { compact = false } = {}) {
   const [cl, ci] = catOf(ev.category);
   const dateLabel = ev.startsAt ? fmtDate(ev.startsAt, { weekday: undefined }) : null;
-  const place = eventPlace(ev);
   const host = ev.host ? h('span', { class: 'ev-meta-item ev-host' },
     avatar(ev.host.name, ev.host.avatarUrl, 'sm'),
     h('span', { class: 'ev-host-name' }, ev.host.name || ''),
     ev.host.verified ? h('span', { class: 'verified-dot', title: 'Verified host', 'aria-label': 'Verified host', html: icon('check', { size: 11 }) }) : null) : null;
-  const when = [];
-  if (dateLabel) when.push(h('span', { class: 'ev-meta-item ev-when' },
-    h('span', { class: 'ic', html: icon('calendar', { size: 13 }) }), h('span', { class: 'ev-meta-txt' }, dateLabel)));
-  if (place) when.push(h('span', { class: 'ev-meta-item ev-place' },
-    h('span', { class: 'ic', html: icon('mapPin', { size: 13 }) }), h('span', { class: 'ev-meta-txt' }, place)));
-  const meta = [host, when.length ? h('span', { class: 'ev-meta-when' }, ...when) : null].filter(Boolean);
+  const when = dateLabel ? h('span', { class: 'ev-meta-when' },
+    h('span', { class: 'ev-meta-item ev-when' },
+      h('span', { class: 'ic', html: icon('calendar', { size: 13 }) }), h('span', { class: 'ev-meta-txt' }, dateLabel))) : null;
+  const meta = [host, when].filter(Boolean);
   return h('a', { class: 'ev-tile' + (compact ? ' compact' : ''), href: `/e/${ev.slug}`, 'data-link': '', 'aria-label': ev.title || 'Event' },
     h('div', { class: 'cover' },
       ev.coverUrl ? h('img', { src: ev.coverUrl, alt: '', loading: 'lazy' }) : h('div', { class: 'art', html: LOGO_ART }),
       h('div', { class: 'body' },
-        h('span', { class: 'ev-cat', html: icon(ci, { size: 12 }) + esc(cl) }),
+        h('span', { class: 'ev-cat', html: icon(ci, { size: 8 }) + `<span class="ev-cat-lbl">${esc(cl)}</span>` }),
         h('div', { class: 'title' }, ev.title),
         meta.length ? h('div', { class: 'ev-meta' }, ...meta) : null)));
 }

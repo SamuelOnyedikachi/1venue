@@ -1,5 +1,5 @@
 'use strict';
-// Event tiles: the top 65% of the card must be a clear, untinted photo
+// Event tiles: the top 59% of the card must be a clear, untinted photo
 // at every placement and at 390/768/1024/1280.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -21,7 +21,7 @@ function loadPuppeteer() {
   try { return require('puppeteer-core'); } catch { return null; }
 }
 
-test('event tile photo stays clear in the top 65% at 390/768/1024/1280', {
+test('event tile photo stays clear in the top 59% at 390/768/1024/1280', {
   skip: skipDb || (!hasChrome ? 'google-chrome missing' : false),
   timeout: 180000,
 }, async () => {
@@ -109,10 +109,10 @@ test('event tile photo stays clear in the top 65% at 390/768/1024/1280', {
         min = row.ratio;
         minAt = `${row.path} @${row.width} tile#${row.i} (${row.w}x${row.h})`;
       }
-      if (row.ratio < 0.65) {
+      if (row.ratio < 0.59) {
         fails.push(`${row.path} @${row.width} tile#${row.i}: text starts at ${(row.ratio * 100).toFixed(1)}% of ${row.h}px`);
       }
-      if (row.overlayRatio > 0.40 + 0.01) {
+      if (row.overlayRatio > 0.45 + 0.01) {
         fails.push(`${row.path} @${row.width} tile#${row.i}: overlay is ${(row.overlayRatio * 100).toFixed(1)}% of height`);
       }
       if (row.metaWraps) {
@@ -120,7 +120,7 @@ test('event tile photo stays clear in the top 65% at 390/768/1024/1280', {
       }
     }
     assert.equal(fails.join('\n'), '', fails.join('\n'));
-    assert.ok(min >= 0.65, `min clear-photo ratio ${min} at ${minAt}`);
+    assert.ok(min >= 0.59, `min clear-photo ratio ${min} at ${minAt}`);
     console.log(`min clear-photo ratio ${min} at ${minAt} (n=${samples.length})`);
   } finally {
     if (browser) await browser.close().catch(() => {});

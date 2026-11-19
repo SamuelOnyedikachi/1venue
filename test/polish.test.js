@@ -11,14 +11,16 @@ test('event tiles are full-bleed theme overlays without play or corner chips', (
   const js = read('public/js/components.js');
   assert.match(js, /ev-tile/);
   assert.match(js, /ev-meta/);
-  assert.match(js, /mapPin/);
+  assert.match(js, /calendar/);
+  assert.doesNotMatch(js, /mapPin/);
+  assert.doesNotMatch(js, /ev-place/);
   assert.doesNotMatch(js, /ev-open/);
   assert.doesNotMatch(js, /attending/);
   const css = read('public/css/src/10-components/cards.css');
   assert.match(css, /ev-tile \.cover::after/);
   assert.match(css, /aspect-ratio:\s*4 \/ 3/);
-  assert.match(css, /height:\s*38%/);
-  assert.match(css, /max-height:\s*35%/);
+  assert.match(css, /height:\s*45%/);
+  assert.match(css, /max-height:\s*41%/);
   assert.match(css, /linear-gradient\(\s*to top/);
   assert.match(css, /var\(--accent-2\)/);
   assert.doesNotMatch(css, /ev-chip-count/);
@@ -72,8 +74,8 @@ test('explanatory blurbs are gone; session header and Pricing icon are in place'
   assert.match(sess, /sess-meta/);
   assert.match(sess, /transcript line/);
   assert.match(read('public/js/pages/upgrade.js'), /icon\('sparkles'[\s\S]*Pricing/);
-  assert.match(read('public/index.html'), /app\.css\?v=36/);
-  assert.match(read('public/sw.js'), /VERSION = 'v47-2026-11-18'/);
+  assert.match(read('public/index.html'), /app\.css\?v=37/);
+  assert.match(read('public/sw.js'), /VERSION = 'v48-2026-11-19'/);
 });
 
 test('home full-bleed bands do not use 100vw', () => {
