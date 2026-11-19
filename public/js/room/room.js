@@ -703,6 +703,7 @@ Object.assign(Room.prototype, {
   },
   async endForAll() { if (await confirmDlg('End the session for everyone? Transcripts and summaries will be saved.', { ok: 'End session', danger: true })) this.send('end-meeting', {}); },
   async leave() {
+    if (!(await confirmDlg('Leave this meeting? You will be disconnected from the call. You can rejoin while it is still active.', { ok: 'Leave meeting', danger: true }))) return;
     if (this.recorder.state !== 'idle') { this.recorder.stop(); await new Promise((r) => setTimeout(r, 600)); }
     api('/api/leave', { method: 'POST', body: { code: this.code, participantId: this.me.id } }).catch(() => {});
     const s = roomsStore(); delete s[this.code]; localStorage.setItem('venue.rooms', JSON.stringify(s));
