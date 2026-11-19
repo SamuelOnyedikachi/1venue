@@ -18,6 +18,7 @@ export async function mount(view) {
   const toggle = (get, set) => { const i = h('input', { type: 'checkbox', checked: !!get() }); i.onchange = () => set(i.checked); return h('label', { class: 'switch' }, i, h('span')); };
   const themeSeg = seg([['light', 'Light', 'sun'], ['dark', 'Dark', 'moon'], ['system', 'Auto', 'sliders']], () => P().theme, (v) => setPrefs({ theme: v }));
   const fontSeg = seg(FONT_SIZES.map(([l, v]) => [v, l]), () => P().fontScale || 1, (v) => setPrefs({ fontScale: v }));
+  fontSeg.classList.add('text-size-seg');
   const motionToggle = toggle(() => P().reduceMotion, (v) => setPrefs({ reduceMotion: v }));
   const swatches = h('div', { class: 'swatches' }, ACCENTS.map(([n, a, a2]) => h('button', { class: `swatch${P().accent === a ? ' on' : ''}`, 'data-accent': a, 'data-tip': n, 'aria-label': n, 'aria-pressed': String(P().accent === a), style: { background: `linear-gradient(135deg, ${a}, ${a2})` }, onclick: () => setPrefs({ accent: a, accent2: a2 }) })));
   const custom = h('input', { type: 'color', value: P().accent || '#2563eb', 'aria-label': 'Custom accent', 'data-tip': 'Custom colour' });

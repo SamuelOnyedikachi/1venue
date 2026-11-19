@@ -168,6 +168,41 @@
   padding-top: 0;
 }
 
+@media (min-width: 821px) and (max-width: 1400px) {
+  .topbar {
+    gap: 0.45rem;
+    padding-inline: max(0.65rem, var(--safe-l)) max(0.65rem, var(--safe-r));
+  }
+  .topbar > .grow {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .topnav {
+    flex: 0 1 auto;
+    gap: 0;
+    margin-left: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .topnav::-webkit-scrollbar {
+    display: none;
+  }
+  .topnav a,
+  .topnav-books {
+    justify-content: center;
+    gap: 0;
+    padding-inline: 0.5rem;
+    font-size: 0;
+  }
+  .top-desktop {
+    width: 36px;
+    min-width: 36px;
+    justify-content: center;
+    padding-inline: 0;
+    font-size: 0;
+  }
+}
+
 @media (max-width: 820px) {
   .topnav,
   .top-desktop {

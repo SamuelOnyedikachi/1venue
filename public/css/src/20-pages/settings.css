@@ -37,6 +37,17 @@
 .settings-view .set-card {
   padding: 1.25rem;
 }
+.settings-view .set-card .seg {
+  min-width: 0;
+  max-width: 100%;
+}
+.settings-view .set-card .seg > button {
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: center;
+  padding-inline: clamp(0.4rem, 2vw, 0.9rem);
+  white-space: nowrap;
+}
 .settings-view .set-card > .set-row {
   padding-inline: 0;
 }
@@ -104,6 +115,18 @@
 
 /* Theme row: icon + title + hint on one line, the Light/Dark/Auto switch on its own line (mobile). */
 @media (max-width: 640px) {
+  .settings-view .set-row {
+    flex-wrap: wrap;
+  }
+  .settings-view .set-row > .btn {
+    max-width: 100%;
+    white-space: normal;
+  }
+  .settings-view .text-size-seg {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 6rem), 1fr));
+    width: 100%;
+  }
   .set-row.set-row-stack {
     flex-wrap: wrap;
     row-gap: 0.6rem;
@@ -119,9 +142,14 @@
   .set-row.set-row-stack > .seg {
     flex: 1 1 100%;
     display: flex;
+    flex-wrap: wrap;
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
   }
   .set-row.set-row-stack > .seg button {
-    flex: 1;
+    flex: 1 1 4.5rem;
+    min-width: 0;
     justify-content: center;
   }
 }
