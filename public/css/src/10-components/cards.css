@@ -101,12 +101,13 @@ a.ev-tile:focus-visible {
   bottom: 0;
   z-index: 2;
   max-height: 41%;
-  padding: 0.55rem 1.1rem 1.1rem;
+  padding: clamp(0.55rem, 2.933cqi, 0.959rem) clamp(1.1rem, 5.867cqi, 1.919rem)
+    clamp(1.1rem, 5.867cqi, 1.919rem);
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
   align-items: flex-start;
-  gap: 0.32rem;
+  gap: clamp(0.32rem, 1.707cqi, 0.558rem);
   color: #fff;
   box-sizing: border-box;
   overflow: hidden;
@@ -115,7 +116,7 @@ a.ev-tile:focus-visible {
 .ev-tile .title {
   font-family: var(--font);
   font-weight: 600;
-  font-size: 0.86rem;
+  font-size: clamp(0.86rem, 4.587cqi, 1.5rem);
   line-height: 1.2;
   flex: 0 1 auto;
   min-height: 0;
@@ -131,7 +132,7 @@ a.ev-tile:focus-visible {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 0.35rem;
+  gap: clamp(0.35rem, 1.867cqi, 0.610rem);
   min-width: 0;
   max-width: 100%;
   flex: none;
@@ -139,7 +140,7 @@ a.ev-tile:focus-visible {
 .ev-tile .ev-cat {
   display: inline-flex;
   align-items: center;
-  gap: 0.18rem;
+  gap: clamp(0.18rem, 0.960cqi, 0.314rem);
   line-height: 1;
   flex: none;
   color: #fff;
@@ -150,7 +151,7 @@ a.ev-tile:focus-visible {
   width: fit-content;
   letter-spacing: 0.04em;
   font-weight: 600;
-  font-size: 0.5rem;
+  font-size: clamp(0.5rem, 2.667cqi, 0.872rem);
   /* Fallback if all-small-caps is unavailable: lowercase + small-caps. */
   text-transform: lowercase;
   font-variant: small-caps;
@@ -164,8 +165,8 @@ a.ev-tile:focus-visible {
 }
 .ev-tile .ev-cat .ic {
   display: block;
-  width: 8px;
-  height: 8px;
+  width: clamp(8px, 2.667cqi, 13.95px);
+  height: clamp(8px, 2.667cqi, 13.95px);
   color: #fff;
   flex: none;
 }
@@ -175,7 +176,7 @@ a.ev-tile:focus-visible {
   /* Small-caps sit on the baseline of the em box; nudge down to the icon centre. */
   transform: translateY(0.08em);
 }
-.ev-meta {
+.ev-tile .ev-meta {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
@@ -185,33 +186,33 @@ a.ev-tile:focus-visible {
   max-width: 100%;
   width: auto;
   flex: none;
-  font-size: 0.56rem;
+  font-size: clamp(0.56rem, 2.987cqi, 0.977rem);
   line-height: 1;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.92);
   overflow: hidden;
   white-space: nowrap;
 }
-.ev-meta-item,
-.ev-meta-when {
+.ev-tile .ev-meta-item,
+.ev-tile .ev-meta-when {
   display: inline-flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 0.3rem;
+  gap: clamp(0.3rem, 1.600cqi, 0.523rem);
   min-width: 0;
   white-space: nowrap;
   line-height: 1;
 }
-.ev-meta-item .ic,
-.ev-meta-when .ic {
+.ev-tile .ev-meta-item .ic,
+.ev-tile .ev-meta-when .ic {
   display: block;
-  width: 12px;
-  height: 12px;
+  width: clamp(12px, 4.000cqi, 20.93px);
+  height: clamp(12px, 4.000cqi, 20.93px);
   flex: none;
   opacity: 0.9;
   line-height: 0;
 }
-.ev-meta-txt {
+.ev-tile .ev-meta-txt {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -222,14 +223,14 @@ a.ev-tile:focus-visible {
 /* Host and date sit inline; host shrinks first if the row is tight. */
 .ev-tile .ev-host {
   font-weight: 600;
-  font-size: 0.56rem;
+  font-size: clamp(0.56rem, 2.987cqi, 0.977rem);
   line-height: 1;
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   max-width: 70%;
 }
-.ev-host-name {
+.ev-tile .ev-host-name {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -241,43 +242,43 @@ a.ev-tile:focus-visible {
   display: grid;
   place-items: center;
   flex: none;
-  width: 0.9rem;
-  height: 0.9rem;
-  font-size: 0.4rem;
+  width: clamp(0.9rem, 4.800cqi, 1.570rem);
+  height: clamp(0.9rem, 4.800cqi, 1.570rem);
+  font-size: clamp(0.4rem, 2.133cqi, 0.698rem);
   line-height: 0;
 }
 .ev-tile .ev-host .verified-dot {
   display: inline-grid;
   place-items: center;
   flex: none;
-  width: 11px;
-  height: 11px;
-  margin-left: 0.2rem;
+  width: clamp(11px, 3.667cqi, 19.19px);
+  height: clamp(11px, 3.667cqi, 19.19px);
+  margin-left: clamp(0.2rem, 1.067cqi, 0.349rem);
   line-height: 0;
 }
 .ev-tile .ev-host .verified-dot svg,
 .ev-tile .ev-host .verified-dot .ic {
-  width: 8px;
-  height: 8px;
+  width: clamp(8px, 2.667cqi, 13.95px);
+  height: clamp(8px, 2.667cqi, 13.95px);
 }
-.ev-meta-when {
+.ev-tile .ev-meta-when {
   flex: 0 0 auto;
   min-width: 0;
-  margin: 0 0 0 0.4rem;
-  padding-left: 0.4rem;
+  margin: 0 0 0 clamp(0.4rem, 2.133cqi, 0.698rem);
+  padding-left: clamp(0.4rem, 2.133cqi, 0.698rem);
   border-left: 1px solid rgba(255, 255, 255, 0.42);
-  font-size: 0.52rem;
+  font-size: clamp(0.52rem, 2.773cqi, 0.907rem);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.76);
 }
-.ev-meta-when .ic {
-  width: 10px;
-  height: 10px;
+.ev-tile .ev-meta-when .ic {
+  width: clamp(10px, 3.333cqi, 17.44px);
+  height: clamp(10px, 3.333cqi, 17.44px);
 }
-.ev-meta-when .ev-when {
+.ev-tile .ev-meta-when .ev-when {
   flex: 0 0 auto;
 }
-.ev-meta-when .ev-place {
+.ev-tile .ev-meta-when .ev-place {
   flex: 1 1 3.2rem;
   min-width: 3.2rem;
   overflow: hidden;
@@ -288,7 +289,8 @@ a.ev-tile:focus-visible {
 /* Narrow tiles keep 4/3. Only padding tightens at ≤420px; 1-line title is a last-resort fallback. */
 @container evtile (max-width: 420px) {
   .ev-tile .body {
-    padding: 0.55rem 0.9rem 0.95rem;
+    padding: clamp(0.55rem, 2.933cqi, 0.959rem) clamp(0.9rem, 4.800cqi, 1.570rem)
+      clamp(0.95rem, 5.067cqi, 1.657rem);
   }
 }
 @container evtile (max-width: 340px) {

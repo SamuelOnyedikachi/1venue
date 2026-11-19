@@ -74,8 +74,8 @@ test('explanatory blurbs are gone; session header and Pricing icon are in place'
   assert.match(sess, /sess-meta/);
   assert.match(sess, /transcript line/);
   assert.match(read('public/js/pages/upgrade.js'), /icon\('sparkles'[\s\S]*Pricing/);
-  assert.match(read('public/index.html'), /app\.css\?v=37/);
-  assert.match(read('public/sw.js'), /VERSION = 'v48-2026-11-19'/);
+  assert.match(read('public/index.html'), /app\.css\?v=38/);
+  assert.match(read('public/sw.js'), /VERSION = 'v49-2026-11-19'/);
 });
 
 test('home full-bleed bands do not use 100vw', () => {
