@@ -37,7 +37,7 @@ export async function mount(view, params) {
           h('div', { class: 'grow ht-panel-title' }, h('h2', null, title)),
           h('div', { class: 'ht-panel-actions' }, btn)),
         h('div', { class: 'ht-panel-body' },
-          cur ? h('div', { class: 'prose', html: md(cur.content) }) : h('p', { class: 'small muted', style: { margin: 0 } }, 'One click — AI reads the transcript for you.'),
+          cur ? h('div', { class: 'prose', html: md(cur.content) }) : h('p', { class: 'small muted', style: { margin: 0 } }, 'One click - AI reads the transcript for you.'),
           cur ? h('div', { class: 'row between tiny faint' }, h('span', null, `${cur.provider || 'ai'} · ${timeAgo(cur.createdAt)}`), h('button', { class: 'btn xs ghost', html: icon('copy', { size: 13 }) + 'Copy', onclick: () => copy(cur.content, 'Copied') })) : null));
     };
     render(); return box;
@@ -80,7 +80,7 @@ async function list(view) {
         h('span', { class: 'tiny faint' }, String(x.code).toLowerCase())),
       fmtDate(x.createdAt),
       pill(x.wasHost ? 'Hosted' : 'Joined', x.wasHost ? 'accent' : 'muted', x.wasHost ? 'radio' : 'users'),
-      x.maxParticipants ? String(x.maxParticipants) : '—',
+      x.maxParticipants ? String(x.maxParticipants) : '-',
       dur,
       iconBtn('chevronRight', 'Open session', { href: `/session/${x.id}` }),
     ];

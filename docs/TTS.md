@@ -125,7 +125,7 @@ the icon at all:
 3. **Latin-script text without metadata is never guessed.** Igbo, Hausa, Yorùbá, and English all
    use Latin letters, and a guess would be wrong too often. Cyrillic, Devanagari, and Ethiopic are
    shared by several languages, so they aren't guessed either. These need metadata.
-4. Then (since 14 Nov 2026 — device first, cloud only where the device has no voice):
+4. Then (since 14 Nov 2026 - device first, cloud only where the device has no voice):
    - The device has a built-in voice for **exactly that language** → **device voice** (free,
      instant). English, French and most big languages land here on phones and laptops.
    - Otherwise, language on the allowlist and cloud on → **cloud voice** (Gemini). Signed-out

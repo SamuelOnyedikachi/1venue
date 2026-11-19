@@ -42,10 +42,10 @@ module.exports = function routes(route, kit) {
   route('POST', '/api/covers/generate', async (ctx) => {
     const u = await requireUser(ctx.req, ctx.res);
     if (!enabled()) throw httpError(503, 'AI covers are off (set REPLICATE_API_TOKEN)');
-    if (!rateLimit(`cover:${u.id}`, 6)) throw httpError(429, 'One moment — covers are still being made');
+    if (!rateLimit(`cover:${u.id}`, 6)) throw httpError(429, 'One moment - covers are still being made');
     const b = await ctx.body(16 * 1024);
     const took = await usage.take(`u:${u.id}`, 'cover', 1, C.dailyLimit);
-    if (!took.ok) throw httpError(429, `You’ve made ${C.dailyLimit} covers today — try again tomorrow, or upload your own`);
+    if (!took.ok) throw httpError(429, `You’ve made ${C.dailyLimit} covers today - try again tomorrow, or upload your own`);
     let r;
     try {
       r = await replicate.run({
@@ -64,14 +64,14 @@ module.exports = function routes(route, kit) {
         options.push({ token: t, url: `/api/covers/preview/${t}` });
       } catch (e) { console.error('[covers] download', e.message); }
     }
-    if (!options.length) { await usage.refund(`u:${u.id}`, 'cover', 1).catch(() => {}); throw httpError(502, 'No cover came back — try again'); }
+    if (!options.length) { await usage.refund(`u:${u.id}`, 'cover', 1).catch(() => {}); throw httpError(502, 'No cover came back - try again'); }
     return { options, left: Math.max(0, C.dailyLimit - took.used) };
   });
 
   route('GET', '/api/covers/preview/([\\w-]{16,40})', async (ctx, [t]) => {
     const u = await requireUser(ctx.req, ctx.res);
     const p = pending.get(t);
-    if (!p || p.userId !== u.id) throw httpError(404, 'That preview expired — generate again');
+    if (!p || p.userId !== u.id) throw httpError(404, 'That preview expired - generate again');
     return { raw: p.buf, type: p.mime, headers: { 'Cache-Control': 'private, max-age=1800' } };
   });
 
@@ -79,7 +79,7 @@ module.exports = function routes(route, kit) {
     const u = await requireUser(ctx.req, ctx.res);
     const b = await ctx.body(4096);
     const p = pending.get(String(b.token || ''));
-    if (!p || p.userId !== u.id) throw httpError(404, 'That preview expired — generate again');
+    if (!p || p.userId !== u.id) throw httpError(404, 'That preview expired - generate again');
     const uploads = require('../../venue/uploads');
     await uploads.quota(data, { size: p.buf.length, userId: u.id, ownerKey: null, roomCode: null });
     const title = String(b.title || 'Event').replace(/\s+/g, ' ').trim().slice(0, 90) || 'Event';

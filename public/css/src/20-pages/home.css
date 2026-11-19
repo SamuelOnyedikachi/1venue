@@ -1,4 +1,4 @@
-/* hero — full-bleed under nav; top pad keeps eyebrow clear of sticky nav */
+/* hero - full-bleed under nav; top pad keeps eyebrow clear of sticky nav */
 .hero {
   position: relative;
   border-radius: 0;
@@ -297,10 +297,10 @@ body[data-page="home"] .main {
 .hero-join-first .join-box > svg { color: var(--accent); margin-left: .3rem; }
 .hero-join-first .join-box input { color: var(--text); font-size: clamp(1rem, 2vw, 1.2rem); letter-spacing: .02em; }
 .hero-join-first .join-box input::placeholder { color: var(--muted); }
-.hero-join-first .join-box .btn.primary { min-height: 58px; padding-inline: 1.45rem; background: linear-gradient(110deg, var(--accent), var(--accent-2)); color: var(--accent-ink); box-shadow: none; }
+.hero-join-first .join-box .btn.primary { min-height: 58px; padding-inline: 1.45rem; background: linear-gradient(110deg, var(--accent-action, var(--accent)), var(--accent-action-2, var(--accent-2))); color: #fff; box-shadow: none; }
 .hero-join-first .hero-ctas { width: min(100%, 660px); justify-content: center; margin: .9rem auto 0; gap: .7rem; }
 .hero-join-first .hero-ctas .btn { background: color-mix(in srgb, var(--accent) 28%, transparent); border-color: color-mix(in srgb, var(--accent) 42%, rgba(255,255,255,.32)); color: #fff; }
-.hero-join-first .hero-ctas .btn.primary { background: var(--accent-ink); color: var(--accent); border-color: var(--accent-ink); box-shadow: 0 12px 28px color-mix(in srgb, var(--accent) 28%, transparent); }
+.hero-join-first .hero-ctas .btn.primary { background: #fff; color: var(--accent-action, var(--accent)); border-color: #fff; box-shadow: 0 12px 28px color-mix(in srgb, var(--accent) 28%, transparent); }
 .hero-join-first .hero-visual { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; max-width: none; pointer-events: none; }
 .hero-preview { position: absolute; width: 220px; padding: 1.15rem; border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--line-2)); border-radius: 20px; color: var(--text); background: color-mix(in srgb, var(--s1) 88%, var(--accent)); box-shadow: 0 20px 50px color-mix(in srgb, var(--accent) 30%, transparent), inset 0 1px rgba(255,255,255,.16); backdrop-filter: blur(14px); text-align: left; animation: previewFloat 7s ease-in-out infinite; }
 .hero-preview strong { display: block; color: var(--text); font-size: 1rem; line-height: 1.35; }

@@ -3,7 +3,7 @@
  * 1. HTTPS reachability of the signalling endpoint (Coolify proxy → livekit:7880)
  * 2. Token validation via /rtc/validate (proves key/secret match the server)
  * 3. WebSocket upgrade through the proxy (websockets enabled)
- * Media (UDP 50000-60000 / TCP 7881 / TURN) can only be proven from a browser — see docs/livekit-coolify.md §7. */
+ * Media (UDP 50000-60000 / TCP 7881 / TURN) can only be proven from a browser - see docs/livekit-coolify.md §7. */
 const { createLiveKitToken } = require("../src/livekit/tokens");
 const config = require("../src/config");
 const url = (process.argv[2] || config.LIVEKIT_URL || "").replace(/\/$/, "");
@@ -26,13 +26,13 @@ const ok = (m) => console.log("  ✓ " + m),
           `signalling reachable (${r.status} ${(await r.text()).trim().slice(0, 20)})`,
         )
       : bad(
-          `signalling answered ${r.status} — is the Coolify domain pointing at port 7880?`,
+          `signalling answered ${r.status} - is the Coolify domain pointing at port 7880?`,
         );
   } catch (e) {
     bad(
       "cannot reach " +
         http +
-        " — " +
+        " - " +
         (e.cause?.code || e.message) +
         " (DNS, proxy or certificate)",
     );
@@ -58,12 +58,12 @@ const ok = (m) => console.log("  ✓ " + m),
     if (r.ok) ok("API key/secret accepted by the server");
     else {
       bad(
-        `token rejected (${r.status}: ${t.replace(/ey[\w-]+\.[\w.-]*/g, "<token>").slice(0, 80)}) — LIVEKIT_API_KEY/SECRET must equal LIVEKIT_KEYS on the LiveKit service`,
+        `token rejected (${r.status}: ${t.replace(/ey[\w-]+\.[\w.-]*/g, "<token>").slice(0, 80)}) - LIVEKIT_API_KEY/SECRET must equal LIVEKIT_KEYS on the LiveKit service`,
       );
       return;
     }
   } catch (e) {
-    bad("validate failed — " + e.message);
+    bad("validate failed - " + e.message);
     return;
   }
   if (typeof WebSocket === "function") {
@@ -73,7 +73,7 @@ const ok = (m) => console.log("  ✓ " + m),
       );
       const t = setTimeout(() => {
         bad(
-          "WebSocket did not open in 8s — enable websockets on the Coolify proxy",
+          "WebSocket did not open in 8s - enable websockets on the Coolify proxy",
         );
         try {
           ws.close();
@@ -89,7 +89,7 @@ const ok = (m) => console.log("  ✓ " + m),
       ws.onerror = () => {
         clearTimeout(t);
         bad(
-          "WebSocket error — check proxy websocket support and that the domain targets port 7880",
+          "WebSocket error - check proxy websocket support and that the domain targets port 7880",
         );
         res();
       };
@@ -97,7 +97,7 @@ const ok = (m) => console.log("  ✓ " + m),
   } else console.log("  · skipped WebSocket test (needs Node 22+)");
   console.log(
     process.exitCode
-      ? "\nSome checks failed — see docs/livekit-coolify.md §8 (Troubleshooting)."
+      ? "\nSome checks failed - see docs/livekit-coolify.md §8 (Troubleshooting)."
       : "\nSignalling OK. Now test media from a browser: https://livekit.io/connection-test or open a 1venue room on mobile data.",
   );
 })();

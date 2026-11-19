@@ -39,9 +39,10 @@ Pages: `/login`, `/signup`, `/forgot-password`, `/reset-password`, `/verify-emai
 * A wrong email and a wrong password get the **same** answer ("Email or password is
   incorrect."), and an unknown email still runs one bcrypt compare so the timing matches.
 * **Change password** (needs the current one) signs out every other device and keeps this one.
-* **Forgot password** always answers "If that email has an account, a link is on its way." The
-  link is single-use, expires after `AUTH_RESET_TTL_MIN` (60), and is stored hashed. Using it
-  sets the new password, confirms the email, **signs out every device**, and signs in here.
+* **Forgot password** accepts a username or email and always gives the same account-safe answer.
+  The reset link is sent to the account email, is single-use, expires after `AUTH_RESET_TTL_MIN`
+  (60), and is stored hashed. Using it sets the new password, confirms the email, **signs out
+  every device**, and returns to sign-in; the person must use the new password to log in.
 
 ### Email verification
 
@@ -58,7 +59,7 @@ Pages: `/login`, `/signup`, `/forgot-password`, `/reset-password`, `/verify-emai
 ### Rate limits
 
 All sign-in endpoints share `AUTH_RATE_PER_MIN` (default 20) per IP, and some have tighter ones:
-sign-up per IP, sign-in per account, forgot-password per IP and per email, resend per user,
+sign-up per IP, sign-in per account, forgot-password per IP and per identifier, resend per user,
 change password/email per user. Limits are kept in memory per app process (1venue runs as one
 process; restarts reset them).
 
@@ -172,6 +173,7 @@ user row, id, profile, follows and events, and marks them `needs_password_setup`
 | `MAIL_ASSET_URL` | `PUBLIC_URL` if https, else `https://1venue.live` | where email images load from |
 | `SMTP_HOST` | empty | empty = no email sent (links logged outside production) |
 | `SMTP_PORT` | `587` | |
+| `SMTP_TLS_SERVERNAME` | empty | TLS hostname when `SMTP_HOST` is an IP address |
 | `SMTP_SECURE` | `true` only for port 465 | 587 uses STARTTLS |
 | `SMTP_USER`, `SMTP_PASS` | empty | |
 | `MAIL_FROM` | `1venue <no-reply@PUBLIC_URL host>` | must be a sender your provider allows |

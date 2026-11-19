@@ -32,9 +32,9 @@
   border-color: color-mix(in srgb, var(--accent) 45%, var(--line-2));
 }
 .vmic.on {
-  color: var(--accent-ink);
-  background: var(--accent);
-  border-color: var(--accent);
+  color: #fff;
+  background: var(--accent-action, var(--accent));
+  border-color: var(--accent-action, var(--accent));
   animation: vmicRing 1.6s ease-out infinite;
 }
 @keyframes vmicRing {

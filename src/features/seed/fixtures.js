@@ -81,11 +81,11 @@ const COMMENTS = [
 
 // owner, title, YouTube id (public talks), attach to event title (prefix match)
 const MATERIALS = [
-  ['sarah', 'The Danger of a Single Story — Chimamanda Ngozi Adichie (TED)', 'D9Ihs241zeg', 'Product Strategy Seminar'],
+  ['sarah', 'The Danger of a Single Story - Chimamanda Ngozi Adichie (TED)', 'D9Ihs241zeg', 'Product Strategy Seminar'],
   ['ngozi', 'Grit: The Power of Passion and Perseverance (TED)', 'H14bBuluwB8', 'Python for Beginners: Week 4'],
   ['chinedu', 'Inside the Mind of a Master Procrastinator (TED)', 'arj7oStGLkU', 'Lagos Design Circle'],
   ['funke', 'Steve Jobs’ 2005 Stanford Commencement Address', 'UF8uR6Z6KLc', 'Pitch Deck Masterclass'],
-  ['aisha', 'The Power of Vulnerability — Brené Brown (TED)', 'iCvmsMzlF7o', 'Women in Business'],
+  ['aisha', 'The Power of Vulnerability - Brené Brown (TED)', 'iCvmsMzlF7o', 'Women in Business'],
 ];
 
 // Past sessions: event title prefix -> chat, poll, questions, transcript, summary

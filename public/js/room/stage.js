@@ -222,7 +222,7 @@ export function createStage(R) {
       const slideshow = h('input', { type: 'checkbox', checked: !!c.slideshow, onchange: (e) => R.toggleSlideshow(e.target.checked) });
       const preload = (i) => { if (c.pages[i - 1]) { const im = new Image(); im.src = c.pages[i - 1]; } };
       const show = (p) => {
-        pg = Math.min(n, Math.max(1, p || 1)); img.src = c.pages[pg - 1]; img.alt = `${c.title || 'Slide'} — page ${pg}`;
+        pg = Math.min(n, Math.max(1, p || 1)); img.src = c.pages[pg - 1]; img.alt = `${c.title || 'Slide'} - page ${pg}`;
         count.textContent = `${pg} / ${n}`; prev.disabled = pg <= 1; next.disabled = pg >= n;
         [...grid.children].forEach((el, i) => { el.classList.toggle('on', i + 1 === pg); el.setAttribute('aria-pressed', String(i + 1 === pg)); });
         preload(pg + 1);
@@ -367,7 +367,7 @@ export function createStage(R) {
       : 0;
     const sig = [key || '', layout, main ? main.id : '', filmIds, audCount, R.stage.enabled ? 1 : 0].join('|');
 
-    // Skip structural DOM work when only overlays/chat/reactions/etc. changed — avoids video blink.
+    // Skip structural DOM work when only overlays/chat/reactions/etc. changed - avoids video blink.
     if (!force && sig === lastSig && key === presentKey) {
       for (const t of tiles.values()) paintTile(t);
       renderSide();
@@ -405,7 +405,7 @@ export function createStage(R) {
     tilesEl.style.setProperty('--n', n);
     tilesEl.dataset.count = n > 9 ? 'many' : n;
     if (R.stage.enabled && !ids.length && !(R.layout === 'screenshare' && key)) {
-      tilesEl.append(h('div', { class: 'empty sm stage-empty' }, I('stage', 28), h('p', null, 'The stage is open — speakers will appear here.')));
+      tilesEl.append(h('div', { class: 'empty sm stage-empty' }, I('stage', 28), h('p', null, 'The stage is open - speakers will appear here.')));
     }
     for (const t of tiles.values()) paintTile(t);
     // audience strip for stage events

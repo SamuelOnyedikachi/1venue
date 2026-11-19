@@ -27,7 +27,7 @@ async function findUser(key) {
 function render(u, origin) {
   let html = indexHtml();
   const name = u ? (u.display_name || u.username) : 'Profile not found';
-  const title = u ? `${name} (@${u.username}) — 1venue` : 'Profile not found — 1venue';
+  const title = u ? `${name} (@${u.username}) - 1venue` : 'Profile not found - 1venue';
   const desc = u ? (u.bio || `${name} is on 1venue: live events, rooms and community.`).slice(0, 200) : 'This profile does not exist on 1venue.';
   const url = u ? `${origin}/u/${encodeURIComponent(u.username)}` : '';
   const img = u && u.avatar_url ? (/^https?:\/\//.test(u.avatar_url) ? u.avatar_url : origin + u.avatar_url) : `${origin}/icons/icon-512.png`;

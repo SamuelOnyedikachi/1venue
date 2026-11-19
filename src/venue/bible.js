@@ -30,11 +30,11 @@ const TRANSLATIONS = [
   { id: 'por_bsl', short: 'BSL', name: 'Bíblia Livre (Portuguese)', lang: 'pt', language: 'Portuguese', license: PD },
   { id: 'deu_l12', short: 'L1912', name: 'Luther Bibel 1912', lang: 'de', language: 'German', license: PD },
   { id: 'arb_vdv', short: 'SVD', name: 'Van Dyck (Arabic)', lang: 'ar', language: 'Arabic', license: PD, rtl: true },
-  // Qur’an (via Al Quran Cloud — free, no key)
-  { id: 'quran_en_sahih', short: 'Sahih', name: 'Qur’an — Sahih International', lang: 'en', language: 'English', license: 'Translation © Saheeh International', corpus: 'quran' },
-  { id: 'quran_en_pickthall', short: 'Pickthall', name: 'Qur’an — Mohammed Marmaduke Pickthall', lang: 'en', language: 'English', license: PD, corpus: 'quran' },
-  { id: 'quran_en_yusufali', short: 'Yusuf Ali', name: 'Qur’an — Abdullah Yusuf Ali', lang: 'en', language: 'English', license: PD, corpus: 'quran' },
-  { id: 'quran_ar_uthmani', short: 'Uthmani', name: 'Qur’an — Arabic (Uthmani)', lang: 'ar', language: 'Arabic', license: PD, corpus: 'quran', rtl: true },
+  // Qur’an (via Al Quran Cloud - free, no key)
+  { id: 'quran_en_sahih', short: 'Sahih', name: 'Qur’an - Sahih International', lang: 'en', language: 'English', license: 'Translation © Saheeh International', corpus: 'quran' },
+  { id: 'quran_en_pickthall', short: 'Pickthall', name: 'Qur’an - Mohammed Marmaduke Pickthall', lang: 'en', language: 'English', license: PD, corpus: 'quran' },
+  { id: 'quran_en_yusufali', short: 'Yusuf Ali', name: 'Qur’an - Abdullah Yusuf Ali', lang: 'en', language: 'English', license: PD, corpus: 'quran' },
+  { id: 'quran_ar_uthmani', short: 'Uthmani', name: 'Qur’an - Arabic (Uthmani)', lang: 'ar', language: 'Arabic', license: PD, corpus: 'quran', rtl: true },
 ];
 const BY_ID = new Map(TRANSLATIONS.map((t) => [t.id.toLowerCase(), t]));
 const BY_SHORT = new Map(TRANSLATIONS.map((t) => [t.short.toLowerCase(), t]));
@@ -71,7 +71,7 @@ const DEUTERO_BOOKS = [
 // Surah names in Arabic script (checked against api.alquran.cloud/v1/surah)
 const SURAH_AR = 'الفاتحة البقرة آل_عمران النساء المائدة الأنعام الأعراف الأنفال التوبة يونس هود يوسف الرعد إبراهيم الحجر النحل الإسراء الكهف مريم طه الأنبياء الحج المؤمنون النور الفرقان الشعراء النمل القصص العنكبوت الروم لقمان السجدة الأحزاب سبأ فاطر يس الصافات ص الزمر غافر فصلت الشورى الزخرف الدخان الجاثية الأحقاف محمد الفتح الحجرات ق الذاريات الطور النجم القمر الرحمن الواقعة الحديد المجادلة الحشر الممتحنة الصف الجمعة المنافقون التغابن الطلاق التحريم الملك القلم الحاقة المعارج نوح الجن المزمل المدثر القيامة الإنسان المرسلات النبأ النازعات عبس التكوير الانفطار المطففين الانشقاق البروج الطارق الأعلى الغاشية الفجر البلد الشمس الليل الضحى الشرح التين العلق القدر البينة الزلزلة العاديات القارعة التكاثر العصر الهمزة الفيل قريش الماعون الكوثر الكافرون النصر المسد الإخلاص الفلق الناس'.split(' ').map((s) => s.replace(/_/g, ' '));
 
-// Qur’an — 114 surahs: [number, transliterated name, ayah count, English meaning]
+// Qur’an - 114 surahs: [number, transliterated name, ayah count, English meaning]
 const QURAN_SURAHS = [
   [1, 'Al-Fatihah', 7, 'The Opener'], [2, 'Al-Baqarah', 286, 'The Cow'], [3, 'Ali \'Imran', 200, 'Family of Imran'],
   [4, 'An-Nisa', 176, 'The Women'], [5, 'Al-Ma\'idah', 120, 'The Table Spread'], [6, 'Al-An\'am', 165, 'The Cattle'],
@@ -158,7 +158,7 @@ const ALIASES = {
 function normBookKey(s) {
   return String(s || '').toLowerCase()
     .replace(/['’`]/g, '')
-    .replace(/[-–—_./]/g, '')
+    .replace(/[-–-_./]/g, '')
     .replace(/\s+/g, '')
     .trim();
 }
@@ -336,7 +336,7 @@ async function chapter(translationId, bookId, ch) {
   const isQuranBook = book.testament === 'Quran';
   const isQuranTr = t.corpus === 'quran';
 
-  // Keep Bible and Qur’an fully isolated — never mix translation corpus with the other library
+  // Keep Bible and Qur’an fully isolated - never mix translation corpus with the other library
   if (isQuranTr && !isQuranBook) {
     const e = new Error('That reference is not a Qur’an surah. Switch to a Bible translation, or open the Bible reader.');
     e.status = 400; throw e;

@@ -57,7 +57,7 @@
   box-shadow: 0 0 0 4px var(--s1);
 }
 
-/* Social-native type scale: titles sit close to body size — no news-blog headlines. */
+/* Social-native type scale: titles sit close to body size - no news-blog headlines. */
 .ev-hero h1 {
   font-size: 1.2rem;
   font-weight: 600;

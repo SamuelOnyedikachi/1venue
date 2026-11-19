@@ -61,7 +61,7 @@ test('Write it for me needs enough input; dates and venues are pulled out of fre
   const draft = require('../src/features/ai/draft');
   assert.equal(draft.wordCount(''), 0);
   assert.equal(draft.isRichInput('', ''), false, 'empty');
-  assert.equal(draft.isRichInput('Meetup', 'A talk.'), false, 'thin — well under 15 words');
+  assert.equal(draft.isRichInput('Meetup', 'A talk.'), false, 'thin - well under 15 words');
   assert.equal(draft.isRichInput('Sunday hangout', 'Come through.'), false, 'thin');
   const richTitle = 'A workshop for young founders building climate tools in Lagos';
   const richDesc = 'We will share lessons from shipping two products and leave time for questions.';

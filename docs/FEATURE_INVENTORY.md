@@ -22,7 +22,7 @@ in the codebase (see docs/BLUEPRINT.md for what has been verified on a live depl
 |---|---|---|
 | B1 | Email + password sign-up and sign-in (`/api/signup`, `/api/login`) | ✅ bcrypt (configurable cost), email confirmation, rate limits (docs/AUTH.md) |
 | B2 | Sessions: 15-min access token + rotating refresh token stored hashed | ✅ device list, per-device sign-out, sign out everywhere |
-| B3 | Forgot / reset password, change password, change email | ✅ single-use expiring links; reset signs out every device |
+| B3 | Forgot / reset password, change password, change email | ✅ username/email recovery; single-use expiring links; reset signs out every device and requires sign-in |
 | B4 | Continue with Google (OpenID Connect + PKCE) | ✅ links by verified email; hidden when not configured |
 | B5 | `Authorization: Bearer` access for API clients | ✅ checked against the session row |
 | B6 | `/api/me`, `/api/session`, sign out | ✅ |

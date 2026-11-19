@@ -222,7 +222,7 @@
   }
 }
 
-/* install banner — always a fixed overlay at the end of body, never in-page */
+/* install banner - always a fixed overlay at the end of body, never in-page */
 #install-root {
   position: fixed;
   inset: 0;
@@ -364,12 +364,12 @@
 }
 /* Start now + focused name field follow the theme accent, not the fixed brand blue. */
 .im-modal .au-primary {
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--accent-action, var(--accent));
+  color: #fff;
   border: 0;
 }
 .im-modal .au-primary:hover {
-  background: color-mix(in srgb, var(--accent) 82%, var(--text));
+  background: color-mix(in srgb, var(--accent-action, var(--accent)) 88%, #000);
 }
 .im-modal .au-primary:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent);

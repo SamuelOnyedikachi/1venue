@@ -45,7 +45,7 @@ export function maybeShowBanner(reason = '') {
 export function inlineBanner() { return null; }
 
 function banner(reason) {
-  const copy = reason === 'after-room' ? 'Rejoin faster next time — install 1venue.' : reason === 'dashboard' ? 'Get live alerts and one-tap joining.' : 'Faster, full-screen, works offline.';
+  const copy = reason === 'after-room' ? 'Rejoin faster next time - install 1venue.' : reason === 'dashboard' ? 'Get live alerts and one-tap joining.' : 'Faster, full-screen, works offline.';
   const el = h('div', { class: 'install', role: 'dialog', 'aria-label': 'Install app', 'aria-live': 'polite' },
     h('div', { class: 'logo-tile', html: LOGO(30) }),
     h('div', { class: 'grow' }, h('strong', null, 'Install 1venue'), h('div', { class: 'small', style: { opacity: '.85' } }, copy)),
@@ -58,7 +58,7 @@ export async function promptInstall() {
   if (deferred) { deferred.prompt(); const r = await deferred.userChoice.catch(() => null); deferred = null; clearBanner(); if (r?.outcome === 'dismissed') localStorage.setItem(KEY, Date.now()); return; }
   const s = sheet({ title: 'Install 1venue', icon: 'install' });
   const steps = isIOS()
-    ? [['share', 'Tap the Share button in Safari’s toolbar'], ['plus', 'Scroll and choose “Add to Home Screen”'], ['check', 'Tap “Add” — 1venue opens full-screen like a native app']]
+    ? [['share', 'Tap the Share button in Safari’s toolbar'], ['plus', 'Scroll and choose “Add to Home Screen”'], ['check', 'Tap “Add” - 1venue opens full-screen like a native app']]
     : [['moreV', 'Open your browser menu (⋮ or ⋯)'], ['install', 'Choose “Install app” or “Add to Home screen”'], ['check', 'Launch 1venue from your home screen or dock']];
   s.body.append(h('div', { class: 'layer' }, steps.map(([ic, t], i) => h('div', { class: 'set-row' }, h('span', { class: 'ico', style: { '--g': 'var(--accent)' }, html: icon(ic) }), h('span', null, h('strong', null, `${i + 1}. `), t)))));
 }

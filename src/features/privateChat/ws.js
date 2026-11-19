@@ -1,5 +1,5 @@
 /**
- * Phase 2A — private 1:1 chat
+ * Phase 2A - private 1:1 chat
  * - Live delivery when both online
  * - Messages always persisted (even if peer is away / left)
  * - On rejoin: replay in-memory + DB history for logged-in users
@@ -24,7 +24,7 @@ module.exports = {
       const attachment = normalizeAttachment(msg.attachment);
       if (!text && !attachment) return;
 
-      // Target may have left — still allow send & persist
+      // Target may have left - still allow send & persist
       let target = meeting.participants.get(targetId);
       const targetName = (target && target.name) || msg.targetName || 'Participant';
       const targetUserId = (target && target.userId) || msg.targetUserId || null;

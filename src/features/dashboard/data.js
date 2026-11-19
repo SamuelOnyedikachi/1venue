@@ -104,4 +104,3 @@ async function analytics(userId, params = {}) {
 }
 
 module.exports = { dashboard, analytics };
-

@@ -43,7 +43,7 @@ class Room {
   /* ------------------------------------------------------------------ pre-join */
   async start() {
     document.title = (this.code ? fmtCode(this.code) : 'New room') + ' · 1venue';
-    setBarContext({ placeholders: ['Type to search actions…'], pinned: () => [] });
+    setBarContext({ placeholders: ['Search meeting controls…'], pinned: () => [] });
     if (!this.code && !(this.intent && this.intent.create)) this.intent = { create: true, name: 'Instant meeting' };
     const intent = this.intent;
     const creating = !!(intent && intent.create && (!this.code || !intent.code || intent.code === this.code));
@@ -81,10 +81,10 @@ class Room {
         video.srcObject = stream; pv.classList.toggle('has-video', cam);
         if (mic) { ac = new AudioContext(); const an = ac.createAnalyser(); an.fftSize = 256; ac.createMediaStreamSource(stream).connect(an); const b = new Uint8Array(an.fftSize);
           const loop = () => { an.getByteTimeDomainData(b); let p = 0; for (const v of b) p = Math.max(p, Math.abs(v - 128)); meter.firstChild.style.width = Math.min(100, p * 1.6) + '%'; raf = requestAnimationFrame(loop); }; loop(); }
-      } catch (e) { toast('Camera/mic blocked — you can still join and turn them on later', { icon: 'alert', ms: 4500 }); mic = cam = false; paint(); }
+      } catch (e) { toast('Camera/mic blocked - you can still join and turn them on later', { icon: 'alert', ms: 4500 }); mic = cam = false; paint(); }
     };
-    const micB = h('button', { class: 'pj-btn', type: 'button', 'data-group': 'media', onclick: () => { if (audience) return toast('You’ll join as audience — request to speak once inside', { icon: 'stage' }); mic = !mic; paint(); preview(); } });
-    const camB = h('button', { class: 'pj-btn', type: 'button', 'data-group': 'media', onclick: () => { if (audience) return toast('You’ll join as audience — request to speak once inside', { icon: 'stage' }); cam = !cam; paint(); preview(); } });
+    const micB = h('button', { class: 'pj-btn', type: 'button', 'data-group': 'media', onclick: () => { if (audience) return toast('You’ll join as audience - request to speak once inside', { icon: 'stage' }); mic = !mic; paint(); preview(); } });
+    const camB = h('button', { class: 'pj-btn', type: 'button', 'data-group': 'media', onclick: () => { if (audience) return toast('You’ll join as audience - request to speak once inside', { icon: 'stage' }); cam = !cam; paint(); preview(); } });
     const devB = h('button', { class: 'pj-btn', type: 'button', 'data-group': 'settings', 'data-tip': 'Devices', onclick: () => this.deviceSheet(() => preview()), html: icon('headphones') });
     const paint = () => {
       micB.innerHTML = icon(mic ? 'mic' : 'micOff'); micB.classList.toggle('off', !mic); micB.dataset.tip = mic ? 'Mic on' : 'Mic off';
@@ -145,7 +145,7 @@ class Room {
           if (await confirmDlg('This event isn’t live yet. Start it now?', { ok: 'Go live' })) { this.intent = { create: true, eventId: this.event.id, name: this.event.title, stage: this.event.category !== 'meeting', speakerSeats: this.event.speakerSeats, code: this.event.code, meetingAccessMode: this.event.meetingAccessMode, meetingDurationMin: this.event.meetingDurationMin, meetingEntryPriceCredits: this.event.meetingEntryPriceCredits }; return this.join({ name, mic, cam, creating: true }); }
         }
         if (e.status === 404 && this.venueOwnerSlug) { this.intent = { create: true, venue: this.venueOwnerSlug, code: this.code, waitingRoom: true, name: this.venueName || 'Meeting' }; return this.join({ name, mic, cam, creating: true }); }
-        if (e.status === 404 && this.event) throw new Error('This event hasn’t started yet — we’ll be here when it goes live.');
+        if (e.status === 404 && this.event) throw new Error('This event hasn’t started yet - we’ll be here when it goes live.');
         if (e.status === 403 && e.data && e.data.ticketRequired && e.data.eventSlug) { toast('You need a ticket for this event', { icon: 'ticket' }); location.assign('/e/' + e.data.eventSlug); return; }
         throw e;
       }
@@ -162,7 +162,7 @@ class Room {
     this.enter(r);
   }
   waitingScreen(r) {
-    this.view.replaceChildren(h('div', { class: 'waiting' }, h('div', { class: 'wait-orb', html: LOGO(64) }), h('h2', null, r.venue ? `You’re at ${r.venue.name}` : 'Waiting for the host to let you in'), h('p', { class: 'muted' }, r.venue ? `The host will let you in to ${r.name || 'the meeting'} shortly — this venue always uses a waiting room.` : r.paidEntry?.enabled ? `The host must accept you. ${r.paidEntry.paid ? 'Your entry is paid; rejoining this meeting will not charge you again.' : `${r.paidEntry.entryCredits} credits will be charged when the host accepts you.`}` : `${r.name || fmtCode(this.code)} · we’ll bring you in automatically.`),
+    this.view.replaceChildren(h('div', { class: 'waiting' }, h('div', { class: 'wait-orb', html: LOGO(64) }), h('h2', null, r.venue ? `You’re at ${r.venue.name}` : 'Waiting for the host to let you in'), h('p', { class: 'muted' }, r.venue ? `The host will let you in to ${r.name || 'the meeting'} shortly - this venue always uses a waiting room.` : r.paidEntry?.enabled ? `The host must accept you. ${r.paidEntry.paid ? 'Your entry is paid; rejoining this meeting will not charge you again.' : `${r.paidEntry.entryCredits} credits will be charged when the host accepts you.`}` : `${r.name || fmtCode(this.code)} · we’ll bring you in automatically.`),
       h('div', { class: 'dots-loader' }, h('i'), h('i'), h('i')), h('button', { class: 'btn ghost', onclick: () => { this.destroy(); navigate('/'); } }, 'Cancel')));
     this.waitingMode = true;
     this.connectWs((m) => {
@@ -257,7 +257,7 @@ Object.assign(Room.prototype, {
       onTrackGone: (id, track, source) => this.onTrackGone(id === '__local' ? this.me.id : id, track, source),
       onSpeakers: (ids) => { this.speaking = new Set(ids); this.stageR.paintAll(); if (this.panel.tab === 'people') this.panel.refresh(); },
       onQuality: (id, q) => { this.quality[id] = String(q).toLowerCase(); this.stageR.paintAll(); },
-      onState: (s) => { this.mediaStatus = s; this.paintHead(); if (s === 'disconnected' && this.alive && !this.switchingRoom) this.netBanner(true, 'Media disconnected — reconnecting…'); else if (s === 'connected') this.netBanner(false); },
+      onState: (s) => { this.mediaStatus = s; this.paintHead(); if (s === 'disconnected' && this.alive && !this.switchingRoom) this.netBanner(true, 'Media disconnected - reconnecting…'); else if (s === 'connected') this.netBanner(false); },
       onLocal: () => { this.stageR.paintAll(); refreshBar(); this.paintHead(); },
     });
     this.captioner = new Captioner(this);
@@ -288,7 +288,7 @@ Object.assign(Room.prototype, {
     this.onUnload = () => { navigator.sendBeacon && navigator.sendBeacon('/api/leave', new Blob([JSON.stringify({ code: this.code, participantId: this.me.id })], { type: 'application/json' })); };
     window.addEventListener('pagehide', this.onUnload);
     this.onResize = () => { const m = isMobile(); if (m !== this.isMobile) { this.isMobile = m; this.renderStage(true); } }; window.addEventListener('resize', this.onResize);
-    if (this.peopleMap.size <= 1) setTimeout(() => this.peopleMap.size <= 1 && this.alive && toast('You’re the first one here — share the invite to bring people in', { icon: 'userPlus', group: 'people', ms: 5000 }), 1500);
+    if (this.peopleMap.size <= 1) setTimeout(() => this.peopleMap.size <= 1 && this.alive && toast('You’re the first one here - share the invite to bring people in', { icon: 'userPlus', group: 'people', ms: 5000 }), 1500);
     if (navigator.mediaSession) try { navigator.mediaSession.metadata = new MediaMetadata({ title: this.roomName, artist: '1venue' }); } catch { /* */ }
   },
   setPeople(list) { this.peopleMap = new Map(list.filter((p) => p.status !== 'WAITING').map((p) => [p.id, p])); const mp = this.peopleMap.get(this.me.id); if (mp) this.me.role = mp.role; },
@@ -350,7 +350,7 @@ Object.assign(Room.prototype, {
     if (!state.user) return requireLogin('Sign in to save boards');
     const title = await promptDlg('Save board as', { value: `${this.event?.title || "Meeting"} board`, ok: 'Save' });
     if (title == null) return;
-    try { const r = await api('/api/whiteboards', { method: 'POST', body: { title: title.trim() || 'Meeting board', data: this.myBoard } }); this.myBoardRef = { id: r.id, title: r.title }; lsSet('venue.myboard.ref', this.myBoardRef); toast('Saved to My boards — edits now autosave', { icon: 'check', group: 'content' }); if (this.stageView === 'my-board') this.renderStage(true); } catch (e) { toastErr(e); }
+    try { const r = await api('/api/whiteboards', { method: 'POST', body: { title: title.trim() || 'Meeting board', data: this.myBoard } }); this.myBoardRef = { id: r.id, title: r.title }; lsSet('venue.myboard.ref', this.myBoardRef); toast('Saved to My boards - edits now autosave', { icon: 'check', group: 'content' }); if (this.stageView === 'my-board') this.renderStage(true); } catch (e) { toastErr(e); }
   },
   refreshBar() { refreshBar(); },
   toolBadge(id) { return (id === 'record' && this.recorder.state !== 'idle') || (id === 'captions' && this.captioner.on) || (id === 'boards' && this.boardSharing) || (id === 'present' && !!this.content); },
@@ -378,7 +378,7 @@ Object.assign(Room.prototype, {
 
   /* --------------------------------------------------------------- media */
   async connectMedia(roomOverride) {
-    if (!this.config.livekitConfigured) { await this.media.fallback(); this.mediaStatus = 'local'; this.netNote = 'Live audio/video server not configured — local preview only'; this.paintHead(); return; }
+    if (!this.config.livekitConfigured) { await this.media.fallback(); this.mediaStatus = 'local'; this.netNote = 'Live audio/video server not configured - local preview only'; this.paintHead(); return; }
     try {
       const t = await api('/api/livekit-token', { method: 'POST', body: { code: this.code, participantId: this.me.id, participantName: this.me.name, wsCredential: this.wsCredential, room: roomOverride || undefined } });
       await this.media.connect({ url: t.url, token: t.token, media: t.media || this.config.media });
@@ -388,7 +388,7 @@ Object.assign(Room.prototype, {
       // tracks already published by others
       lr && lr.remoteParticipants && lr.remoteParticipants.forEach((rp) => rp.trackPublications.forEach((pub) => pub.track && pub.isSubscribed && this.onTrack(rp.identity, pub.track, pub.source)));
       this.captioner && this.captioner.autoSync();
-    } catch (e) { console.warn('media', e); toast('Couldn’t connect audio/video — retrying from Tools › Diagnostics', { icon: 'wifi', group: 'media' }); await this.media.fallback().catch(() => {}); }
+    } catch (e) { console.warn('media', e); toast('Couldn’t connect audio/video - retrying from Tools › Diagnostics', { icon: 'wifi', group: 'media' }); await this.media.fallback().catch(() => {}); }
   },
   audioBlocked() {
     if (this.audioBtn) return;
@@ -413,7 +413,7 @@ Object.assign(Room.prototype, {
   },
   async toggleMic(force) {
     const on = typeof force === 'boolean' ? force : !this.media.mic;
-    if (on && !this.isSpeaker(this.me.id)) { toast('You’re in the audience — request to speak first', { icon: 'stage', group: 'engage' }); return; }
+    if (on && !this.isSpeaker(this.me.id)) { toast('You’re in the audience - request to speak first', { icon: 'stage', group: 'engage' }); return; }
     if (on && !this.perm('microphone') && !this.isMod()) { toast('The host has disabled microphones', { icon: 'micOff' }); return; }
     if (on && this.meP()?.mutedByHost && !this.isMod()) this.send('unmute-self', {});
     try { await this.media.setMic(on); this.captioner.onMic(on); this.captioner.autoSync(); roomMicChanged(); } catch (e) { toastErr(e); }
@@ -421,7 +421,7 @@ Object.assign(Room.prototype, {
   },
   async toggleCam(force) {
     const on = typeof force === 'boolean' ? force : !this.media.cam;
-    if (on && !this.isSpeaker(this.me.id)) { toast('You’re in the audience — request to speak first', { icon: 'stage', group: 'engage' }); return; }
+    if (on && !this.isSpeaker(this.me.id)) { toast('You’re in the audience - request to speak first', { icon: 'stage', group: 'engage' }); return; }
     if (on && !this.perm('camera') && !this.isMod()) { toast('The host has disabled cameras', { icon: 'videoOff' }); return; }
     try { await this.media.setCam(on); } catch (e) { toastErr(e); }
     this.changed();
@@ -438,7 +438,7 @@ Object.assign(Room.prototype, {
     } catch (e) { if (e && e.name !== 'NotAllowedError') toastErr(e); }
     this.changed();
   },
-  requestStage() { promptDlg('Want to speak? Add a short note for the host (optional).', { placeholder: 'e.g. A question about the budget', ok: 'Request' }).then((note) => { if (note === null) return; this.send('stage-request', { note }); toast('Request sent — you’ll be notified when it’s your turn', { icon: 'hand', group: 'engage' }); }); },
+  requestStage() { promptDlg('Want to speak? Add a short note for the host (optional).', { placeholder: 'e.g. A question about the budget', ok: 'Request' }).then((note) => { if (note === null) return; this.send('stage-request', { note }); toast('Request sent - you’ll be notified when it’s your turn', { icon: 'hand', group: 'engage' }); }); },
   raiseHand() {
     if (this.stage.enabled && !this.isSpeaker(this.me.id)) { const mine = (this.stage.requests || []).some((q) => q.id === this.me.id); if (mine) this.send('stage-cancel', {}); else this.requestStage(); return; }
     const up = this.meP()?.handRaised; this.send(up ? 'lower-hand' : 'raise-hand', {});
@@ -520,7 +520,6 @@ Object.assign(Room.prototype, {
       const rec = this.recorder.state !== 'idle' || (this.recording && this.recording.status && this.recording.status !== 'stopped');
       this.headEl.querySelector('.rh-rec').hidden = !rec;
       this.headEl.querySelector('.rh-count').textContent = this.peopleMap.size;
-      this.headEl.querySelector('.rh-cap').hidden = !this.captioner.on && !this.transcribe;
       this.headEl.querySelector('.rh-lock').hidden = !this.security.locked;
       const cams = this.headEl.querySelector('.rh-cams'); if (cams) { cams.hidden = !this.stageR.screens().length; cams.classList.toggle('on', this.stageR.pick === 'cameras'); }
       this.headEl.querySelectorAll('[data-lay]').forEach((b) => b.classList.toggle('on', b.dataset.lay === this.layout));
@@ -532,18 +531,46 @@ Object.assign(Room.prototype, {
       h('a', { class: 'rh-logo', href: '/', 'aria-label': '1venue home', onclick: (e) => { e.preventDefault(); this.leave(); }, html: LOGO(26) }),
       h('div', { class: 'rh-title' }, h('b', { class: 'ellipsis' }, this.roomName), h('div', { class: 'tiny muted row gap-xs' }, h('span', { class: 'rh-timer' }, tstr), '·', h('button', { class: 'linkish', type: 'button', 'data-tip': 'Copy room code', 'data-group': 'people', onclick: () => copy(location.origin + '/' + fmtCode(this.code)).then(() => toast('Link copied', { icon: 'link' })) }, fmtCode(this.code)))),
       h('span', { class: 'pill rec rh-rec', hidden: true }, h('i', { class: 'rec-dot' }), 'REC'),
-      h('span', { class: 'pill rh-cap', 'data-group': 'content', hidden: true, html: icon('captions', { size: 13 }) + 'CC' }),
       h('span', { class: 'pill rh-lock', 'data-group': 'admin', hidden: true, html: icon('lock', { size: 13 }) }),
       h('div', { class: 'grow' }),
       this.creditControl.badge,
       h('div', { class: 'seg rh-lay hide-sm' }, lay('grid', 'grid', 'Grid'), lay('spotlight', 'spotlight', 'Spotlight'), lay('speaker', 'speaker', 'Speaker'), lay('screenshare', 'screen', 'Screenshare')),
       h('button', { class: 'icon-btn rh-cams', 'data-group': 'media', 'data-tip': 'Cameras on the big screen', 'aria-label': 'Cameras', type: 'button', hidden: true, onclick: () => this.stageR.setPick(this.stageR.pick === 'cameras' ? null : 'cameras'), html: icon('video', { size: 16 }) }),
       h('button', { class: 'pill rh-people', 'data-group': 'people', 'data-tip': 'People', type: 'button', onclick: () => this.panel.toggle('people'), html: icon('users', { size: 14 }) + '<span class="rh-count"></span>' }),
-      ibtn('userPlus', 'Invite', () => this.invite(), { group: 'people', cls: 'hide-xs' }),
+      ibtn('userPlus', 'Invite', () => this.invite(), { group: 'people', cls: 'rh-invite hide-xs' }),
       this.bellBtn = h('button', { class: 'icon-btn rh-bell', 'data-tip': 'Activity', type: 'button', onclick: () => this.openActivity(), html: icon('bell', { size: 16 }) + '<em class="badge rh-bell-badge"></em>' }),
-      ibtn('pip', 'Picture-in-picture', () => this.pip(), { group: 'media', cls: 'hide-xs' }),
+      ibtn('pip', 'Picture-in-picture', () => this.pip(), { group: 'media', cls: 'rh-pip hide-xs' }),
+      this.menuBtn = h('button', { class: 'icon-btn rh-menu', 'data-group': 'nav', 'data-tip': 'Meeting menu', 'aria-label': 'Meeting menu', 'aria-haspopup': 'menu', type: 'button', onclick: () => this.openRoomMenu(), html: icon('menu', { size: 19 }) }),
       ibtn('phoneOff', 'Leave', () => this.leaveMenu(), { group: 'danger', cls: 'danger' }));
     this.paintHead(); this.updateBell && this.updateBell();
+  },
+  openRoomMenu() {
+    const layouts = [
+      ['grid', 'Grid view', 'grid'],
+      ['spotlight', 'Spotlight view', 'spotlight'],
+      ['speaker', 'Speaker view', 'speaker'],
+      ['screenshare', 'Screenshare view', 'screen'],
+    ];
+    menu(this.menuBtn, [
+      ...layouts.map(([layout, label, ic]) => ({
+        label,
+        icon: ic,
+        group: 'media',
+        hint: this.layout === layout ? 'Current' : '',
+        run: () => this.setLayout(layout),
+      })),
+      '-',
+      this.stageR.screens().length ? {
+        label: 'Cameras on the big screen',
+        icon: 'video',
+        group: 'media',
+        run: () => this.stageR.setPick(this.stageR.pick === 'cameras' ? null : 'cameras'),
+      } : null,
+      { label: `People (${this.peopleMap.size})`, icon: 'users', group: 'people', run: () => this.panel.toggle('people') },
+      { label: 'Invite people', icon: 'userPlus', group: 'people', run: () => this.invite() },
+      { label: 'Picture-in-picture', icon: 'pip', group: 'media', run: () => this.pip() },
+      { label: 'Fullscreen', icon: 'maximize', group: 'media', run: () => this.fullscreen() },
+    ].filter(Boolean));
   },
   netBanner(on, text = 'Reconnecting…', sticky = false) {
     if (!this.netEl) return;
@@ -574,7 +601,7 @@ Object.assign(Room.prototype, {
       h('div', { class: 'row gap-s center wrap' }, share, h('a', { class: 'btn', href: qr + '&download=1', download: `1venue-${this.code}.svg`, html: icon('download', { size: 16 }) + 'QR' }),
         h('button', { class: 'btn', 'data-group': 'content', onclick: () => import('../pages/event.js').then((m) => m.qrMaker(link)), html: icon('palette', { size: 16 }) + 'Customise QR' }),
         this.isMod() ? h('button', { class: 'btn', 'data-group': 'people', onclick: () => { this.send('ring-all', {}); toast('Ringing everyone', { icon: 'bellRing' }); }, html: icon('bellRing', { size: 16 }) + 'Ring all' }) : null),
-      h('p', { class: 'tiny muted center' }, `Room code ${fmtCode(this.code)} — anyone can type it in the search bar to join.`)));
+      h('p', { class: 'tiny muted center' }, `Room code ${fmtCode(this.code)} - anyone can type it in the search bar to join.`)));
   },
   async deviceSheet(after) {
     const s = sheet({ title: 'Audio & video devices', icon: 'headphones', group: 'media' });
@@ -635,7 +662,7 @@ Object.assign(Room.prototype, {
         g.drawImage(c, 0, 0, canvas.width, canvas.height);
       }
     }
-    if (!canvas) return toast('Nothing visual to snapshot yet — share a screen or open a board', { icon: 'camera' });
+    if (!canvas) return toast('Nothing visual to snapshot yet - share a screen or open a board', { icon: 'camera' });
     let dataUrl;
     try { dataUrl = canvas.toDataURL('image/jpeg', 0.72); } catch (e) { return toast('Could not capture that frame', { icon: 'alert' }); }
     if (!dataUrl || dataUrl.length < 100) return toast('Capture was empty', { icon: 'alert' });
@@ -676,6 +703,7 @@ Object.assign(Room.prototype, {
   },
   async endForAll() { if (await confirmDlg('End the session for everyone? Transcripts and summaries will be saved.', { ok: 'End session', danger: true })) this.send('end-meeting', {}); },
   async leave() {
+    if (!(await confirmDlg('Leave this meeting? You will be disconnected from the call. You can rejoin while it is still active.', { ok: 'Leave meeting', danger: true }))) return;
     if (this.recorder.state !== 'idle') { this.recorder.stop(); await new Promise((r) => setTimeout(r, 600)); }
     api('/api/leave', { method: 'POST', body: { code: this.code, participantId: this.me.id } }).catch(() => {});
     const s = roomsStore(); delete s[this.code]; localStorage.setItem('venue.rooms', JSON.stringify(s));
@@ -849,7 +877,7 @@ Object.assign(Room.prototype, {
     registerCommands('room', cmds);
     const by = (id) => cmds.find((c) => c.id === id);
     setBarContext({
-      placeholders: ['Type: mute, share, poll, John 3:16…', 'Try “captions”', 'Try “my whiteboard”', 'Try “invite”', 'Try “what did I miss”'],
+      placeholders: ['Search meeting controls…', 'Search people in this meeting…', 'Search scripture and verses…', 'Search sounds and reactions…', 'Search tools and shared content…'],
       pinned: () => ['r-mic', 'r-cam', 'r-share', 'r-hand', 'r-react', 'r-again', 'r-chat', 'r-people', 'r-engage', 'r-tools', 'r-layout', 'r-more', 'r-leave'].map(by),
       dynamic: (q) => {
         const out = [];

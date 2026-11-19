@@ -1,6 +1,6 @@
 'use strict';
-// Overflow: at phone and tablet widths, scrollWidth must not exceed clientWidth
-// on home, Discover, Feed, Books, a real event page, and dashboard/profile when signed in.
+// Check every routed surface at representative phone, tablet, laptop and desktop widths,
+// including the app's largest supported text preference.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -20,17 +20,16 @@ function loadPuppeteer() {
   }
   try { return require('puppeteer-core'); } catch { return null; }
 }
+const puppeteer = loadPuppeteer();
 
-test('no horizontal overflow at phone and tablet widths', {
-  skip: skipDb || (!hasChrome ? 'google-chrome missing' : false),
-  timeout: 180000,
+test('all routed pages fit across responsive breakpoints at default and largest text size', {
+  skip: skipDb || (!hasChrome ? 'google-chrome missing' : false) || (!puppeteer ? 'puppeteer-core missing' : false),
+  timeout: 240000,
 }, async () => {
-  const puppeteer = loadPuppeteer();
-  if (!puppeteer) {
-    assert.ok(true, 'skipped: puppeteer-core is not a package dependency');
-    return;
-  }
-  const s = await boot();
+  const s = await boot({
+    RATE_LIMIT_PER_MIN: '10000',
+    SMTP_HOST: '', SMTP_USER: '', SMTP_PASS: '', MAIL_LOG_LINKS: 'false',
+  });
   let browser;
   try {
     const u = client(s.base);
@@ -46,45 +45,59 @@ test('no horizontal overflow at phone and tablet widths', {
     assert.ok(ev.status === 200 || ev.status === 201, JSON.stringify(ev.body));
     const slug = ev.body.slug;
     assert.ok(slug);
-    const me = (await u.get('/api/session')).body.user || {};
-    const username = me.username;
+    const username = signed.body.user.username;
     assert.ok(username);
+
+    const baseUrl = new URL(s.base);
+    const raw = u.jar && u.jar.header ? u.jar.header() : '';
+    const cookies = raw.split(';').map((x) => x.trim()).filter(Boolean).flatMap((pair) => {
+      const i = pair.indexOf('=');
+      return i > 0 ? [{ name: pair.slice(0, i), value: pair.slice(i + 1), domain: baseUrl.hostname, path: '/' }] : [];
+    });
 
     browser = await puppeteer.launch({
       executablePath: chrome,
       headless: 'new',
       args: ['--no-sandbox', '--disable-dev-shm-usage', '--hide-scrollbars'],
     });
-    const baseUrl = new URL(s.base);
-    const cookies = [];
-    const raw = u.jar && u.jar.header ? u.jar.header() : '';
-    for (const pair of raw.split(';').map((x) => x.trim()).filter(Boolean)) {
-      const i = pair.indexOf('=');
-      if (i > 0) cookies.push({ name: pair.slice(0, i), value: pair.slice(i + 1), domain: baseUrl.hostname, path: '/' });
-    }
-    const widths = [360, 390, 414, 600, 768, 820, 1024];
-    const paths = ['/', '/discover', '/feed', '/books', '/e/' + slug, '/dashboard', '/u/' + username, '/sessions', '/wallet', '/upgrade'];
+    const page = await browser.newPage();
+    if (cookies.length) await page.setCookie(...cookies);
+    await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+    const widths = [320, 360, 375, 390, 414, 430, 480, 600, 640, 768, 820, 821, 834, 900, 960, 1023, 1024, 1100, 1150, 1200, 1280, 1320, 1366, 1400, 1401, 1440, 1600, 1920];
+    const routes = [
+      '/', '/discover', '/search?q=responsive', '/e/' + slug, '/create', '/materials', '/materials/1',
+      '/dashboard', '/a/' + 'a'.repeat(32), '/feed', '/messages', '/messages/1',
+      '/u/' + username, '/me', '/wallet', '/upgrade', '/billing', '/host', '/replay/1',
+      '/settings', '/books', '/bible', '/sessions', '/session/1', '/whiteboard', '/login', '/admin',
+      '/signup', '/forgot-password', '/reset-password', '/verify-email', '/venues', '/v/lagos-venue',
+      '/new', '/ABC-234',
+    ];
     const fails = [];
-    for (const w of widths) {
-      const page = await browser.newPage();
-      if (cookies.length) await page.setCookie(...cookies);
-      await page.setViewport({ width: w, height: 800, deviceScaleFactor: 1 });
-      for (const pth of paths) {
-        await page.goto(s.base + pth, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await new Promise((r) => setTimeout(r, 350));
-        const m = await page.evaluate(() => {
-          const de = document.documentElement;
-          const body = document.body;
-          return {
-            deSW: de.scrollWidth, deCW: de.clientWidth,
-            bSW: body.scrollWidth, bCW: body.clientWidth,
-          };
-        });
-        if (m.deSW > m.deCW + 1 || m.bSW > m.bCW + 1) {
-          fails.push(`${pth} @${w}: html ${m.deSW}>${m.deCW} body ${m.bSW}>${m.bCW}`);
+    for (const route of routes) {
+      await page.goto(s.base + route, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      for (const scale of [1, 1.4]) {
+        await page.evaluate((value) => document.documentElement.style.setProperty('--font-scale', String(value)), scale);
+        for (const width of widths) {
+          await page.setViewport({ width, height: 900, deviceScaleFactor: 1 });
+          const m = await page.evaluate(() => {
+            const clippedFields = [...document.querySelectorAll('input, textarea, select')].filter((el) => {
+              const rect = el.getBoundingClientRect();
+              const style = getComputedStyle(el);
+              return rect.width > 0 && rect.height > 0 && style.display !== 'none'
+                && (rect.left < -1 || rect.right > innerWidth + 1);
+            }).map((el) => `${el.tagName}.${String(el.className || '').replace(/\s+/g, '.')}`);
+            return {
+              docWidth: document.documentElement.scrollWidth,
+              bodyWidth: document.body.scrollWidth,
+              clippedFields,
+            };
+          });
+          if (m.docWidth > width + 1 || m.bodyWidth > width + 1 || m.clippedFields.length) {
+            fails.push(`${route} @${width} text ${scale}: html ${m.docWidth} body ${m.bodyWidth} fields ${m.clippedFields.join(',')}`);
+          }
         }
       }
-      await page.close();
     }
     assert.equal(fails.join('\n'), '', fails.join('\n'));
   } finally {

@@ -4,7 +4,7 @@ import { state } from '../app.js';
 import { panel, table, empty, pill, actionBtn } from '../host-kit.js';
 
 function fmtTimeOnly(iso) {
-  if (!iso) return '—';
+  if (!iso) return '-';
   try { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch { return iso; }
 }
 function fmtDate(iso) {
@@ -33,7 +33,7 @@ export async function mount(view, params) {
   const others = data.attendees.filter((a) => !a.isHost);
   const ordered = [hostAtt, ...others];
 
-  document.title = `Attendance · ${m.name} — 1venue`;
+  document.title = `Attendance · ${m.name} - 1venue`;
 
   const nameLink = (a) => {
     if (!a.userId) return a.name;
@@ -46,10 +46,10 @@ export async function mount(view, params) {
   const rows = ordered.map((a) => [
     h('div', { class: 'att-person' }, avatar(a.name, null, 'sm'), h('div', { class: 'att-person-txt' }, nameLink(a), h('div', { class: 'tiny muted no-print' }, roleOf(a)))),
     pill(roleOf(a), toneOf(a)),
-    (a.signIns || []).map(fmtTimeOnly).join(', ') || '—',
-    a.signOut ? fmtTimeOnly(a.signOut) : '—',
+    (a.signIns || []).map(fmtTimeOnly).join(', ') || '-',
+    a.signOut ? fmtTimeOnly(a.signOut) : '-',
     fmtDur(a.durationSec || 0),
-    a.interruptions ? pill('Yes', 'wait') : '—',
+    a.interruptions ? pill('Yes', 'wait') : '-',
   ]);
 
   const dateLine = fmtDate(m.createdAt) + (m.endedAt && fmtDate(m.endedAt) !== fmtDate(m.createdAt) ? ' – ' + fmtDate(m.endedAt) : '');

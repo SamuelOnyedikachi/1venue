@@ -1,5 +1,5 @@
 /**
- * Mute self only — host/cohost force-mute lives in moderation plugin.
+ * Mute self only - host/cohost force-mute lives in moderation plugin.
  */
 module.exports = {
   id: 'mute',

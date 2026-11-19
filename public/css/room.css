@@ -2257,7 +2257,7 @@ body.in-room .cmdbar {
 }
 
 /* ===================== 2026-11 UX pack ===================== */
-/* F — fullscreen keeps the soft site background + full chrome (1v rail → search bar), with breathing room. */
+/* F - fullscreen keeps the soft site background + full chrome (1v rail → search bar), with breathing room. */
 html {
   --site-grad: linear-gradient(180deg, #dbe8ff 0%, #eef4ff 40%, #ffffff 100%);
 }
@@ -2298,7 +2298,7 @@ html.room-fs .cmdbar {
   bottom: calc(18px + var(--safe-b));
 }
 
-/* S — confirm before ending a screenshare */
+/* S - confirm before ending a screenshare */
 .share-confirm {
   position: fixed;
   inset: 0;
@@ -2363,7 +2363,7 @@ html.room-fs .cmdbar {
   display: none !important;
 }
 
-/* Small participant cards: blurred-avatar square, round avatar, mute badge top-left, ⋯ — on the site background. */
+/* Small participant cards: blurred-avatar square, round avatar, mute badge top-left, ⋯ - on the site background. */
 .filmstrip {
   padding: 4px 2px;
   background: transparent;
@@ -2710,7 +2710,7 @@ html.room-fs .cmdbar {
   display: none;
 }
 
-/* v6: small tiles — same white name on dark bar whether cam on, off, or screen only */
+/* v6: small tiles - same white name on dark bar whether cam on, off, or screen only */
 .filmstrip .tile .tile-meta,
 .filmstrip .tile.has-video .tile-meta {
   left: 6px;
@@ -3002,6 +3002,173 @@ html.room-fs .cmdbar {
 }
 .present .shade {
   margin-bottom: 0.6rem;
+}
+
+/* Responsive meeting chrome and gallery tuned for laptops and portrait phones. */
+.room-head {
+  min-height: 52px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--glass);
+  box-shadow: var(--shadow-1);
+  backdrop-filter: blur(18px) saturate(1.35);
+  -webkit-backdrop-filter: blur(18px) saturate(1.35);
+}
+.room-main {
+  gap: clamp(8px, 1.2vw, 14px);
+}
+.stage {
+  gap: clamp(8px, 1.2vw, 14px);
+}
+.tiles {
+  gap: clamp(8px, 1.1vw, 14px);
+}
+.tiles[data-count="many"] {
+  --cols: 4;
+}
+.tile {
+  border-radius: clamp(16px, 1.5vw, 24px);
+  box-shadow: 0 8px 26px -16px rgba(2, 6, 23, 0.52);
+}
+.rh-menu {
+  display: none;
+}
+
+@media (min-width: 821px) {
+  .stage.presenting {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(190px, 22vw, 320px);
+    grid-template-rows: minmax(0, 1fr);
+    align-items: stretch;
+  }
+  .stage.presenting .present {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+  }
+  .stage.presenting .tiles {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 2px;
+  }
+  .stage.presenting .tiles .filmstrip:not(.hidden-strip) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    gap: 10px;
+    width: 100%;
+    min-height: 0;
+    overflow: visible;
+  }
+  .stage.presenting .tiles .filmstrip .tile {
+    width: 100%;
+    min-height: 100px;
+    aspect-ratio: 16 / 10;
+  }
+  .stage.presenting .tiles .filmstrip.hidden-strip {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .room {
+    gap: 8px;
+    padding: calc(var(--safe-t) + 6px) max(8px, var(--safe-r))
+      calc(var(--cmd-h) + 16px + var(--safe-b)) max(8px, var(--safe-l));
+  }
+  .room-head {
+    flex-wrap: nowrap;
+    gap: 4px;
+    min-height: 44px;
+    padding: 3px 4px;
+    border-radius: 16px;
+  }
+  .room-head .rh-logo {
+    width: 34px;
+    height: 34px;
+    border-radius: 11px;
+  }
+  .room-head .rh-title {
+    flex: 1 1 64px;
+    min-width: 0;
+  }
+  .room-head .rh-title b {
+    max-width: 100%;
+  }
+  .room-head .credit-badge {
+    min-height: 36px;
+    max-width: min(28vw, 112px);
+    padding-inline: 0.45rem;
+  }
+  .room-head .credit-badge > span:last-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .room-head > .icon-btn,
+  .room-head > .rh-menu {
+    flex: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+  }
+  .room-head .rh-lay,
+  .room-head .rh-cams,
+  .room-head .rh-people,
+  .room-head .rh-invite,
+  .room-head .rh-pip {
+    display: none !important;
+  }
+  .room-head .rh-menu {
+    display: inline-grid;
+  }
+  .stage[data-layout="grid"] .tiles {
+    --cols: 1;
+    grid-auto-rows: minmax(min(56vw, 250px), 1fr);
+    align-content: center;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 2px;
+  }
+  .stage[data-layout="grid"] .tiles > .tile {
+    min-height: 0;
+  }
+  .filmstrip {
+    gap: 7px;
+  }
+  .filmstrip .tile,
+  .stage.presenting .tiles .filmstrip .tile {
+    width: min(28vw, 112px);
+    border-radius: 14px;
+  }
+}
+
+@media (max-width: 360px) {
+  .room {
+    padding-inline: max(5px, var(--safe-l)) max(5px, var(--safe-r));
+  }
+  .room-head {
+    gap: 2px;
+    padding-inline: 2px;
+  }
+  .room-head .rh-logo {
+    width: 30px;
+  }
+  .room-head .credit-badge {
+    gap: 0.2rem;
+    padding-inline: 0.35rem;
+  }
+  .room-head > .icon-btn,
+  .room-head > .rh-menu {
+    width: 32px;
+    height: 34px;
+  }
 }
 
 .rh-bell-badge {

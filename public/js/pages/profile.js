@@ -86,7 +86,7 @@ function rsvpBtn(ev) {
 function whenChip(ev) {
   const live = ev.status === 'live' || ev.live;
   if (live) return h('span', { class: 'rail-when soon' }, h('span', { class: 'mon' }, 'Live'), h('span', { class: 'day' }, 'Now'));
-  if (!ev.startsAt) return h('span', { class: 'rail-when' }, h('span', { class: 'day' }, '—'));
+  if (!ev.startsAt) return h('span', { class: 'rail-when' }, h('span', { class: 'day' }, '-'));
   const d = new Date(ev.startsAt);
   return h('span', { class: 'rail-when' },
     h('span', { class: 'mon' }, d.toLocaleDateString(undefined, { month: 'short' })),
@@ -188,7 +188,7 @@ export async function mount(view, params) {
     return;
   }
   if (!params.me && u.username && location.pathname !== `/u/${u.username}`) history.replaceState({}, '', `/u/${encodeURIComponent(u.username)}${location.search}`);
-  document.title = `${u.name}${u.username ? ` (@${u.username})` : ''} — 1venue`;
+  document.title = `${u.name}${u.username ? ` (@${u.username})` : ''} - 1venue`;
   id = u.username || u.id;
   const tabs = h('div', { class: 'tabs profile-tabs' });
   const body = h('div', { class: 'col profile-body' });

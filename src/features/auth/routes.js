@@ -1,6 +1,6 @@
 /**
  * Accounts API: sign up / in / out, sessions, email verification, password reset, account changes.
- * Answers are deliberately generic where they could reveal whether an email has an account
+ * Answers are deliberately generic where they could reveal whether an identifier has an account
  * (sign-in failures, "forgot password", resend, change email). See docs/AUTH.md.
  */
 const auth = require('../../lib/auth');
@@ -17,7 +17,7 @@ const { normalizePhone } = require('./phone');
 const A = config.AUTH;
 const BAD_LOGIN = 'Email or password is incorrect.';
 const LOGIN_HINT = 'No password yet, or signed up with Google or Apple? Use “Forgot password” to get a link to set one, or continue with Google or Apple.';
-const FORGOT_OK = 'If that email has an account, a link is on its way. Check your inbox (and spam).';
+const FORGOT_OK = 'If that username or email has an account, a link is on its way. Check your inbox (and spam).';
 
 module.exports = function routes(route, kit) {
   const { httpError, rateLimit, clientIp, isValidEmail } = kit;
@@ -231,10 +231,12 @@ module.exports = function routes(route, kit) {
   /* ---------- forgot / reset password ---------- */
   route('POST', '/api/auth/forgot', async (ctx) => {
     const b = await ctx.body(4096);
-    const email = data.normEmail(str(b.email));
-    limit('forgot:ip:' + clientIp(ctx.req), 5);
-    if (isValidEmail(email) && rateLimit('forgot:em:' + email, 2)) {
-      const row = await data.userByEmail(email);
+    const identifier = str(b.identifier || b.email).trim();
+    const email = data.normEmail(identifier);
+    const validIdentifier = isValidEmail(email) || parseUsername(identifier).ok;
+    limit('forgot:ip:' + clientIp(ctx.req), 20);
+    if (validIdentifier && rateLimit('forgot:id:' + identifier.toLowerCase(), 2)) {
+      const row = await data.userByLogin(identifier);
       if (row && !(await data.recentToken(row.id, ['reset', 'set_password'], 60))) await sendSetPassword(ctx, row);
     }
     return { ok: true, message: FORGOT_OK };
@@ -253,8 +255,8 @@ module.exports = function routes(route, kit) {
     await data.markVerified(row.id); // the link reached their inbox
     await kit.db.q("UPDATE auth_tokens SET used_at = NOW() WHERE user_id = $1 AND kind IN ('reset','set_password') AND used_at IS NULL", [row.id]);
     await auth.revokeAllSessions(row.id, { reason: 'password-reset' });
-    await auth.startSession(ctx.req, ctx.res, row);
-    return { ok: true, user: auth.publicUser(auth.shapeUser({ ...row, email_verified_at: row.email_verified_at || new Date() })) };
+    auth.clearCookies(ctx.res);
+    return { ok: true };
   });
 
   /* ---------- change password / email (signed in) ---------- */

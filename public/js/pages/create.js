@@ -234,7 +234,7 @@ export async function mount(view, params) {
         done = true; resolve(t); s.close();
       };
       s.body.append(
-        h('p', { class: 'muted small', style: { margin: '0 0 .7rem' } }, 'A few sentences is enough — we will draft the title, description, category, tags, colours, and any date, time or place we can pick out.'),
+        h('p', { class: 'muted small', style: { margin: '0 0 .7rem' } }, 'A few sentences is enough - we will draft the title, description, category, tags, colours, and any date, time or place we can pick out.'),
         h('div', { class: 'tell-box' }, box, mic),
         h('div', { class: 'row', style: { justifyContent: 'flex-end', marginTop: '1rem', gap: '.5rem' } },
           h('button', { type: 'button', class: 'btn ghost', onclick: () => s.close() }, 'Cancel'),
@@ -310,7 +310,7 @@ export async function mount(view, params) {
           start: startIn.value, end: endIn.value, venue: venueIn.value.trim(),
         }, apply);
         done = true; s.close(); resolve('use');
-        toast(r.mock ? 'AI demo mode — add RunPod keys for real suggestions' : 'Drafted with AI', { icon: 'sparkles', group: 'ai' });
+        toast(r.mock ? 'AI demo mode - add RunPod keys for real suggestions' : 'Drafted with AI', { icon: 'sparkles', group: 'ai' });
       };
       s.body.append(
         h('p', { class: 'muted small', style: { margin: '0 0 .8rem' } }, 'Edit anything you like. Fields you already filled are left alone unless you tick the box.'),
@@ -415,13 +415,13 @@ export async function mount(view, params) {
         h('span', { class: 'preview-eye', html: icon('eye', { size: 14 }) }),
         h('span', null, 'Preview')),
       prev,
-      h('div', { class: 'card pad layer small muted' }, h('strong', null, 'Just need a quick call? '), h('a', { href: '/create?instant=1', 'data-link': '', style: { color: '#2563eb', fontWeight: '700' } }, 'Start an instant meeting')))));
+      h('div', { class: 'card pad layer small muted' }, h('strong', null, 'Just need a quick call? '), h('a', { href: '/create?instant=1', 'data-link': '', style: { color: 'var(--accent)', fontWeight: '700' } }, 'Start an instant meeting')))));
 }
 
 // /create?instant=1 opened directly (bookmark, shared link, old PWA shortcut): show the home page
 // blurred underneath the Instant meeting overlay. In-app links never get here (app.js opens the overlay).
 async function instantDeepLink(view) {
-  document.title = 'Instant meeting — 1venue';
+  document.title = 'Instant meeting - 1venue';
   const home = await import('./home.js');
   const bg = await home.mount(view, {});
   const { openInstant } = await import('../instant.js');

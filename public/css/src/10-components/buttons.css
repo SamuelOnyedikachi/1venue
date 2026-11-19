@@ -33,10 +33,10 @@
 .btn.primary {
   --b: linear-gradient(
     135deg,
-    var(--accent),
-    color-mix(in srgb, var(--accent) 60%, var(--accent-2))
+    var(--accent-action, var(--accent)),
+    color-mix(in srgb, var(--accent-action, var(--accent)) 60%, var(--accent-action-2, var(--accent-2)))
   );
-  --bt: var(--accent-ink);
+  --bt: #fff;
   border: 0;
   box-shadow: 0 8px 22px -10px var(--accent);
 }

@@ -37,7 +37,7 @@ function boardCard(a) {
       h('span', { class: 'msg-board-txt' }, h('b', { class: 'ellipsis' }, title), h('small', null, `Whiteboard · ${pages} page${pages === 1 ? '' : 's'}`)),
       h('span', { class: 'msg-board-open' }, 'Open')));
 }
-const dur = (sec) => (sec == null ? '—' : sec < 60 ? '<1m' : sec < 3600 ? `${Math.round(sec / 60)}m` : sec < 86400 ? `${Math.round(sec / 360) / 10}h` : `${Math.round(sec / 8640) / 10}d`);
+const dur = (sec) => (sec == null ? '-' : sec < 60 ? '<1m' : sec < 3600 ? `${Math.round(sec / 60)}m` : sec < 86400 ? `${Math.round(sec / 360) / 10}h` : `${Math.round(sec / 8640) / 10}d`);
 /** The Messages mark: a theme-accent chat bubble with a small send badge (adapted from the brand reference). */
 export function brandMark(size = 40) {
   return h('span', { class: 'msg-brand', style: { width: size + 'px', height: size + 'px' }, html: `<svg viewBox="0 0 48 48" width="${size}" height="${size}" aria-hidden="true"><defs><linearGradient id="mbg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--accent)"/><stop offset="1" stop-color="color-mix(in srgb, var(--accent) 70%, #000)"/></linearGradient></defs><path d="M24 5c10.5 0 19 7.4 19 16.6S34.5 38.2 24 38.2c-2.2 0-4.3-.3-6.3-.9L9 41.5l2.4-7.4C7.4 31 5 26.6 5 21.6 5 12.4 13.5 5 24 5Z" fill="url(#mbg)"/><rect x="14" y="16.5" width="20" height="3.2" rx="1.6" fill="#fff"/><rect x="14" y="23" width="13" height="3.2" rx="1.6" fill="#fff" opacity=".85"/><circle cx="38" cy="36" r="8.5" fill="var(--s1, #fff)"/><path d="m34.2 36.3 7.3-3.4-2.4 7.5-1.6-2.8z" fill="var(--accent)"/></svg>` });
@@ -343,7 +343,7 @@ export async function mount(view, params) {
       a && a.url && isBoardFile(a) ? { label: 'Open in whiteboard', icon: 'pen', group: 'content', run: () => openBoardFile(a) } : null,
       a && a.url && (a.kind === 'voice' || /^audio\//.test(a.mime || '')) && !transcripts.has(m.id) ? { label: 'Transcribe', icon: 'captions', group: 'ai', run: () => transcribe(m) } : null,
       m.text ? { label: 'Copy text', icon: 'copy', run: () => copy(m.text) } : null,
-      canEdit && c.canSend ? { label: 'Edit', icon: 'pen', run: () => { S.editing = m.id; composer.setText(m.text); composer.focus(); toast('Editing — press Enter to save', { icon: 'pen' }); } } : null,
+      canEdit && c.canSend ? { label: 'Edit', icon: 'pen', run: () => { S.editing = m.id; composer.setText(m.text); composer.focus(); toast('Editing - press Enter to save', { icon: 'pen' }); } } : null,
       m.mine && c.editable ? { label: 'Delete', icon: 'trash', group: 'admin', run: async () => { if (await confirmDlg('Delete this message for everyone?', { ok: 'Delete', danger: true })) api(`/api/messages/conversations/${c.id}/messages/${m.id}`, { method: 'DELETE' }).then(() => upsert({ id: m.id, deleted: true, text: '', attachment: null, payload: null })).catch(toastErr); } } : null,
       !m.mine && m.fromUserId ? { label: 'Report', icon: 'alert', group: 'admin', run: () => report(m) } : null,
     ], { header: quick });

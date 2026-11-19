@@ -27,7 +27,7 @@ module.exports = function routes(route, kit) {
     const u = await requireUser(ctx.req, ctx.res);
     if (!rateLimit(`wb:${u.id}`, 30)) throw httpError(429, 'Slow down a little');
     const b = await ctx.body(6e6);
-    if ((await data.listWhiteboards(u.id)).length >= 200) throw httpError(400, 'You have 200 boards — delete some first');
+    if ((await data.listWhiteboards(u.id)).length >= 200) throw httpError(400, 'You have 200 boards - delete some first');
     return data.createWhiteboard(u.id, String(b.title || 'Untitled board').trim() || 'Untitled board', cleanBoard(b.data) || cleanBoard({}));
   });
   // ------------------------------------------------------------ AI "Refine page" (see refine.js)

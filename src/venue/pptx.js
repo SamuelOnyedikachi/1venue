@@ -38,7 +38,7 @@ async function officeToPdf(inputPath, outDir) {
   const profile = path.join(outDir, 'lo-profile');
   await fs.mkdir(profile, { recursive: true });
   const bin = officeBin();
-  // Match teams: plain --convert-to pdf (no impress_pdf_Export filter — that breaks on some builds).
+  // Match teams: plain --convert-to pdf (no impress_pdf_Export filter - that breaks on some builds).
   const args = [
     '--headless', '--norestore', '--nolockcheck', '--nodefault', '--nofirststartwizard',
     `-env:UserInstallation=${pathToFileURL(profile).href}`,

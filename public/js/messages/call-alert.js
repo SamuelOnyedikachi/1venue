@@ -1,5 +1,5 @@
 // Make an incoming call findable when the 1venue tab is in the background (one of many tabs):
-//  (a) a system notification that stays until handled, with Answer / Decline buttons (Chromium) —
+//  (a) a system notification that stays until handled, with Answer / Decline buttons (Chromium) -
 //      clicking it focuses this tab (service worker: clients.matchAll + focus, see sw.js);
 //  (b) a flashing tab title "📞 Incoming call – Name" and a red badge on the favicon;
 //  (c) a Document Picture-in-Picture window with Answer / Decline, when the browser has one and

@@ -55,7 +55,7 @@ module.exports = {
       st.items.push(item);
       // Keep current selection; only default to 0 on the first image
       if (st.items.length === 1) st.selected = 0;
-      // Single event — avoid add + full state (that caused rapid image flicker)
+      // Single event - avoid add + full state (that caused rapid image flicker)
       broadcast(meetingCode, {
         type: 'screen-timeline-add',
         item,

@@ -1,5 +1,5 @@
 /**
- * Phase 2B — breakout rooms (assignment + signaling; media rooms via LiveKit room names)
+ * Phase 2B - breakout rooms (assignment + signaling; media rooms via LiveKit room names)
  */
 module.exports = {
   id: 'breakout',
@@ -56,7 +56,7 @@ module.exports = {
       if (!actor || actor.role !== 'host') return;
       meeting.breakouts = { open: false, rooms: [], closedAt: Date.now() };
       emitBreakouts(meeting, meetingCode);
-      broadcast(meetingCode, { type: 'toast', message: 'Breakout rooms closed — return to main' });
+      broadcast(meetingCode, { type: 'toast', message: 'Breakout rooms closed - return to main' });
       broadcast(meetingCode, { type: 'breakout-return' });
     });
 

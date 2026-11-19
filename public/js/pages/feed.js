@@ -108,7 +108,7 @@ export function composer(onPost, { prefill = '', eventId, passage = null, autofo
   };
   // Mic = on/off toggle. Off is final: stopped by a second tap, typing, leaving the box, posting,
   // ~12 s of silence or leaving the page; it never turns itself back on.
-  const STOP_MSG = { typing: 'Voice typing off — you started typing', silence: 'Voice typing off after a quiet spell', ended: 'Voice typing stopped' };
+  const STOP_MSG = { typing: 'Voice typing off - you started typing', silence: 'Voice typing off after a quiet spell', ended: 'Voice typing stopped' };
   const paintMic = (on) => {
     micBtn.classList.toggle('on', on);
     micBtn.setAttribute('aria-pressed', on ? 'true' : 'false');

@@ -1,6 +1,6 @@
 /**
  * Material analysis: extract text on the server, send a capped excerpt to Llama 3 70B Instruct on
- * Replicate, store the result (material_analyses) so each file is analysed — and charged — once.
+ * Replicate, store the result (material_analyses) so each file is analysed - and charged - once.
  * Spreadsheet numbers (columns, row count, min / max / mean) are computed locally; the model only comments.
  * AI_MOCK=true or no REPLICATE_API_TOKEN: a local heuristic result, same shape, marked mock: true.
  */

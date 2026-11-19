@@ -58,6 +58,11 @@
   grid-template-columns: minmax(0, 1fr) 360px;
   align-items: start;
 }
+.split > *,
+.grid2 > *,
+.col > * {
+  min-width: 0;
+}
 .sticky {
   position: sticky;
   top: calc(var(--top-h) + 1rem);
@@ -156,7 +161,7 @@
 
 @media (max-width: 1000px) {
   .split {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -172,6 +177,6 @@
 
 @media (max-width: 820px) {
   .grid2 {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }

@@ -120,17 +120,18 @@ test('refresh token rotation, grace period, reuse detection; sessions; sign out 
   } finally { await s.stop(); }
 });
 
-test('forgot / reset password: generic answer, single-use link, every session revoked', { skip }, async () => {
+test('forgot / reset password by username or email: generic answer, single-use link, sessions revoked, sign-in required', { skip }, async () => {
   const s = await boot();
   try {
     const email = `${uid()}@ex.test`;
     const a = client(s.base);
-    await a.post('/api/signup', signupPayload({ email, password: 'first password 1' }));
+    const signup = await a.post('/api/signup', signupPayload({ email, password: 'first password 1' }));
+    const username = signup.body.user.username;
     const other = client(s.base);
     await other.post('/api/login', { login: email, password: 'first password 1' });
 
-    const known = await client(s.base).post('/api/auth/forgot', { email });
-    const unknown = await client(s.base).post('/api/auth/forgot', { email: `${uid()}@ex.test` });
+    const known = await client(s.base).post('/api/auth/forgot', { identifier: username });
+    const unknown = await client(s.base).post('/api/auth/forgot', { identifier: uid() });
     assert.equal(known.status, 200); assert.deepEqual(known.body, unknown.body);
     const link = await s.mailLink(email, /Reset your/);
     assert.ok(link && link.includes('/reset-password?token='));
@@ -139,13 +140,16 @@ test('forgot / reset password: generic answer, single-use link, every session re
     assert.equal((await fresh.post('/api/auth/reset', { token: tokenOf(link), password: 'tiny' })).status, 400, 'weak password refused; token not used up');
     const r = await fresh.post('/api/auth/reset', { token: tokenOf(link), password: 'second password 2' });
     assert.equal(r.status, 200);
-    assert.equal(r.body.user.emailVerified, true, 'the link proved the inbox');
-    assert.equal((await fresh.get('/api/me')).status, 200, 'signed in on this browser');
+    assert.deepEqual(r.body, { ok: true });
+    assert.ok(fresh.jar.header().length === 0, 'reset does not create a signed-in session');
+    assert.ok(r.res.headers.getSetCookie().some((cookie) => /1v_(?:at|rt)=;.*Max-Age=0/.test(cookie)), 'reset clears session cookies');
+    assert.equal((await fresh.get('/api/me')).status, 401, 'sign-in is required after reset');
     assert.equal((await client(s.base).post('/api/auth/reset', { token: tokenOf(link), password: 'third password 3' })).status, 400, 'single use');
     assert.equal((await a.get('/api/me')).status, 401, 'old sessions revoked');
     assert.equal((await other.get('/api/me')).status, 401);
     assert.equal((await client(s.base).post('/api/login', { login: email, password: 'first password 1' })).status, 401);
     assert.equal((await client(s.base).post('/api/login', { login: email, password: 'second password 2' })).status, 200);
+    assert.equal((await client(s.base).post('/api/login', { login: username, password: 'second password 2' })).status, 200, 'username also works at sign-in');
 
     // expired link (the previous link is aged past the 60 s resend throttle first)
     await db.q(`UPDATE auth_tokens SET created_at = ${db.USE_PG ? "NOW() - interval '2 minutes'" : "strftime('%Y-%m-%dT%H:%M:%fZ','now','-2 minutes')"} WHERE user_id = (SELECT id FROM users WHERE email = $1)`, [email]);

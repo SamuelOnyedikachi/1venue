@@ -100,7 +100,7 @@ export function speak(input, opts = {}) {
 
   if (!items.length) return { ok: false, reason: 'empty' };
   if (!voice && !lang.startsWith('en')) {
-    // Still try with lang tag — browser may resolve online
+    // Still try with lang tag - browser may resolve online
   }
 
   queue = items.slice();

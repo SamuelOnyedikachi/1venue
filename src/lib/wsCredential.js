@@ -2,7 +2,7 @@ const { normCode } = require('./codes');
 /**
  * Short-lived signed credential binding a WebSocket session to a
  * (meeting code, participantId) pair issued by the HTTP join/create APIs.
- * Clients must present this on WS `register` — claiming an ID alone is not enough.
+ * Clients must present this on WS `register` - claiming an ID alone is not enough.
  */
 const crypto = require('crypto');
 const config = require('../config');

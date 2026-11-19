@@ -1,5 +1,5 @@
 // Turn a PDF into slide images in the presenter's browser (pdf.js, vendored & lazy-loaded),
-// so every viewer only loads plain images — works on every phone, no PDF viewer required.
+// so every viewer only loads plain images - works on every phone, no PDF viewer required.
 const MAX_PAGES = 80;
 let libP = null;
 const lib = () => (libP ||= import('/vendor/pdfjs/pdf.min.mjs').then((m) => { m.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs'; return m; }));

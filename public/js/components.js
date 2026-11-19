@@ -86,7 +86,7 @@ function railWhenEl(ev) {
     return h('span', { class: 'rail-when soon' }, h('span', { class: 'mon' }, 'Live'), h('span', { class: 'day' }, 'Now'));
   }
   const parts = ev.startsAt ? railWhenParts(ev.startsAt) : null;
-  if (!parts) return h('span', { class: 'rail-when' }, h('span', { class: 'day' }, '—'));
+  if (!parts) return h('span', { class: 'rail-when' }, h('span', { class: 'day' }, '-'));
   return h('span', { class: 'rail-when' + (parts.soon ? ' soon' : '') },
     h('span', { class: 'mon' }, parts.mon),
     h('span', { class: 'day' }, parts.day),
@@ -296,7 +296,7 @@ export function commentThread(kind, id, { compact = false, isHost = false } = {}
   }
   wrap.append(h('div', { class: 'comment-compose' }, replyChip, pc.el), list);
   api(`/api/${kind}/${id}/comments`).then((r) => {
-    if (!r.comments.length) list.append(h('div', { class: 'faint small no-comments', style: { padding: '.8rem .4rem' } }, 'No comments yet — start the conversation.'));
+    if (!r.comments.length) list.append(h('div', { class: 'faint small no-comments', style: { padding: '.8rem .4rem' } }, 'No comments yet - start the conversation.'));
     r.comments.forEach((c) => list.append(commentEl(c)));
   }).catch(() => list.append(h('div', { class: 'faint small' }, 'Comments unavailable.')));
   return wrap;

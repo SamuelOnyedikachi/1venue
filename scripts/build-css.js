@@ -33,7 +33,7 @@ function build() {
   let out = HEADER;
   for (const file of files) {
     let body = fs.readFileSync(file, 'utf8');
-    if (!body.endsWith('\n')) body += '\n';
+    if (body && !body.endsWith('\n')) body += '\n';
     out += `/* --- src/${rel(file)} --- */\n`;
     out += body;
   }

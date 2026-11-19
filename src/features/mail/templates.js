@@ -173,7 +173,7 @@ ${rows.join('\n')}
     ...(button && link ? ['', `${button}: ${link}`] : []),
     ...(expiryNote ? ['', expiryNote] : []),
     ...(note ? ['', note.text] : []),
-    '', '—', `${app} · ${host}`, `Privacy Policy: ${S}/privacy`, `Terms of Service: ${S}/terms`,
+    '', '-', `${app} · ${host}`, `Privacy Policy: ${S}/privacy`, `Terms of Service: ${S}/terms`,
   ].join('\n');
   return { subject: title, text, html };
 }

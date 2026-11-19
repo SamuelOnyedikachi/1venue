@@ -11,13 +11,13 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState!==
 window.addEventListener('focus',refreshCredits);
 /** Shared compact badge. In a room, open the wallet in a separate tab to keep the call active. */
 export function creditBadge({inRoom=false,roomCode=null}={}) {
- const label=h('span',{class:'credit-n'},'—');
+ const label=h('span',{class:'credit-n'},'-');
  const badge=h('a',{class:'credit-badge',href:'/wallet',...(inRoom?{target:'_blank',rel:'noopener'}:{'data-link':''}),'aria-label':'Credit wallet'},h('span',{'aria-hidden':'true',html:icon('creditCard',{size:16})}),label);
  const notice=h('div',{class:'credit-warning',role:'status',hidden:true,'aria-live':'polite'},h('span',null,'Your credits are running low. This meeting will end when they run out. '),h('a',{href:'/wallet',target:'_blank',rel:'noopener'},'Top up in a new tab'));
  let warned=false,lastSession=null;
  const unsubscribe=subscribeCredits(value=>{
    badge.hidden=!value.userId;
-   label.textContent=value.balanceCredits==null?'—':formatCredits(value.balanceCredits); // icon + balance only
+   label.textContent=value.balanceCredits==null?'-':formatCredits(value.balanceCredits); // icon + balance only
    badge.title=value.error?'Balance unavailable. Open your wallet to retry.':'Open your credit wallet';
    badge.setAttribute('aria-label',value.balanceCredits==null?'Credit wallet, balance unavailable':formatCredits(value.balanceCredits)+' credits. Open wallet');
    const session=value.billing?.sessionId||null;

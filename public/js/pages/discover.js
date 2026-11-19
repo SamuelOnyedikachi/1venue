@@ -109,7 +109,7 @@ export async function mount(view, params) {
         const sp = new URLSearchParams({ limit: '30' }); if (q) sp.set('q', q); if (category) sp.set('category', category); if (status) sp.set('status', status);
         const r = await api('/api/discover?' + sp);
         node = r.events.length ? h('div', { class: 'grid-cards stagger', 'data-promo-slot': '6' }, r.events.map((e) => eventCard(e)))
-          : empty('compass', q ? `Nothing matches “${q}”` : 'No events here yet', 'Try another category — or host the first one.', h('a', { class: 'btn primary', href: '/create', 'data-link': '' }, 'Create event'));
+          : empty('compass', q ? `Nothing matches “${q}”` : 'No events here yet', 'Try another category - or host the first one.', h('a', { class: 'btn primary', href: '/create', 'data-link': '' }, 'Create event'));
       }
       if (my !== seq) return;
       results.innerHTML = ''; results.append(node);

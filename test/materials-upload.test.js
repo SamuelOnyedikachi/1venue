@@ -134,7 +134,7 @@ test('storage keys are slugs; public URLs are percent-encoded even for old keys 
   const storage = require('../src/venue/storage');
   const config = require('../src/config');
   assert.equal(storage.slugName('CV - Web Developer - Chinedu (Okonkwo)-p1.jpg'), 'CV-Web-Developer-Chinedu-Okonkwo-p1.jpg');
-  assert.equal(storage.slugName('Ọ̀rọ̀ Ìyìn — Sunday.PDF'), 'Oro-Iyin-Sunday.pdf');
+  assert.equal(storage.slugName('Ọ̀rọ̀ Ìyìn - Sunday.PDF'), 'Oro-Iyin-Sunday.pdf');
   assert.equal(storage.slugName('   '), 'file');
   assert.equal(storage.slugName('..'), 'file');
   const prev = { ...config.STORAGE.s3 };

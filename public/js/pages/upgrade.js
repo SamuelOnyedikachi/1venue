@@ -80,7 +80,7 @@ export async function mount(view) {
 
   // Compare plans: every limit and feature in one table.
   const rows = [['Venues', (p) => p.venues], ['Stage audience', (p) => p.audience.toLocaleString()], ['Meeting size', (p) => p.meeting], ['Speaker seats', (p) => p.speakerSeats], ['AI points a day', (p) => p.aiDaily.toLocaleString()], ['Uploads', (p) => size(p.uploadMB)],
-    ...FEATURES.map(([k, l]) => [l.split(':')[0].replace(/ \(.*\)$/, ''), (p) => (p.features && p.features[k] ? '✓' : '—')]), ['Organisation members', (p) => (p.features && p.features.orgMembers) || '—']];
+    ...FEATURES.map(([k, l]) => [l.split(':')[0].replace(/ \(.*\)$/, ''), (p) => (p.features && p.features[k] ? '✓' : '-')]), ['Organisation members', (p) => (p.features && p.features.orgMembers) || '-']];
   const compare = h('section', { class: 'pr-compare', id: 'compare', hidden: true },
     h('h2', null, 'Compare plans'),
     h('div', { class: 'pr-table-wrap', tabindex: '0', role: 'region', 'aria-label': 'Plan comparison' },

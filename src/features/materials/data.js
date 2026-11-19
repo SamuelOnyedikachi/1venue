@@ -39,17 +39,17 @@ function sanitizeMaterialPayload(kind, payload) {
     sourceUrl: p.sourceUrl ? normalizeStoredFileUrl(String(p.sourceUrl)) : null,
     sourceSize: Number.isFinite(Number(p.sourceSize)) && Number(p.sourceSize) > 0 ? Math.round(Number(p.sourceSize)) : null,
   };
-  if (p.sourceUrl && !source.sourceUrl) { const e = new Error('That file was not uploaded to 1venue storage — try the upload again'); e.status = 400; e.reason = `source url not accepted: ${String(p.sourceUrl).slice(0, 120)}`; throw e; }
+  if (p.sourceUrl && !source.sourceUrl) { const e = new Error('That file was not uploaded to 1venue storage - try the upload again'); e.status = 400; e.reason = `source url not accepted: ${String(p.sourceUrl).slice(0, 120)}`; throw e; }
   if (kind === 'doc' || kind === 'sheet') {
     // Word documents and spreadsheets: the file itself; previews are extracted on the server.
     if (!source.sourceUrl) { const e = new Error('Upload the file first'); e.status = 400; e.reason = 'no source url'; throw e; }
     return source;
   }
-  // slides | pdf | pptx — store page image URLs (+ optional source meta)
+  // slides | pdf | pptx - store page image URLs (+ optional source meta)
   const raw = Array.isArray(p.pages) ? p.pages : [];
   const pages = raw.map(normalizeStoredFileUrl).filter(Boolean).slice(0, 200);
   if (!pages.length) {
-    const e = new Error(raw.length ? 'Those pages were not uploaded to 1venue storage — try the upload again' : 'Add at least one page or image');
+    const e = new Error(raw.length ? 'Those pages were not uploaded to 1venue storage - try the upload again' : 'Add at least one page or image');
     e.status = 400; e.reason = raw.length ? `0 of ${raw.length} page urls accepted (first: ${String(raw[0]).slice(0, 120)})` : 'no pages';
     throw e;
   }

@@ -95,7 +95,7 @@ If both server STT engines fail, the browser's Web Speech API captures captions 
 
 ## 4. Feature map
 
-**Totals:** 46 features — Done: 19 · Partial: 24 · Not built: 3
+**Totals:** 46 features - Done: 19 · Partial: 24 · Not built: 3
 
 | Group | Feature | Status | Tooltip family | Notes |
 |---|---|---|---|---|

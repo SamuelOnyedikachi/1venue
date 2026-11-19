@@ -1,4 +1,4 @@
-// Instant meeting setup as an overlay over the current (blurred) page — same shell as the log-in overlay
+// Instant meeting setup as an overlay over the current (blurred) page - same shell as the log-in overlay
 // (.au-scrim / .au-modal) and the same floating-label pill inputs as the sign-in page (field() from login.js).
 // Opens from anywhere: hero / dashboard links to /create?instant=1 are intercepted in app.js, and the
 // command bar calls openInstant() directly. A deep link to /create?instant=1 opens it over the home page.

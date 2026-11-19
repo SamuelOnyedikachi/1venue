@@ -25,7 +25,7 @@ module.exports = {
       const mod = isModerator(p);
       const err = (error) => ctx.sendToParticipant(participantId, { type: 'sound-denied', error });
       if (!mod && meeting.settings && meeting.settings.sounds === false) return err('The host has turned off sounds');
-      if (!mod && tooSoon('p' + participantId, PER_PERSON_MS)) return err('Easy — one sound every few seconds');
+      if (!mod && tooSoon('p' + participantId, PER_PERSON_MS)) return err('Easy - one sound every few seconds');
       if (tooSoon('r' + meetingCode, mod ? 800 : PER_ROOM_MS)) return err('Another sound just played');
       ctx.broadcast(meetingCode, { type: 'sound', id, participantId, name: p.name, at: Date.now() });
     });

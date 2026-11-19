@@ -1,4 +1,4 @@
-# LiveKit for 1venue — deploy as a separate Coolify "Docker Compose" resource.
+# LiveKit for 1venue - deploy as a separate Coolify "Docker Compose" resource.
 # Coolify: Base Directory = /docs/livekit, Docker Compose Location = /docker-compose.yml
 # Domain: https://rtc.1venue.live on service "livekit", port 7880.
 # Self-contained: the LiveKit config is inline below (LIVEKIT_CONFIG), so no file mount is needed.
@@ -10,10 +10,10 @@ services:
     # Coolify's proxy still reaches it on <host>:7880.
     network_mode: host
     environment:
-      # "key: secret" — must equal 1venue's LIVEKIT_API_KEY / LIVEKIT_API_SECRET
+      # "key: secret" - must equal 1venue's LIVEKIT_API_KEY / LIVEKIT_API_SECRET
       LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?set in Coolify env}: ${LIVEKIT_API_SECRET:?set in Coolify env}"
       LIVEKIT_CONFIG: |
-        # LiveKit server config for 1venue — lean single-node setup on rtc.1venue.live
+        # LiveKit server config for 1venue - lean single-node setup on rtc.1venue.live
         port: 7880                      # HTTP + WebSocket signalling (Coolify proxies https://rtc.1venue.live → here)
         bind_addresses: [""]           # all interfaces inside the container
         log_level: info
@@ -38,14 +38,14 @@ services:
           max_participants: 0           # 0 = unlimited; set e.g. 100 to cap load
           auto_create: true
 
-        # Built-in TURN — needed for people behind strict NAT/corporate Wi-Fi.
+        # Built-in TURN - needed for people behind strict NAT/corporate Wi-Fi.
         # Uses ONLY rtc.1venue.live and its certificate.
         turn:
           enabled: true
           domain: rtc.1venue.live
-          udp_port: 3478                # TURN/UDP on the host — always works, no certificate needed
+          udp_port: 3478                # TURN/UDP on the host - always works, no certificate needed
           # TURN/TLS (optional, guide §5): Coolify's Traefik terminates TLS for rtc.1venue.live on :5349
-          # and forwards plain TCP to tls_port below — same domain, same Let's Encrypt cert.
+          # and forwards plain TCP to tls_port below - same domain, same Let's Encrypt cert.
           # tls_port: 5350
           # external_tls: true
           relay_range_start: 30000

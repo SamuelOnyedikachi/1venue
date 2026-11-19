@@ -1,4 +1,4 @@
--- 008: Attendance shares — long random public/private links to meeting attendance lists
+-- 008: Attendance shares - long random public/private links to meeting attendance lists
 CREATE TABLE IF NOT EXISTS attendance_shares (
   id                 SERIAL PRIMARY KEY,
   meeting_history_id INTEGER NOT NULL REFERENCES meeting_history(id) ON DELETE CASCADE,

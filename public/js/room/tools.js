@@ -227,7 +227,7 @@ export function buildTools(R) {
               class: 'icon-btn has-bg sm', type: 'button',
               'data-tip': 'Copy', 'aria-label': 'Copy',
               html: icon('copy', { size: 14 }),
-              onclick: () => copy(`“${x.text || text}” — ${x.reference}${x.short ? ` (${x.short})` : ''}`, 'Verse copied'),
+              onclick: () => copy(`“${x.text || text}” - ${x.reference}${x.short ? ` (${x.short})` : ''}`, 'Verse copied'),
             }),
           ));
       }
@@ -259,7 +259,7 @@ export function buildTools(R) {
       }
       ref.addEventListener('keydown', (e) => { if (e.key === 'Enter') preview(); });
       const onStage = shared && shared.mode === 'stage';
-      // One line: verse | preview | show everyone | clear — icon-only, label on hover.
+      // One line: verse | preview | show everyone | clear - icon-only, label on hover.
       const clear = () => { if (shared && canShow) R.send('scripture-clear', {}); else { ref.value = ''; R.scriptureDraft = ''; out.replaceChildren(); } };
       box.append(h('div', { class: 'scr-line' }, ref,
         ib('search', 'Preview', preview),
@@ -435,7 +435,7 @@ export function buildTools(R) {
         h('div', { class: 'sec-sub', style: { marginTop: '1rem' } }, 'Slides, documents & images'),
         h('div', { class: 'row gap-s wrap' }, btn('upload', 'Upload PDF, slides, Word, Excel or images', () => pickContentFile(R), { group: 'content', disabled: !!presentBusy })),
         h('div', { class: 'sec-sub', style: { marginTop: '1rem' } }, 'Materials'),
-        h('div', { class: 'tiny muted', style: { marginBottom: '.4rem' } }, 'Preloaded decks and links — present instantly without re-uploading.'),
+        h('div', { class: 'tiny muted', style: { marginBottom: '.4rem' } }, 'Preloaded decks and links - present instantly without re-uploading.'),
         h('div', { class: 'materials-inline', 'data-materials': '1' }),
         h('div', { class: 'row gap-s wrap', style: { marginTop: '.4rem' } },
           btn('folder', 'Manage materials', () => { window.open('/materials', '_blank'); }, { group: 'content' }),
@@ -525,7 +525,7 @@ export function buildTools(R) {
         row('layout', 'Force audience view', 'Everyone follows the host’s grid / speaker / screenshare view', sw(!!s.forceLayout, (v) => { set('forceLayout')(v); if (v) R.send('force-layout', { layout: R.layout }); })),
         row('userPlus', 'Invite others', null, sw(s.participantsCanInvite !== false, set('participantsCanInvite'))),
         row('users', 'Max participants', 'Cap the room size', max),
-        btn('refresh', 'Reset invite link', async () => { try { const r = await api('/api/invite/regenerate', { method: 'POST', headers: R.headers(), body: { code: R.code, participantId: R.me.id } }); R.inviteKey = r.key || r.inviteKey || null; toast('New invite link created — old links stop working', { icon: 'link', group: 'admin' }); } catch (e) { toastErr(e); } }, { cls: 'block' }),
+        btn('refresh', 'Reset invite link', async () => { try { const r = await api('/api/invite/regenerate', { method: 'POST', headers: R.headers(), body: { code: R.code, participantId: R.me.id } }); R.inviteKey = r.key || r.inviteKey || null; toast('New invite link created - old links stop working', { icon: 'link', group: 'admin' }); } catch (e) { toastErr(e); } }, { cls: 'block' }),
         R.me.role === 'host' ? btn('phoneOff', 'End session for everyone', () => R.endForAll(), { cls: 'danger block' }) : null);
     },
     activity() {
@@ -539,7 +539,7 @@ export function buildTools(R) {
     diagnostics() {
       const box = h('div', { class: 'stack' });
       const grid = h('div', { class: 'set-grid diag' });
-      const put = (k, v, ok) => grid.append(h('div', { class: `set-card${ok === false ? ' bad' : ok ? ' good' : ''}` }, h('small', { class: 'muted' }, k), h('b', null, v ?? '—')));
+      const put = (k, v, ok) => grid.append(h('div', { class: `set-card${ok === false ? ' bad' : ok ? ' good' : ''}` }, h('small', { class: 'muted' }, k), h('b', null, v ?? '-')));
       put('Signal (WebSocket)', R.wsState, R.wsState === 'open');
       put('Media server', R.config.livekitConfigured ? R.media.state : 'Not configured', R.config.livekitConfigured ? R.media.state === 'connected' : false);
       put('Your network', R.quality[R.me.id] || 'unknown', ['excellent', 'good'].includes(R.quality[R.me.id]));

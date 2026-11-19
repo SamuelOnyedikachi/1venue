@@ -53,10 +53,10 @@ export function detectLang(text, hint) {
 
 /**
  * Which engine reads this language:
- *   'browser' — the device has a voice for exactly this language (free, instant; preferred)
- *   'cloud'   — no device voice, but the server's read-out model lists the language
- *   'signin'  — same as cloud, but the viewer must log in first (cloud audio costs money)
- *   null      — hide the read-out icon (never read Igbo with an English voice)
+ *   'browser' - the device has a voice for exactly this language (free, instant; preferred)
+ *   'cloud'   - no device voice, but the server's read-out model lists the language
+ *   'signin'  - same as cloud, but the viewer must log in first (cloud audio costs money)
+ *   null      - hide the read-out icon (never read Igbo with an English voice)
  */
 export function chooseEngine(lang, { cloudEnabled = false, cloudLanguages = [], canUseCloud = false, browserLangs = [] } = {}) {
   const l = normLang(lang);

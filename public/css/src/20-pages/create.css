@@ -246,3 +246,18 @@
 .cover-quota {
   min-height: 1.1em;
 }
+
+@media (max-width: 640px) {
+  .field-row > .seg {
+    box-sizing: border-box;
+    flex-wrap: wrap;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .field-row > .seg > button {
+    flex: 1 1 5rem;
+    min-width: 0;
+    justify-content: center;
+    white-space: normal;
+  }
+}

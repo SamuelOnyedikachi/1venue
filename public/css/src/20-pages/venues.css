@@ -28,6 +28,14 @@
   flex: none;
   margin-left: auto;
 }
+@media (max-width: 480px) {
+  .venues-head {
+    flex-wrap: wrap;
+  }
+  .venues-head .btn {
+    max-width: 100%;
+  }
+}
 
 /* Per-venue colored mark + section bands (homepage-style stripes) */
 .venue-mark {
