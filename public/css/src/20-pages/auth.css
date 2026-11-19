@@ -318,12 +318,12 @@
   margin-top: -2px;
 }
 .au-primary {
-  background: var(--brand);
-  color: var(--accent-ink);
+  background: var(--accent-action, var(--brand));
+  color: #fff;
   border: 0;
 }
 .au-primary:hover {
-  background: var(--brand-hi);
+  background: color-mix(in srgb, var(--accent-action, var(--brand)) 88%, #000);
 }
 .au-primary:focus-visible,
 .au-outline:focus-visible {

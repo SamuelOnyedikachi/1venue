@@ -42,12 +42,12 @@ export async function api(path, { method = 'GET', body, headers = {}, raw = fals
     else { opts.body = JSON.stringify(body); opts.headers['Content-Type'] = 'application/json'; }
   }
   let res;
-  try { res = await fetch(path, opts); } catch (e) { const err = new Error(navigator.onLine === false ? 'You are offline — check your connection and try again' : 'Could not reach 1venue — check your connection and try again'); err.status = 0; err.cause = e; throw err; }
+  try { res = await fetch(path, opts); } catch (e) { const err = new Error(navigator.onLine === false ? 'You are offline - check your connection and try again' : 'Could not reach 1venue - check your connection and try again'); err.status = 0; err.cause = e; throw err; }
   if (raw) return res;
   let data = null;
   try { data = await res.json(); } catch { /* empty */ }
   if (!res.ok) {
-    const err = new Error(errText(data && (data.error || data.message)) || HTTP_MSG[res.status] || (res.status >= 500 ? 'Something went wrong on our side — please try again' : `Request failed (${res.status})`));
+    const err = new Error(errText(data && (data.error || data.message)) || HTTP_MSG[res.status] || (res.status >= 500 ? 'Something went wrong on our side - please try again' : `Request failed (${res.status})`));
     err.status = res.status; err.data = data; throw err;
   }
   return data;
@@ -63,7 +63,7 @@ export function toast(msg, { icon: ic = 'info', group = '', ms = 3200, action = 
   setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 260); }, ms);
   return t;
 }
-const HTTP_MSG = { 401: 'Please sign in to continue', 403: 'You don’t have permission to do that', 404: 'We couldn’t find that', 413: 'That file is too large', 429: 'Slow down a little — try again in a moment' };
+const HTTP_MSG = { 401: 'Please sign in to continue', 403: 'You don’t have permission to do that', 404: 'We couldn’t find that', 413: 'That file is too large', 429: 'Slow down a little - try again in a moment' };
 /* Turn anything thrown or returned into a readable sentence (never "[object Object]"). */
 export function errText(e) {
   if (e == null || e === '') return '';
@@ -211,7 +211,7 @@ export function initTooltips() {
   document.addEventListener('focusin', (e) => {
     const el = e.target.closest && e.target.closest('[data-tip]');
     if (!el) return;
-    // keyboard focus only — pointer hover already handled above
+    // keyboard focus only - pointer hover already handled above
     if (e.target.matches && e.target.matches(':focus-visible')) { clearTimeout(timer); show(el); }
   });
   document.addEventListener('focusout', (e) => {

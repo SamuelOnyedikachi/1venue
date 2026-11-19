@@ -453,7 +453,7 @@ module.exports = {
       });
     });
 
-    // Enhanced mute — require permission
+    // Enhanced mute - require permission
     ctx.onWs('mute-participant', ({ msg, participantId, meeting, meetingCode }) => {
       const actor = meeting.participants.get(participantId);
       if (!actor || !can(meeting, actor, 'muteOthers')) return;
@@ -553,7 +553,7 @@ module.exports = {
       }
     });
 
-    // Attention ring — plays a tone on the recipient's client (works in background)
+    // Attention ring - plays a tone on the recipient's client (works in background)
     ctx.onWs('ring-all', ({ participantId, meeting, meetingCode }) => {
       const actor = meeting.participants.get(participantId);
       if (!actor || (actor.role !== 'host' && actor.role !== 'cohost')) return;

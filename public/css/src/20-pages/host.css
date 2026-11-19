@@ -464,8 +464,8 @@ a.ht-strong:hover {
 }
 .ht-actions .btn.primary,
 .bl-actions .btn.primary {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--accent-action, var(--accent));
+  border-color: var(--accent-action, var(--accent));
 }
 .ht-color {
   width: 64px;
@@ -780,8 +780,8 @@ a.ht-strong:hover {
   border-radius: 50%;
   font-size: 0.78rem;
   font-weight: 600;
-  color: var(--accent-ink, #fff);
-  background: var(--accent);
+  color: #fff;
+  background: var(--accent-action, var(--accent));
 }
 .ht-picker {
   display: flex;

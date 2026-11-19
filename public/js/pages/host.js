@@ -320,7 +320,7 @@ function exportsPanel(f, ex, qs) {
     EXPORTS.map(([id, label, ic, desc]) => {
       const x = by[id] || { rows: 0, lastAt: null };
       return [h('span', { class: 'ht-exp' }, h('span', { class: 'ht-exp-ic', html: icon(ic, { size: 16 }) }), h('span', null, h('strong', null, label), h('span', { class: 'tiny muted ht-exp-desc' }, desc))),
-        h('span', { class: 'small muted' }, desc), x.rows.toLocaleString(), x.lastAt ? whenFmt(x.lastAt) : h('span', { class: 'muted' }, '—'), downloads(`/api/exports/${id}?${qs}`, label.toLowerCase(), { disabled: !x.rows })];
+        h('span', { class: 'small muted' }, desc), x.rows.toLocaleString(), x.lastAt ? whenFmt(x.lastAt) : h('span', { class: 'muted' }, '-'), downloads(`/api/exports/${id}?${qs}`, label.toLowerCase(), { disabled: !x.rows })];
     }), { cls: 'ht-exports', caption: 'Exports for this date range' });
   const perTable = (list) => table([{ label: 'Session' }, { label: 'Started' }, { label: 'People', num: true }, { label: 'Attendance', cls: 'ht-act' }, { label: 'Chat', cls: 'ht-act' }, { label: 'Transcript', cls: 'ht-act' }],
     list.map((s) => [h('span', { class: 'ht-strong' }, s.name), whenFmt(s.startedAt), String(s.people), downloads(`/api/exports/attendance/${s.id}`, `attendance for ${s.name}`, { disabled: !s.people }),
@@ -527,11 +527,11 @@ function earningsView(e, show) {
         e.payouts.map((p) => { const [l, t, ic] = PST[p.status] || [p.status, 'muted', 'info']; const b = p.bank || {};
           return [whenFmt(p.requestedAt), naira(p.amountKobo),
             b.accountNumber || b.bankName ? h('span', { class: 'ht-payto' }, h('strong', null, b.bankName || 'Bank not recognised'), h('span', { class: 'tiny muted' }, [mask(b.accountNumber), b.accountName].filter(Boolean).join(' · ')), b.source === 'partial' ? h('span', { class: 'tiny muted' }, `From: ${p.bankDetails}`) : null) : h('span', { class: 'small' }, p.bankDetails || ''),
-            pill(l, t, ic), [p.paidReference, p.adminNote].filter(Boolean).join(' · ') || h('span', { class: 'muted' }, '—')]; }),
+            pill(l, t, ic), [p.paidReference, p.adminNote].filter(Boolean).join(' · ') || h('span', { class: 'muted' }, '-')]; }),
         { empty: empty('history', 'No payouts yet', 'Requests you make show here with their status.') })),
     panel({ icon: 'fileText', title: 'Ledger', desc: 'Every sale, gift, refund and payout on your balance.' },
       table([{ label: 'Date' }, { label: 'Type' }, { label: 'Event' }, { label: 'Gross', num: true }, { label: 'Fee', num: true }, { label: 'Net', num: true }],
-        e.ledger.map((l) => [whenFmt(l.at), KIND[l.kind] || l.kind, l.event || h('span', { class: 'muted' }, '—'), naira(l.grossKobo), naira(l.feeKobo), h('strong', { class: l.netKobo < 0 ? 'ht-neg' : 'ht-pos' }, naira(l.netKobo))]),
+        e.ledger.map((l) => [whenFmt(l.at), KIND[l.kind] || l.kind, l.event || h('span', { class: 'muted' }, '-'), naira(l.grossKobo), naira(l.feeKobo), h('strong', { class: l.netKobo < 0 ? 'ht-neg' : 'ht-pos' }, naira(l.netKobo))]),
         { empty: empty('fileText', 'No sales yet', 'Ticket sales and gifts show here as they come in.') })),
   ];
 }

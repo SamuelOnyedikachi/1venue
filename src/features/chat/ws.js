@@ -1,4 +1,4 @@
-/** Plugin: in-meeting chat — text, mentions, images (webp), file attachments
+/** Plugin: in-meeting chat - text, mentions, images (webp), file attachments
  *  Permanent: messages are written to chat_messages and linked to meeting history / artifact.
  */
 

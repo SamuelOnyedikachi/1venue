@@ -18,7 +18,7 @@ export async function mount(view, { id }) {
       e.status === 401 ? h('a', { class: 'btn primary', href: '/login?next=' + encodeURIComponent(location.pathname), 'data-link': '' }, 'Sign in') : h('a', { class: 'btn', href: '/materials', 'data-link': '' }, 'Back to materials')));
     return;
   }
-  document.title = `${m.title} — 1venue`;
+  document.title = `${m.title} - 1venue`;
   const p = m.payload || {};
   const head = h('div', { class: 'mat-head' },
     state.user ? h('a', { class: 'btn sm ghost', href: '/materials', 'data-link': '', html: icon('chevronLeft', { size: 16 }) + 'Materials' }) : null,

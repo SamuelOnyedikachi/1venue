@@ -37,12 +37,12 @@ function precheck({ mime, declaredSize, rateKey, contentBatch = false }) {
   const kind = kindOf(mime);
   const max = limitFor(mime);
   if (/html|javascript|svg|x-msdownload|x-sh\b/i.test(mime)) throw err(415, 'That file type is not allowed');
-  if (!max) throw err(415, kind === 'video' ? 'Video uploads are turned off — share a YouTube link instead.' : `${LABEL[kind]} can’t be uploaded here`);
+  if (!max) throw err(415, kind === 'video' ? 'Video uploads are turned off - share a YouTube link instead.' : `${LABEL[kind]} can’t be uploaded here`);
   if (declaredSize && declaredSize > max) throw err(413, `${LABEL[kind]} can be up to ${fmtMB(max)} (this one is ${fmtMB(declaredSize)})`);
   const batch = contentBatch && kind === 'image';
   const key = batch ? `content:${rateKey}` : rateKey;
-  if (!rateLimit(`up:m:${key}`, batch ? U.contentPerMinute : U.perMinute)) throw err(429, 'Too many uploads — wait a minute and try again');
-  if (!hourly(key, batch ? U.contentPerHour : U.perHour)) throw err(429, 'Hourly upload limit reached — try again later');
+  if (!rateLimit(`up:m:${key}`, batch ? U.contentPerMinute : U.perMinute)) throw err(429, 'Too many uploads - wait a minute and try again');
+  if (!hourly(key, batch ? U.contentPerHour : U.perHour)) throw err(429, 'Hourly upload limit reached - try again later');
   return max;
 }
 

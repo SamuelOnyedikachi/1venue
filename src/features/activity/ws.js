@@ -1,5 +1,5 @@
 /**
- * Phase 2 — meeting activity / audit trail
+ * Phase 2 - meeting activity / audit trail
  */
 module.exports = {
   id: 'activity',

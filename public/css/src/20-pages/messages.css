@@ -31,8 +31,8 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
 .page-messages .msg-list-head h1 { margin: 0 0 0 .2rem; font-size: 1.35rem; letter-spacing: -.01em; }
 .msg-brand { display: inline-grid; place-items: center; flex: none; filter: drop-shadow(0 6px 14px color-mix(in srgb, var(--accent) 35%, transparent)); }
 .msg-brand svg { display: block; }
-.page-messages .msg-new { color: var(--accent-ink); background: var(--accent); border-radius: 12px; }
-.page-messages .msg-new:hover { background: color-mix(in srgb, var(--accent) 88%, #000); }
+.page-messages .msg-new { color: #fff; background: var(--accent-action, var(--accent)); border-radius: 12px; }
+.page-messages .msg-new:hover { background: color-mix(in srgb, var(--accent-action, var(--accent)) 88%, #000); }
 .page-messages .msg-search { display: flex; align-items: center; gap: .45rem; margin: .4rem .85rem .5rem; padding: 0 .35rem 0 .8rem; height: 42px; border-radius: var(--r-pill); background: var(--s2); border: 1px solid transparent; color: var(--muted); transition: border-color .15s, background .15s; }
 .page-messages .msg-search:focus-within { border-color: color-mix(in srgb, var(--accent) 55%, transparent); background: var(--s1); }
 .page-messages .msg-search .i { display: inline-flex; }
@@ -45,8 +45,8 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
 .page-messages .msg-tab { flex: none; display: inline-flex; align-items: center; gap: .3rem; height: 32px; padding: 0 .7rem; border-radius: var(--r-pill); font-size: .8rem; font-weight: 600; color: var(--muted); background: var(--s2); white-space: nowrap; transition: background .15s, color .15s; }
 .page-messages .msg-tab .i { display: inline-flex; }
 .page-messages .msg-tab:hover { color: var(--text); }
-.page-messages .msg-tab.on { color: var(--accent-ink); background: var(--accent); }
-.page-messages .msg-tab em { font-style: normal; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--r-pill); display: grid; place-items: center; font-size: .66rem; background: var(--accent); color: var(--accent-ink); }
+.page-messages .msg-tab.on { color: #fff; background: var(--accent-action, var(--accent)); }
+.page-messages .msg-tab em { font-style: normal; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--r-pill); display: grid; place-items: center; font-size: .66rem; background: var(--accent-action, var(--accent)); color: #fff; }
 .page-messages .msg-type { flex: none; height: 32px; max-width: 108px; padding: 0 .5rem; border-radius: var(--r-pill); border: 1px solid var(--line-2); background: var(--s1); color: var(--text); font: inherit; font-size: .78rem; }
 .page-messages .msg-items { flex: 1; overflow-y: auto; padding: .35rem .4rem .8rem; overscroll-behavior: contain; }
 .page-messages .msg-item { position: relative; display: flex; align-items: center; gap: .75rem; padding: .65rem .65rem; border-radius: var(--r-md); color: var(--text); transition: background .12s; }
@@ -66,7 +66,7 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
 .page-messages .msg-item-bot > span.ellipsis { flex: 1; font-size: .84rem; color: var(--muted); }
 .page-messages .msg-item.unread .msg-item-top b, .page-messages .msg-item.unread .msg-item-bot > span.ellipsis { color: var(--text); font-weight: 600; }
 .page-messages .msg-item.unread time { color: var(--accent); }
-.page-messages .msg-count { font-style: normal; min-width: 20px; height: 20px; padding: 0 6px; border-radius: var(--r-pill); background: var(--accent); color: var(--accent-ink); font-size: .7rem; font-weight: 600; display: grid; place-items: center; flex: none; }
+.page-messages .msg-count { font-style: normal; min-width: 20px; height: 20px; padding: 0 6px; border-radius: var(--r-pill); background: var(--accent-action, var(--accent)); color: #fff; font-size: .7rem; font-weight: 600; display: grid; place-items: center; flex: none; }
 .msg-labels { display: inline-flex; gap: .2rem; flex: none; min-width: 0; overflow: hidden; }
 .msg-label { --lc: var(--accent); display: inline-flex; align-items: center; gap: .2rem; height: 18px; padding: 0 .45rem; border-radius: var(--r-pill); font-size: .64rem; font-weight: 600; color: var(--lc); background: color-mix(in srgb, var(--lc) 15%, transparent); white-space: nowrap; max-width: 90px; overflow: hidden; text-overflow: ellipsis; }
 .msg-label.more { --lc: var(--muted); }
@@ -174,6 +174,7 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
 .page-messages .msg-card-ic { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; flex: none; color: var(--g-media); background: color-mix(in srgb, var(--g-media) 12%, transparent); }
 .page-messages .msg-card-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .page-messages .msg-row.mine .msg-card a.btn { color: var(--accent-ink); text-decoration: none; }
+.page-messages .msg-row.mine .msg-card a.btn.primary { color: #fff; }
 .page-messages .msg-reacts { display: flex; flex-wrap: wrap; gap: .25rem; margin-top: -.3rem; padding: 0 .35rem; position: relative; z-index: 1; }
 .page-messages .msg-react { padding: .05rem .45rem; border-radius: var(--r-pill); font-size: .78rem; background: var(--s1); border: 1px solid var(--line-2); color: var(--text); box-shadow: var(--shadow-1); }
 .page-messages .msg-react.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--s1)); }

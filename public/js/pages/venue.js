@@ -181,14 +181,14 @@ async function door(view, slug) {
   wrap.append(h('div', { class: 'waiting' },
     h('span', { class: 'ico-tile lg', 'data-group': 'media', html: icon('door', { size: 28 }) }),
     h('h2', null, v.name),
-    h('p', { class: 'muted' }, 'This venue isn’t open yet — wait a little. You’ll go in to the waiting room as soon as the host arrives.'),
+    h('p', { class: 'muted' }, 'This venue isn’t open yet - wait a little. You’ll go in to the waiting room as soon as the host arrives.'),
     h('div', { class: 'dots-loader' }, h('i'), h('i'), h('i')),
     h('a', { class: 'btn ghost', href: '/', 'data-link': '' }, 'Leave')));
   if (v.live && (v.live.open || v.live.hostIn)) navigate('/' + fmtCode(v.code), { replace: true }); else timer = setTimeout(poll, 3000);
 }
 
 async function ownerView(wrap, v) {
-  // Activity name is what shows on the session (e.g. "Youth Day") — venue name stays the permanent place name
+  // Activity name is what shows on the session (e.g. "Youth Day") - venue name stays the permanent place name
   const name = h('input', { class: 'input', placeholder: 'e.g. Youth Day, Palm Sunday, Choir rehearsal', maxlength: 80, value: '' });
   const hist = h('div', { class: 'col', style: { gap: '6px' } }, h('div', { class: 'tiny muted' }, 'Loading meetings…'));
   const adminsBox = h('div', { class: 'col', style: { gap: '.5rem' } });

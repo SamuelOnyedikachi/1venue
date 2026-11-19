@@ -1,5 +1,5 @@
 /**
- * Phase 2 — in-meeting sub-group chats
+ * Phase 2 - in-meeting sub-group chats
  * Host/cohost can create groups, add/remove members.
  * Messages persisted to chat_messages with group_id.
  * Live updates so members see groups without page reload.

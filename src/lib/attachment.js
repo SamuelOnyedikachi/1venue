@@ -13,7 +13,7 @@ function allowedUrl(u) {
 
 function normalizeAttachment(a) {
   if (!a || typeof a !== 'object') return null;
-  if (a.kind === 'passage') { // Bible passage card — text only, no file behind it
+  if (a.kind === 'passage') { // Bible passage card - text only, no file behind it
     const clip = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
     const reference = clip(a.reference, 80), text = clip(a.text, 1500);
     if (!reference || !text) return null;

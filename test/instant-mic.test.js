@@ -35,8 +35,8 @@ test('instant meeting opens as an overlay from anywhere, with the log-in look', 
   assert.match(im, /background: linear-gradient\([\s\S]*var\(--accent\)/);
   assert.match(im, /var\(--accent-2\)/);
   assert.match(im, /\.im-opt\.on \{[\s\S]*var\(--accent\)/);
-  assert.match(im, /\.im-modal \.au-primary \{[\s\S]*background: var\(--accent\)/);
-  assert.match(im, /color: var\(--accent-ink\)/);
+  assert.match(im, /\.im-modal \.au-primary \{[\s\S]*background: var\(--accent-action, var\(--accent\)\)/);
+  assert.match(im, /color: #fff/);
   assert.doesNotMatch(im, /var\(--brand\)|#7c3aed/);
 });
 
@@ -74,5 +74,5 @@ test('sitewide mic toggle: shows on hover / focus, never readonly or blurs, typi
   assert.doesNotMatch(voice, /readOnly\s*=\s*true|setAttribute\('readonly'/, 'the field is never made readonly');
   assert.doesNotMatch(voice, /addEventListener\('focusin', \(e\) => \{ const el = e\.target; if \(voiceKind\(el\)\) begin\(el\); \}\)/, 'no auto-listening on focus');
   const css = read('public/css/app.css');
-  assert.match(css, /\.vmic\.on \{[^}]*background: var\(--accent\)/, 'on state follows the theme accent');
+  assert.match(css, /\.vmic\.on \{[^}]*background: var\(--accent-action, var\(--accent\)\)/, 'on state follows the contrast-safe theme accent');
 });

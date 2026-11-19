@@ -63,7 +63,7 @@ module.exports = function routes(route, kit) {
 
     // Only new audio costs money, so only new audio counts against the limits.
     const who = rp ? `p:${rp.code}:${rp.participant.id}` : `u:${user.id}`;
-    if (!rateLimit('tts:' + who, cfg.ratePerMin)) throw httpError(429, 'You are listening a lot — wait a minute and try again');
+    if (!rateLimit('tts:' + who, cfg.ratePerMin)) throw httpError(429, 'You are listening a lot - wait a minute and try again');
     const today = new Date().toISOString().slice(0, 10);
     if (budget.day !== today) { budget.day = today; budget.chars = 0; }
     if (cfg.dailyChars && budget.chars + text.length > cfg.dailyChars) throw httpError(429, 'Read-out has reached today’s limit on this server');
@@ -82,7 +82,7 @@ module.exports = function routes(route, kit) {
       return { url: await inflight.get(hash), cached: false, chars: text.length };
     } catch (e) {
       // Admins see the provider's reason (bad token, billing, model error) to fix setup quickly.
-      if (user && isAdmin(user) && e.detail) throw httpError(e.status || 502, `${e.message} — ${e.detail}`);
+      if (user && isAdmin(user) && e.detail) throw httpError(e.status || 502, `${e.message} - ${e.detail}`);
       throw e;
     }
   });

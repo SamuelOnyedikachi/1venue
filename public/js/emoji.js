@@ -250,7 +250,7 @@ export function pushRecent(e) { const r = [e, ...recentEmoji().filter((x) => x !
 export function emojiPopover(anchor, onPick, { keepOpen = false } = {}) {
   const open = document.querySelector('.emoji-pop');
   if (open) { open._close?.(); if (open._anchor === anchor) return null; }
-  const input = h('input', { class: 'emoji-search', type: 'search', placeholder: 'Search emoji — happy, pray, fire…', 'aria-label': 'Search emoji' });
+  const input = h('input', { class: 'emoji-search', type: 'search', placeholder: 'Search emoji - happy, pray, fire…', 'aria-label': 'Search emoji' });
   const grid = h('div', { class: 'emoji-grid', role: 'listbox' });
   const pop = h('div', { class: 'emoji-pop', role: 'dialog', 'aria-label': 'Emoji' }, input, grid);
   const paint = () => {

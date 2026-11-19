@@ -14,7 +14,7 @@ test('today’s verse rotates by UTC date and stays stable for a given day', () 
   assert.ok(a.text && a.ref);
   assert.match(a.href, /\/books\?ref=/);
   const next = verseOfTheDay(new Date('2026-11-16T00:30:00Z'));
-  // 366/365 days vs list length — adjacent days may rarely collide; just check the index math.
+  // 366/365 days vs list length - adjacent days may rarely collide; just check the index math.
   assert.equal(dayOfYear(new Date('2026-01-01T12:00:00Z')), 1);
   assert.equal(dayOfYear(new Date('2026-12-31T12:00:00Z')), 365);
   const i = (dayOfYear(new Date('2026-11-15T12:00:00Z')) % DAILY.length + DAILY.length) % DAILY.length;
@@ -64,7 +64,7 @@ test('feed filters, upcoming RSVPs, and suggested hosts', { skip, timeout: 12000
       startsAt: new Date(Date.now() + 3 * 864e5).toISOString(),
     });
     assert.ok(priv.status === 200 || priv.status === 201, JSON.stringify(priv.body));
-    const secret = await host.post('/api/posts', { body: 'Internal agenda — not for the public feed.', eventId: priv.body.id });
+    const secret = await host.post('/api/posts', { body: 'Internal agenda - not for the public feed.', eventId: priv.body.id });
     assert.equal(secret.status, 200, JSON.stringify(secret.body));
 
     const bad = await guest.get('/api/feed?filter=nope');

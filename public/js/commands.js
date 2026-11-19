@@ -127,7 +127,7 @@ function render() {
   }
   if (sel >= current.length) sel = 0;
   actionsEl.innerHTML = '';
-  if (!current.length) { actionsEl.append(h('span', { class: 'cmd-empty' }, q ? 'No matches — press Enter to search everything' : '')); return; }
+  if (!current.length) { actionsEl.append(h('span', { class: 'cmd-empty' }, q ? 'No matches - press Enter to search everything' : '')); return; }
   current.forEach((c, i) => {
     const on = typeof c.active === 'function' ? c.active() : false;
     const b = h('button', {

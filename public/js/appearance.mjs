@@ -17,6 +17,29 @@ function contrast(a, b) {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
+function toHex(rgb) {
+  return '#' + rgb.map((value) => Math.round(value).toString(16).padStart(2, '0')).join('');
+}
+
+export function accentButtonColors(accent, accent2) {
+  const primary = parseHex(accent) || [37, 99, 235];
+  const secondary = parseHex(accent2) || primary;
+  let factor = 1;
+  let first, second;
+  do {
+    first = primary.map((channel) => channel * factor);
+    second = secondary.map((channel) => channel * factor);
+    const backgrounds = [
+      luminance(first),
+      luminance(second),
+      luminance(first.map((channel, i) => (channel * 60 + second[i] * 40) / 100)),
+    ];
+    if (Math.min(...backgrounds.map((background) => contrast(1, background))) >= 4.5) break;
+    factor *= 0.94;
+  } while (factor > 0.01);
+  return { primary: toHex(first), secondary: toHex(second) };
+}
+
 export function accentInk(accent, accent2) {
   const primary = parseHex(accent);
   const secondary = parseHex(accent2);

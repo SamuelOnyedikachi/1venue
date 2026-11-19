@@ -1,10 +1,10 @@
 /**
  * Content sharing over the room WebSocket (works without LiveKit).
  * Allowed types only:
- *   youtube — a YouTube video id; every viewer streams from YouTube, play/pause/seek follow the remote holder
- *   slides  — page images (a PDF rendered to images in the presenter's browser, uploaded to storage)
- *   image   — a single uploaded image
- *   doc     — a Word document or spreadsheet, extracted on the server into a paged JSON file in storage
+ *   youtube - a YouTube video id; every viewer streams from YouTube, play/pause/seek follow the remote holder
+ *   slides  - page images (a PDF rendered to images in the presenter's browser, uploaded to storage)
+ *   image   - a single uploaded image
+ *   doc     - a Word document or spreadsheet, extracted on the server into a paged JSON file in storage
  *             (see doc.js); page and scroll follow the presenter
  * Generic web pages (most sites refuse to be framed) and self-hosted video (would stream from this server)
  * are intentionally not supported.
@@ -65,7 +65,7 @@ module.exports = {
       if (!c) {
         const sample = msg.contentType === 'image' ? msg.url : Array.isArray(msg.pages) ? msg.pages[0] : undefined;
         log.warn('content', 'start rejected', { reason: 'file url not from 1venue storage', type: msg.contentType, pages: Array.isArray(msg.pages) ? msg.pages.length : undefined, sample: sample ? String(sample).slice(0, 160) : undefined, meeting: meetingCode });
-        tell('Could not present that file — it was not found in 1venue storage. Upload it again.'); return;
+        tell('Could not present that file - it was not found in 1venue storage. Upload it again.'); return;
       }
       clearInterval(meeting.content?.slideshowTimer);
       meeting.content = {

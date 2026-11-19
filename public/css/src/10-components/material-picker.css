@@ -52,8 +52,8 @@
   border-radius: var(--r-pill);
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--accent-ink);
-  background: var(--accent);
+  color: #fff;
+  background: var(--accent-action, var(--accent));
 }
 .mp-caret {
   display: flex;
@@ -183,8 +183,9 @@
   color: var(--accent-ink);
 }
 .mp-opt[aria-selected="true"] .mp-check {
-  background: var(--accent);
-  border-color: var(--accent);
+  color: #fff;
+  background: var(--accent-action, var(--accent));
+  border-color: var(--accent-action, var(--accent));
 }
 .mp-empty {
   padding: 0.8rem 0.6rem;

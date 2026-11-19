@@ -5,7 +5,7 @@ import { h, $, api, toast, sheet, menu, avatar, initTooltips, debounce, closeTop
 import { mountCommandBar, registerCommands, setBarContext, barVisible, focusBar, refreshBar } from './commands.js';
 import { surahCommands, loadSurahs, looksLikeQuran } from './quran-cmd.js';
 import { initPwa, promptInstall } from './pwa.js';
-import { accentInk } from './appearance.mjs';
+import { accentButtonColors, accentInk } from './appearance.mjs';
 import './messages/tones.js'; // install audio-unlock handlers before any incoming call or message arrives
 
 export const state = { config: null, user: null, session: null, prefs: null, route: null, inRoom: false };
@@ -27,6 +27,9 @@ export function applyPrefs(p = state.prefs) {
   const a2 = p.accent2 || (ACCENTS.find((x) => x[1] === p.accent) || [])[2] || '#7c3aed';
   root.style.setProperty('--accent-2', a2);
   root.style.setProperty('--accent-ink', accentInk(p.accent || '#2563eb', a2));
+  const actionColors = accentButtonColors(p.accent || '#2563eb', a2);
+  root.style.setProperty('--accent-action', actionColors.primary);
+  root.style.setProperty('--accent-action-2', actionColors.secondary);
   root.style.setProperty('--font-scale', String(Math.min(1.5, Math.max(0.8, Number(p.fontScale) || 1))));
   root.classList.toggle('reduce-motion', !!p.reduceMotion);
   let meta = document.querySelector('meta[name="theme-color"]');
@@ -314,7 +317,7 @@ function buildShell() {
     type: 'button',
     'data-nav-books': '',
     'aria-haspopup': 'menu',
-    'aria-label': 'Books — Bible and Qur’an',
+    'aria-label': 'Books - Bible and Qur’an',
     html: icon('bookOpen', { size: 18 }) + 'Books',
   });
   booksBtn.onclick = (e) => { e.preventDefault(); openBooksPicker(booksBtn); };
@@ -359,7 +362,7 @@ export const CODE_RE = /^\s*([a-z0-9]{3})[\s-]?([a-z0-9]{3})\s*$/i;
 export const parseCode = (v) => { const m = String(v || '').match(CODE_RE); return m ? (m[1] + m[2]).toLowerCase() : null; };
 export function globalBarContext(pinnedOverride) {
   return {
-    placeholders: ['Search events, people, verses…', 'Try “go live”', 'Try “John 3:16”', 'Try “quran” for every surah', 'Try “Al-Kahf 10”', 'Try “dark mode”', 'Join with a code: y5yi87', 'Try “bigger text”', 'Try “sermons live now”', 'Try “my whiteboard”'],
+    placeholders: ['Search events and live streams…', 'Search people and profiles…', 'Search scripture and verses…', 'Search meetings by code…', 'Search settings and actions…', 'Search materials and whiteboards…'],
     pinned: () => pinnedOverride ? pinnedOverride() : ['create', 'join', 'discover', 'live', 'feed', 'bible', 'quran', 'dashboard', 'materials', 'whiteboard', 'theme', 'settings'].map(cmdById),
     dynamic: (q) => {
       const out = [];
@@ -387,7 +390,7 @@ function registerGlobal() {
   GLOBAL = [
     { id: 'create', label: 'Create event', short: 'Create', icon: 'plus', group: 'engage', keywords: ['go live', 'host', 'new meeting', 'schedule', 'start'], run: go('/create') },
     { id: 'instant', label: 'Start instant meeting', short: 'Instant', icon: 'zap', group: 'media', keywords: ['meet now', 'quick call', 'new room'], run: () => openInstantOverlay() },
-    { id: 'venues', label: 'Venues — permanent links', short: 'Venue', icon: 'door', group: 'media', keywords: ['venue', 'permanent room', 'personal room', 'short link', '/v/'], run: go('/venues') },
+    { id: 'venues', label: 'Venues - permanent links', short: 'Venue', icon: 'door', group: 'media', keywords: ['venue', 'permanent room', 'personal room', 'short link', '/v/'], run: go('/venues') },
     { id: 'join', label: 'Join with code', short: 'Join', icon: 'login', group: 'people', keywords: ['enter code', 'meeting code', 'room'], run: () => joinPrompt() },
     { id: 'discover', label: 'Discover events', short: 'Discover', icon: 'compass', group: 'nav', keywords: ['browse', 'explore'], run: go('/discover') },
     { id: 'live', label: 'Live now', icon: 'radio', group: 'engage', keywords: ['happening', 'streaming', 'on air'], run: go('/discover?status=live') },

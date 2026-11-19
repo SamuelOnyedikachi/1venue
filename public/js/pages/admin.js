@@ -441,7 +441,7 @@ function commerceCard() {
     payouts.replaceChildren(...(po.payouts.length ? po.payouts.map((p) => {
       const ref = h('input', { class: 'input', placeholder: 'Transfer reference' });
       const b = p.bank || {};
-      const kv = (k, v, mono) => h('div', null, h('span', { class: 'tiny muted' }, k), h(mono ? 'code' : 'strong', { class: 'small' }, v || '—'));
+      const kv = (k, v, mono) => h('div', null, h('span', { class: 'tiny muted' }, k), h(mono ? 'code' : 'strong', { class: 'small' }, v || '-'));
       return h('div', { class: 'col admin-line', style: { gap: '.5rem' } }, h('div', { class: 'row wrap', style: { gap: '.5rem' } }, h('strong', null, naira(p.amountKobo)), h('span', { class: 'small muted grow' }, `to ${p.username ? '@' + p.username : p.email || 'host ' + p.hostUserId} · requested ${new Date(p.requestedAt).toLocaleString()}`),
         b.source && b.source !== 'entered' ? h('span', { class: 'chip admin-state ' + (b.source === 'parsed' ? 'scheduled' : 'paused') }, b.source === 'parsed' ? 'Parsed from old text' : 'Check details') : null),
         h('div', { class: 'admin-bank' }, kv('Bank', b.bankName), kv('Account number', b.accountNumber, true), kv('Account name', b.accountName)),

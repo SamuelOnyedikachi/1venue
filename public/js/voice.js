@@ -280,7 +280,7 @@ class Session {
       el.value = val(r.start, r.hasTime, keepTime);
       el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
       if (r.end && el._voiceEnd) { el._voiceEnd.value = val(r.end, r.endHasTime, null); el._voiceEnd.dispatchEvent(new Event('change', { bubbles: true })); }
-    } catch { toast('Didn’t catch a date — try “February 16 2027 at 6pm”', { icon: 'calendar' }); }
+    } catch { toast('Didn’t catch a date - try “February 16 2027 at 6pm”', { icon: 'calendar' }); }
   }
   stop(reason = 'stopped') {
     if (!this.alive) return; this.alive = false;
@@ -344,7 +344,7 @@ function askConsent(el, opts = {}) {
     box.remove();
     const o = consentOpts; consentOpts = {};
     if (a === 'ok') { write({ consent: true, on: true }); const t = consentEl; consentEl = null; if (t && t.isConnected) { t.focus(); begin(t, o); } }
-    else { write({ consent: true, on: false }); toast('Voice typing off — turn it on in Settings', { icon: 'micOff' }); o.onEnd && o.onEnd('declined'); }
+    else { write({ consent: true, on: false }); toast('Voice typing off - turn it on in Settings', { icon: 'micOff' }); o.onEnd && o.onEnd('declined'); }
   });
   document.body.append(box);
 }

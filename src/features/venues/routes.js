@@ -43,7 +43,7 @@ module.exports = function routes(route, kit) {
     return { plan: ent.plan, plans: codes.PLANS, limits: ent.limits, venuesUsed: await data.activeVenueCount(u.id) };
   });
 
-  // Admins & audit — registered before /api/venues/:slug so "admins"/"audit" are not treated as slugs
+  // Admins & audit - registered before /api/venues/:slug so "admins"/"audit" are not treated as slugs
   async function requireVenueOwnerBySlug(ctx, slug) {
     const u = await requireUser(ctx.req, ctx.res);
     const v = await data.getVenueBySlug(String(slug || '').toLowerCase());

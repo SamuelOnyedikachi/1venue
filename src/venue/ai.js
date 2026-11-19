@@ -234,7 +234,7 @@ function mock(useCase, messages, opts) {
 
       const QURAN_TOPIC = [
         [/forgiveness|forgive|forgiving|mercy|merciful|rahman|rahim/, [
-          ['Az-Zumar 53', 'Do not despair of the mercy of Allah — He forgives all sins'],
+          ['Az-Zumar 53', 'Do not despair of the mercy of Allah - He forgives all sins'],
           ['An-Nisa 110', 'Whoever does evil or wrongs himself then seeks Allah’s forgiveness'],
           ['Al-Hijr 49', 'Inform My servants that I am the Forgiving, the Merciful'],
           ['Ash-Shura 25', 'He is the One who accepts repentance from His servants'],
@@ -244,7 +244,7 @@ function mock(useCase, messages, opts) {
           ['Al-Baqarah 195', 'Encourages spending and striving in the cause of Allah'],
           ['Al-Baqarah 261', 'Likeness of those who spend in the way of Allah'],
           ['An-Nahl 97', 'Whoever does righteousness, male or female, while a believer'],
-          ['Al-Kahf 30', 'Those who believe and do righteous deeds — we will not let their reward be lost'],
+          ['Al-Kahf 30', 'Those who believe and do righteous deeds - we will not let their reward be lost'],
           ['Az-Zalzalah 7-8', 'Whoever does an atom’s weight of good will see it'],
         ]],
         [/peace|anxiety|worry|afraid|fear|sabr|patience/, [
@@ -255,7 +255,7 @@ function mock(useCase, messages, opts) {
           ['Al-Imran 139', 'Do not weaken and do not grieve; you will be superior if you are believers'],
         ]],
         [/hope|hopeful|future|trust|tawakkul/, [
-          ['At-Talaq 2-3', 'Whoever fears Allah — He will make for him a way out'],
+          ['At-Talaq 2-3', 'Whoever fears Allah - He will make for him a way out'],
           ['Ash-Sharh 5-6', 'Indeed, with hardship comes ease'],
           ['Yusuf 87', 'Do not despair of relief from Allah'],
           ['Al-Baqarah 216', 'Perhaps you hate a thing and it is good for you'],

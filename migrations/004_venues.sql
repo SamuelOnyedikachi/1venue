@@ -1,4 +1,4 @@
--- 004: permanent Venues — a short, case-insensitive /v/{slug} link that always opens the same room
+-- 004: permanent Venues - a short, case-insensitive /v/{slug} link that always opens the same room
 -- code with the waiting room forced on. Meetings held there are read back from meeting_history by code.
 CREATE TABLE IF NOT EXISTS venues (
   id SERIAL PRIMARY KEY,

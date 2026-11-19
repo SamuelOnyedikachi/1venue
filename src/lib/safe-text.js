@@ -11,7 +11,7 @@ function fromObject(v) {
   // An AI sometimes returns {"point": "..."} or {"text": "..."} instead of a string: keep the words.
   for (const k of ['text', 'point', 'summary', 'value', 'content', 'title', 'name', 'item', 'description']) if (typeof v[k] === 'string') return v[k];
   const strings = Object.values(v).filter((x) => typeof x === 'string' || typeof x === 'number');
-  return strings.join(' — ');
+  return strings.join(' - ');
 }
 
 function cleanText(v, { max = 4000 } = {}) {

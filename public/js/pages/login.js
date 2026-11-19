@@ -373,13 +373,13 @@ export async function mount(view, params) {
     : (params.mode === 'forgot' || location.pathname.startsWith('/forgot')) ? 'forgot' : 'login';
   if (mode !== 'signup') {
     // Deep link: the home page sits blurred underneath the log-in overlay.
-    document.title = 'Log in — 1venue';
+    document.title = 'Log in - 1venue';
     const home = await import('./home.js');
     const bg = await home.mount(view, {});
     openAuth({ next, mode, email: params.email || '', error: params.error || '', message: params.verified ? 'verified' : params.reset ? 'reset' : '' });
     return { unmount() { open?.close(true); (bg || home).unmount?.(); } };
   }
-  document.title = 'Create your account — 1venue';
+  document.title = 'Create your account - 1venue';
   return signupPage(view, next, params);
 }
 

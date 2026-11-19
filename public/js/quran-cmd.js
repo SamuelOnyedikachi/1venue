@@ -55,7 +55,7 @@ export function surahCommands(q, surahs, go) {
       id: `dyn-surah-${s.surah}`,
       label: `Surah ${s.surah} ${s.name} ${s.nameAr || ''}${a ? ` · ayah ${a}` : ''}`.trim(),
       short: `${s.name}${a ? ` ${a}` : ''} · ${s.nameAr || ''}`,
-      tip: `${s.surah}. ${s.name} (${s.nameAr}) — ${s.meaning} · ${s.ayahs} ayahs`,
+      tip: `${s.surah}. ${s.name} (${s.nameAr}) - ${s.meaning} · ${s.ayahs} ayahs`,
       glyph: String(s.surah),
       group: 'faith',
       run: () => go(`/books?corpus=quran&ref=${encodeURIComponent(a ? `${s.name} ${a}` : s.name)}`),

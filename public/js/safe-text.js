@@ -3,7 +3,7 @@
 const JUNK = /^(null|undefined|nan|none|n\/a|\[object \w+\]|\{\s*\}|\[\s*\]|""|'')$/i;
 function fromObject(v) {
   for (const k of ['text', 'point', 'summary', 'value', 'content', 'title', 'name', 'item', 'description']) if (typeof v[k] === 'string') return v[k];
-  return Object.values(v).filter((x) => typeof x === 'string' || typeof x === 'number').join(' — ');
+  return Object.values(v).filter((x) => typeof x === 'string' || typeof x === 'number').join(' - ');
 }
 export function safeText(v, max = 4000) {
   if (v == null || v === false) return '';

@@ -105,7 +105,7 @@ export function createPanel(R) {
     const canChat = R.perm('chat') && R.security.chat !== false || R.isMod();
     if (mode === 'all') {
       const list = h('div', { class: 'msgs', 'data-autoscroll': '' });
-      if (!R.data.chat.length) list.append(h('div', { class: 'empty sm' }, I('chats', 28), h('p', null, 'Say hi 👋 — messages are visible to everyone in the room.')));
+      if (!R.data.chat.length) list.append(h('div', { class: 'empty sm' }, I('chats', 28), h('p', null, 'Say hi 👋 - messages are visible to everyone in the room.')));
       R.data.chat.forEach((m) => list.append(msgEl(m, { mine: m.participantId === R.me.id, name: m.name, at: m.at })));
       wrap.append(list, composer({ placeholder: 'Message everyone…', disabled: !canChat, onSend: (text, attachment) => {
         const mentions = [...text.matchAll(/@([\w.-]{2,30})/g)].map((x) => x[1].toLowerCase());
@@ -240,7 +240,7 @@ export function createPanel(R) {
       }
       wrap.append(sec);
     }
-    // waiting room — compact strip so it doesn’t dominate the people panel
+    // waiting room - compact strip so it doesn’t dominate the people panel
     if (mod && R.waiting.length) {
       wrap.append(h('section', { class: 'shade wait-box', 'data-group': 'people' },
         h('div', { class: 'sec-h wait-head' },
@@ -282,7 +282,7 @@ export function createPanel(R) {
   function pollsView() {
     const box = h('div', { class: 'stack' });
     if (R.isMod()) box.append(btn('plus', 'New poll', () => newPoll(), { group: 'engage', cls: 'primary block' }));
-    if (!R.data.polls.length) box.append(h('div', { class: 'empty sm' }, I('poll', 28), h('p', null, R.isMod() ? 'Ask the room something — results update live.' : 'No polls yet. They’ll pop up here when the host starts one.')));
+    if (!R.data.polls.length) box.append(h('div', { class: 'empty sm' }, I('poll', 28), h('p', null, R.isMod() ? 'Ask the room something - results update live.' : 'No polls yet. They’ll pop up here when the host starts one.')));
     [...R.data.polls].reverse().forEach((p) => {
       const total = Math.max(1, p.tally.reduce((a, b) => a + b, 0));
       const voted = (p.mine || []).length > 0, closed = p.status === 'closed';
@@ -332,7 +332,7 @@ export function createPanel(R) {
     box.append(h('div', { class: 'compose-card' }, ta, h('div', { class: 'row' }, h('label', { class: 'row gap-xs tiny grow' }, anon, 'Ask anonymously'), btn('send', 'Ask', () => { if (ta.value.trim()) { R.send('qa-ask', { body: ta.value.trim(), anonymous: anon.checked }); ta.value = ''; } }, { cls: 'sm primary', group: 'engage' }))));
     const order = { live: 0, open: 1, answered: 2, dismissed: 3 };
     const qs = [...R.data.questions].filter((q) => q.status !== 'dismissed' || R.isMod()).sort((a, b) => (order[a.status] - order[b.status]) || (b.upvotes - a.upvotes));
-    if (!qs.length) box.append(h('div', { class: 'empty sm' }, I('question', 28), h('p', null, 'No questions yet — be the first.')));
+    if (!qs.length) box.append(h('div', { class: 'empty sm' }, I('question', 28), h('p', null, 'No questions yet - be the first.')));
     qs.forEach((q) => {
       const answers = (q.hostAnswers || []);
       const thread = answers.map((a) => h('div', { class: 'qa-reply' },
@@ -395,11 +395,11 @@ export function createPanel(R) {
 
   /* ------------------------------------------------------------ TOOLS */
   const TOOLS = [
-    ['scripture', 'Scripture', 'bookOpen', 'faith', 'Show verses — everyone reads in their own translation'],
+    ['scripture', 'Scripture', 'bookOpen', 'faith', 'Show verses - everyone reads in their own translation'],
     ['captions', 'Captions & transcript', 'captions', 'ai', 'Live “Name: text” captions, saved for summaries'],
-    ['sounds', 'Sounds', 'music', 'engage', 'Applause, drum roll, suspense — for everyone'],
+    ['sounds', 'Sounds', 'music', 'engage', 'Applause, drum roll, suspense - for everyone'],
     ['ai', 'AI assistant', 'sparkles', 'ai', 'Catch up, ask, summarise, translate'],
-    ['boards', 'Whiteboards', 'pen', 'content', 'Your personal board — share it to view'],
+    ['boards', 'Whiteboards', 'pen', 'content', 'Your personal board - share it to view'],
     ['present', 'Present content', 'presentation', 'content', 'YouTube, slides or an image for everyone'],
     ['timeline', 'Screen timeline', 'timeline', 'content', 'Snapshot slides into a shared strip'],
     ['record', 'Record', 'record', 'media', 'Saved to your device, never our servers'],

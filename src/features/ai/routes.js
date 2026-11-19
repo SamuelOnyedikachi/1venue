@@ -115,7 +115,7 @@ module.exports = function routes(route, kit) {
     if (!raw) throw httpError(400, 'Write something first');
     if (raw.length > 2000) throw httpError(400, 'That post is a little long to fine-tune');
     const took = await usage.take(`u:${u.id}`, 'finetune', 1, limit);
-    if (!took.ok) throw httpError(429, `You’ve used your ${limit} fine-tunes for today — try again tomorrow`);
+    if (!took.ok) throw httpError(429, `You’ve used your ${limit} fine-tunes for today - try again tomorrow`);
     let pool;
     try { pool = await spend(ctx, 'finetune', { u, rp: null }); } catch (e) { await usage.refund(`u:${u.id}`, 'finetune', 1).catch(() => {}); throw e; }
     try {

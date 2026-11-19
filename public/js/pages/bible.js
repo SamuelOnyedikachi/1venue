@@ -25,14 +25,14 @@ export function translationSelect(value, onChange, { compact = false, corpus = '
       const quran = filtered.filter(isQuran);
       const byLang = {};
       bible.forEach((t) => (byLang[t.language] ||= []).push(t));
-      Object.entries(byLang).forEach(([lang, list]) => sel.append(h('optgroup', { label: lang }, list.map((t) => h('option', { value: t.id, selected: t.id === value, title: t.name }, compact ? t.short : `${t.short} — ${t.name}`)))));
+      Object.entries(byLang).forEach(([lang, list]) => sel.append(h('optgroup', { label: lang }, list.map((t) => h('option', { value: t.id, selected: t.id === value, title: t.name }, compact ? t.short : `${t.short} - ${t.name}`)))));
       if (quran.length) {
-        sel.append(h('optgroup', { label: 'Qur’an' }, quran.map((t) => h('option', { value: t.id, selected: t.id === value, title: t.name }, compact ? t.short : `${t.short} — ${t.name}`))));
+        sel.append(h('optgroup', { label: 'Qur’an' }, quran.map((t) => h('option', { value: t.id, selected: t.id === value, title: t.name }, compact ? t.short : `${t.short} - ${t.name}`))));
       }
     } else {
       const byLang = {};
       filtered.forEach((t) => (byLang[t.language] ||= []).push(t));
-      Object.entries(byLang).forEach(([lang, list]) => sel.append(h('optgroup', { label: lang }, list.map((t) => h('option', { value: t.id, selected: t.id === value, title: t.name }, compact ? t.short : `${t.short} — ${t.name}`)))));
+      Object.entries(byLang).forEach(([lang, list]) => sel.append(h('optgroup', { label: lang }, list.map((t) => h('option', { value: t.id, selected: t.id === value, title: t.name }, compact ? t.short : `${t.short} - ${t.name}`)))));
     }
     if (!filtered.some((t) => t.id === value) && filtered[0]) {
       sel.value = filtered[0].id;
@@ -185,7 +185,7 @@ export async function mount(view, params) {
     const b = pool.find((x) => x.id === book) || pool[0];
     let i = pool.indexOf(b);
     if (corpus === 'quran') {
-      // Surahs have no multi-chapter structure — step moves to neighbouring surah
+      // Surahs have no multi-chapter structure - step moves to neighbouring surah
       i = Math.max(0, Math.min(pool.length - 1, i + d));
       book = pool[i].id;
       chapter = 1;
@@ -259,7 +259,7 @@ export async function mount(view, params) {
     selBar.append(h('span', { class: 'sel-ref' }, h('strong', null, ref), h('small', null, `${highlight.length} verse${highlight.length > 1 ? 's' : ''}`)),
       makeListenBtn(() => ({ verses: selVerses, lang: t?.lang, translation: tr })),
       h('button', { class: 'btn sm primary', 'data-group': 'social', onclick: () => sharePassageToFeed(passage), html: icon('feed', { size: 15 }) + '<span>Share to feed</span>' }),
-      h('button', { class: 'icon-btn', 'data-group': 'content', 'data-tip': 'Copy', 'aria-label': 'Copy', html: icon('copy'), onclick: () => copy(`“${passage.text}” — ${ref} (${t?.short})`, 'Verse copied') }),
+      h('button', { class: 'icon-btn', 'data-group': 'content', 'data-tip': 'Copy', 'aria-label': 'Copy', html: icon('copy'), onclick: () => copy(`“${passage.text}” - ${ref} (${t?.short})`, 'Verse copied') }),
       h('button', { class: 'icon-btn', 'data-group': 'ai', 'data-tip': 'Explain with AI', 'aria-label': 'Explain', html: icon('sparkles'), onclick: () => explain(ref, passage.text, selVerses) }),
       h('button', { class: 'icon-btn', 'data-tip': 'Clear selection', 'aria-label': 'Clear selection', html: icon('x'), onclick: () => { highlight = []; body.querySelectorAll('.verse.sel').forEach((e) => e.classList.remove('sel')); paintSel(); } }));
   }
@@ -293,7 +293,7 @@ export async function mount(view, params) {
             try {
               const { composer } = await import('../pages/feed.js');
               const ps = sheet({ title: 'Post to feed', icon: 'feed', group: 'social' });
-              // Start with the reference only — never "Explain …"
+              // Start with the reference only - never "Explain …"
               ps.body.append(composer(() => ps.close(), { autofocus: true, prefill: postBody, passage }));
             } catch (e) { toastErr(e); }
           },
@@ -330,7 +330,7 @@ export async function mount(view, params) {
           verseBlock),
         h('div', { class: 'ai-box prose', style: { marginTop: '1rem' }, html: md(explanation) }),
         acts,
-        h('p', { class: 'tiny faint', style: { marginTop: '1rem' } }, r.mock ? 'Demo AI response — configure AI_PRIMARY_* for real answers.' : 'Venue AI'),
+        h('p', { class: 'tiny faint', style: { marginTop: '1rem' } }, r.mock ? 'Demo AI response - configure AI_PRIMARY_* for real answers.' : 'Venue AI'),
       );
     } catch (e) { s.body.innerHTML = ''; s.body.append(h('p', { class: 'muted' }, e.message)); }
   }
@@ -358,7 +358,7 @@ export async function mount(view, params) {
         'data-tip': 'Copy', 'aria-label': 'Copy',
         'data-group': 'content',
         html: icon('copy', { size: 16 }),
-        onclick: () => copy(`“${passage.text}” — ${passage.reference}${passage.short ? ` (${passage.short})` : ''}`, 'Verse copied'),
+        onclick: () => copy(`“${passage.text}” - ${passage.reference}${passage.short ? ` (${passage.short})` : ''}`, 'Verse copied'),
       }),
       h('button', {
         class: 'icon-btn has-bg sm', type: 'button',
@@ -422,12 +422,12 @@ export async function mount(view, params) {
       || /\b(ayah|ayat)\b/i.test(q);
     const looksLikeRef = forcePassage
       || looksQuranic
-      || /^[\w\s.'\u2019\-–—]+\s+\d{1,3}(:[\d,\-–—]+)?$/i.test(q)
+      || /^[\w\s.'\u2019\-–-]+\s+\d{1,3}(:[\d,\-–-]+)?$/i.test(q)
       || /^[1-3]?\s?[A-Za-z][\w.'\u2019\-]*\.?\s+\d/i.test(q);
     if (looksLikeRef) {
       body.innerHTML = '<div class="skel" style="height:300px"></div>';
       try {
-        // Stay inside the active corpus. Never blind-retry the other library —
+        // Stay inside the active corpus. Never blind-retry the other library -
         // that caused “Unknown surah” / “Unknown chapter” cross-contamination.
         let tryTr = tr;
         if (corpus === 'quran' && !isQuranTr(tr)) tryTr = defaultQuranTr();

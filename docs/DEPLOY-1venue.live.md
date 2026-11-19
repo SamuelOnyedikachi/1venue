@@ -18,7 +18,7 @@ The production names. Nothing in the code is tied to them; they are only env val
 | A | `www` | app VPS IPv4 | Proxied |
 | A | `rtc` | LiveKit VPS IPv4 | DNS only |
 | A | `turn` | LiveKit VPS IPv4 | DNS only |
-| (auto) | `files` | created by R2 in step 4 | — |
+| (auto) | `files` | created by R2 in step 4 | - |
 
 Add AAAA records too only if the VPS has working IPv6.
 

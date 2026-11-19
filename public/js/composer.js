@@ -1,5 +1,5 @@
 // WhatsApp-style composer used by meeting chat, DMs, groups and feed comments.
-// One pill: [emoji][attach] text… — then a round action button that is a mic when empty
+// One pill: [emoji][attach] text… - then a round action button that is a mic when empty
 // and turns into send as soon as there is text or an attachment.
 import { h, toast, toastErr } from './ui.js';
 import { icon } from './icons.js';
@@ -39,7 +39,7 @@ export function checkLimit(file, limits) {
   const k = kindOf(file.type || '');
   const max = limits[k];
   const label = { image: 'Photos', pdf: 'PDFs', audio: 'Audio', video: 'Videos', board: 'Whiteboard files', other: 'Files' }[k];
-  if (max === 0) return k === 'video' ? 'Video uploads are off — share a YouTube link instead.' : `${label} can’t be uploaded here`;
+  if (max === 0) return k === 'video' ? 'Video uploads are off - share a YouTube link instead.' : `${label} can’t be uploaded here`;
   if (max && file.size > max) return `${label} can be up to ${fmtMB(max)} (this one is ${fmtMB(file.size)})`;
   return null;
 }

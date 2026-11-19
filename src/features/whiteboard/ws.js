@@ -1,5 +1,5 @@
 /**
- * Phase 2B — collaborative whiteboard stroke relay
+ * Phase 2B - collaborative whiteboard stroke relay
  */
 const { MEMORY } = require('../../config');
 

@@ -146,7 +146,7 @@ export async function mount(view) {
         h('a', { class: 'btn sm', href: '/create?instant=1', 'data-link': '', 'data-group': 'media', html: icon('zap', { size: 16 }) + 'Instant' }),
         h('a', { class: 'btn sm', href: '/venues', 'data-link': '', 'data-group': 'media', html: icon('door', { size: 16 }) + 'Venue' }))),
 
-    panel({ icon: 'chart', title: 'Analytics', desc: 'Your activity over a date range — hosted and joined sessions, audience and RSVPs.' },
+    panel({ icon: 'chart', title: 'Analytics', desc: 'Your activity over a date range - hosted and joined sessions, audience and RSVPs.' },
       analyticsBlock()),
 
     d.live?.length ? panel({ icon: 'radio', title: 'Live now', actions: h('a', { class: 'btn sm ghost', href: '/discover?status=live', 'data-link': '' }, 'All') },

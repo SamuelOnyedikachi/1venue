@@ -1,5 +1,5 @@
 /**
- * Phase 1/2 — recording signaling + pause/stop + client file metadata
+ * Phase 1/2 - recording signaling + pause/stop + client file metadata
  */
 module.exports = {
   id: 'recording',
@@ -128,7 +128,7 @@ module.exports = {
       emitState(meeting, meetingCode);
       broadcast(meetingCode, {
         type: 'toast',
-        message: fileUrl ? 'Recording saved to Artifacts' : 'Recording stopped — saved to history',
+        message: fileUrl ? 'Recording saved to Artifacts' : 'Recording stopped - saved to history',
       });
       broadcast(meetingCode, {
         type: 'recording-capture',

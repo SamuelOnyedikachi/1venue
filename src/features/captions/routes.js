@@ -80,7 +80,7 @@ module.exports = function routes(route, kit) {
       out = await stt().transcribe(buf, mime, lang === 'auto' ? null : lang, { skipReplicate });
     } catch (e) {
       for (const [k, kd] of taken) await usage.refund(k, kd, secs).catch(() => {});
-      if (skipReplicate) { const err = httpError(429, 'Daily voice limit reached — using your browser’s speech recognition'); err.fallback = 'webspeech'; throw err; }
+      if (skipReplicate) { const err = httpError(429, 'Daily voice limit reached - using your browser’s speech recognition'); err.fallback = 'webspeech'; throw err; }
       throw e;
     }
     const text = out && out.text;

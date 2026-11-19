@@ -15,7 +15,7 @@ Loading replaces any earlier seed, so it is safe to run twice.
 
 Password for all: **`@1venued`**. Emails are `<username without dots>@seed.1venue.live` (marked
 confirmed, no mail is ever sent). Usernames: adaeze, chinedu.eze, ibrahim.musa, tobi.alade, ngozi.ike,
-emeka.obi, aisha.bello, sarah.mensah, yusuf.abdullahi, funke.adeyemi — public pages at `/u/<username>`.
+emeka.obi, aisha.bello, sarah.mensah, yusuf.abdullahi, funke.adeyemi - public pages at `/u/<username>`.
 
 Each has a name, username/handle, photo, bio, phone (+234 800 000 01xx, not real), verified email and
 phone, theme/accent/Bible preferences.

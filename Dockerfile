@@ -11,7 +11,7 @@ FROM node:22-bookworm-slim
 ENV NODE_ENV=production PORT=3000 DATA_DIR=/data STORAGE_DIR=/data/uploads NODE_MAX_OLD_SPACE_MB=2048
 WORKDIR /app
 
-# LibreOffice headless (nogui) + poppler for pdftoppm — same recipe as teams.
+# LibreOffice headless (nogui) + poppler for pdftoppm - same recipe as teams.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       tini \
       ca-certificates \

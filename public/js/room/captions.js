@@ -66,7 +66,7 @@ export class Captioner {
       this.failures = 0;
     } catch (e) {
       if ((e.fallback === 'webspeech' || ++this.failures >= 3) && SpeechRec && this.mode === 'stt') {
-        toast(e.fallback ? 'Caption limit for today reached — switched to on-device captions' : 'Speech service unavailable — switched to on-device captions', { icon: 'captions', group: 'ai' });
+        toast(e.fallback ? 'Caption limit for today reached - switched to on-device captions' : 'Speech service unavailable - switched to on-device captions', { icon: 'captions', group: 'ai' });
         if (this.seg) { this.seg.stop(); this.seg = null; } clearTimeout(this.timer);
         this.mode = null; this.startWebSpeech(); this.R.onCaptionMode && this.R.onCaptionMode(this.mode);
       }

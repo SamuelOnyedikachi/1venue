@@ -1,7 +1,7 @@
 const { AccessToken } = require('livekit-server-sdk');
 const config = require('../config');
 
-// TrackSource enum (livekit-server-sdk v2). Prefer numeric/enum values —
+// TrackSource enum (livekit-server-sdk v2). Prefer numeric/enum values -
 // passing plain strings like "microphone" throws:
 //   "Cannot convert TrackSource microphone to string"
 let TrackSource = null;
@@ -47,7 +47,7 @@ async function createLiveKitToken(identity, name, roomName, opts = {}) {
   };
 
   // Only attach canPublishSources when we have real TrackSource enum values.
-  // Never pass raw strings — the JWT encoder cannot serialize them.
+  // Never pass raw strings - the JWT encoder cannot serialize them.
   if (Array.isArray(opts.canPublishSources) && opts.canPublishSources.length) {
     const safe = opts.canPublishSources.filter(
       (s) => typeof s === 'number' || (s && typeof s === 'object')

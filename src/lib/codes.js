@@ -27,7 +27,7 @@ function customSlug(input, rights, { suffix } = {}) {
   const r = rankOf(rights);
   const err = (m) => { const e = new Error(m); e.status = 400; throw e; };
   if (!base) err('Enter letters or numbers for your custom link');
-  if (RESERVED.has(base)) err('That link is reserved — try another');
+  if (RESERVED.has(base)) err('That link is reserved - try another');
   if (base.length > 16) err('Custom links can be at most 16 characters');
   // Free tier, or premium+ explicitly asking for the -venue style
   if (r === 0 || suffix === true) {

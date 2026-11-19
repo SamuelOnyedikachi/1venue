@@ -5,7 +5,7 @@ import { eventCard, skeletonCards, sectionHead, empty, catOf } from '../componen
 
 let heroCarouselFrame = 0;
 
-/** Homepage hero visual — lightweight preview cards around the join-first hero. */
+/** Homepage hero visual - lightweight preview cards around the join-first hero. */
 function previewCards() {
   return [
     h('div', { class: 'hero-preview preview-poll' },
@@ -86,7 +86,7 @@ export async function mount(view) {
       h('div', { class: 'hero-copy' },
         h('div', { class: 'eyebrow', html: esc(hello) }),
         h('h1', null, 'Host it. Stream it.', h('br', { class: 'hero-break', 'aria-hidden': 'true' }), ' ', h('span', { class: 'grad-text' }, 'Gather Everyone. Workspace Collaboration.')),
-        h('p', null, 'Talk shows, seminars, sermons and team meetings — with speaker seats, live scripture, Nigerian-language captions and one-click AI summaries.'),
+        h('p', null, 'Talk shows, seminars, sermons and team meetings - with speaker seats, live scripture, Nigerian-language captions and one-click AI summaries.'),
         h('div', { class: 'join-box' }, frag(icon('hash', { size: 20 })), codeIn, h('button', { class: 'btn primary', onclick: joinGo, html: icon('arrowRight', { size: 18 }) + 'Join' })),
         h('div', { class: 'row wrap hero-ctas' },
           h('a', { class: 'btn primary lg', href: '/create', 'data-link': '', html: icon('radio', { size: 20 }) + 'Go live' }),
@@ -100,11 +100,11 @@ export async function mount(view) {
     const [, , c] = catOf(k);
     return h('a', { class: 'chip', href: `/discover?category=${k}`, 'data-link': '', style: { '--g': c, color: c }, html: icon(ic, { size: 16 }) + esc(l) });
   }));
-  // Essence of Venue — Nike-style, not a feature checklist
+  // Essence of Venue - Nike-style, not a feature checklist
   const feats = [
     ['stage', 'Own the room', 'When you speak, the room leans in. Seats are earned, not assumed.', 'people'],
-    ['bookOpen', 'Word that travels', 'Scripture lands on every screen at the same moment — one voice, many places.', 'faith'],
-    ['captions', 'Every tongue heard', 'What is said is seen — in the languages your people actually speak.', 'ai'],
+    ['bookOpen', 'Word that travels', 'Scripture lands on every screen at the same moment - one voice, many places.', 'faith'],
+    ['captions', 'Every tongue heard', 'What is said is seen - in the languages your people actually speak.', 'ai'],
     ['sparkles', 'Leave nothing behind', 'Walk away with the thread. Action items and catch-up, ready when you are.', 'ai'],
     ['poll', 'The room talks back', 'Questions rise. Votes land. The conversation stays alive.', 'engage'],
     ['board', 'Think out loud', 'Sketch the idea. Share only when it is ready.', 'content'],
@@ -138,7 +138,7 @@ export async function mount(view) {
     ? h('div', { class: 'grid-cards stagger' }, live.events.map((e) => eventCard(e)))
     : h('div', { class: 'card pad layer row wrap', style: { gap: '1rem' } },
       h('span', { class: 'ico-tile', 'data-group': 'engage', style: { color: 'var(--accent)' }, html: icon('radio', { size: 22 }) }),
-      h('div', { class: 'grow' }, h('strong', null, 'Nobody is live right now'), h('div', { class: 'muted small' }, 'Be the first — your audience can find you here.')),
+      h('div', { class: 'grow' }, h('strong', null, 'Nobody is live right now'), h('div', { class: 'muted small' }, 'Be the first - your audience can find you here.')),
       h('a', { class: 'btn primary', href: '/create', 'data-link': '' }, 'Go live')));
   upWrap.append(up.events.length
     ? h('div', { class: 'grid-cards stagger' }, up.events.map((e) => eventCard(e)))

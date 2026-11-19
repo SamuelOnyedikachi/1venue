@@ -53,7 +53,7 @@ function parseRates(text) {
   return out;
 }
 let cache = null;
-/** { rates, configured, source } — admin rates over env FX_RATES over placeholders. */
+/** { rates, configured, source } - admin rates over env FX_RATES over placeholders. */
 async function rates({ fresh = false } = {}) {
   if (!fresh && cache && Date.now() - cache.at < 30000) return cache.value;
   let saved = {};

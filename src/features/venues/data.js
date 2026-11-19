@@ -25,7 +25,7 @@ async function slugTaken(slug, exceptId) {
 const effectiveTier = (r) => (r && plans.SLUG_TIERS.includes(r.slug_addon) ? r.slug_addon : r && plans.SLUG_TIERS.includes(r.slug_tier) ? r.slug_tier : 'none');
 async function resolveCustomSlug(userId, input, opts = {}, exceptId, slugTier = 'none') {
   const { slug } = codes.customSlug(input, plans.slugRights(await getUserPlan(userId), slugTier), opts);
-  if (await slugTaken(slug, exceptId)) { const e = new Error(`/v/${slug} is taken — try another`); e.status = 409; throw e; }
+  if (await slugTaken(slug, exceptId)) { const e = new Error(`/v/${slug} is taken - try another`); e.status = 409; throw e; }
   return slug;
 }
 async function activeVenueCount(userId) {
