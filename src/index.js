@@ -20,6 +20,7 @@ async function start() {
   }
   const billing = require('./features/wallet/billing');
   const paidEntry = require('./features/wallet/paid-entry');
+  await snapshot.restoreAll();
   await billing.recover();
   const handleRequest = createRequestHandler();
   const server = http.createServer((req, res) => {
@@ -58,6 +59,9 @@ async function start() {
     setInterval(syncViewerCounts, 15000),
     setInterval(pruneLeftParticipants, 60_000),
   ];
+  if (config.RESTART.snapshotIntervalMs > 0) {
+    timers.push(setInterval(() => snapshot.snapshotAll().catch(e => console.warn('[snapshot]', e.message)), config.RESTART.snapshotIntervalMs));
+  }
   const billingTimer = require('./features/billing/service').startWorker();
   if (billingTimer) timers.push(billingTimer);
   for (const w of ['./features/recurring/reminders', './features/replays/service', './features/messages/calls', './features/messages/retention', './features/messages/power']) {
@@ -68,8 +72,9 @@ async function start() {
   timers.forEach((t) => t.unref());
 
   // Graceful shutdown (deploys, restarts). Live meetings are NOT ended: they are snapshotted to
-  // Postgres and every client is told to reconnect. Media keeps flowing through LiveKit meanwhile,
-  // and the next process restores each room when its people reconnect (src/rooms/snapshot.js).
+  // the database (also written periodically while running) and every client is told to reconnect.
+  // Media keeps flowing through LiveKit meanwhile, and the next process restores each room on boot
+  // from snapshots or still-open history/billing rows (src/rooms/snapshot.js).
   let stopping = false;
   const shutdown = async (sig) => {
     if (stopping) return;

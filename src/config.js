@@ -220,13 +220,15 @@ const MEMORY = {
   timelineMaxChars: int('SCREEN_TIMELINE_MAX_CHARS', 1_500_000), // ~1.1 MB JPEG per snapshot
 };
 
-// Graceful restarts: live rooms are snapshotted on SIGTERM and restored when people reconnect
+// Graceful restarts: live rooms are snapshotted on SIGTERM and on an interval, then
+// restored proactively on boot (from snapshots and still-open DB rows).
 const RESTART = {
   restoreMaxMs: int('MEETING_RESTORE_MAX_MINUTES', 30) * 60 * 1000, // older snapshots are ended instead
   shutdownGraceMs: int('SHUTDOWN_GRACE_MS', 1500), // time for "server-restarting" frames to flush
   // Another server only adopts a restarted room after this long, so the people reconnecting to the new
   // process get it first (and a second app/test process on the same DB can't steal it).
   adoptGraceMs: int('RESTART_ADOPT_GRACE_MS', 15000),
+  snapshotIntervalMs: int('SNAPSHOT_INTERVAL_MS', 10_000), // 0 disables periodic snapshots (SIGTERM still writes)
 };
 
 // Monitoring: GET /metrics (Prometheus text) needs METRICS_TOKEN as a Bearer token; unset = /metrics is 404.

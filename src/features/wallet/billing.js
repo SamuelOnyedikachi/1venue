@@ -43,23 +43,28 @@ async function sweepRetired(client=roomClient(),now=Date.now()) {
   }
 }
 async function recoverSession(row,now=Date.now()) {
-  const worker=(await db.q('SELECT * FROM credit_billing_workers WHERE id=$1',[row.owner_id])).rows[0];
-  if(worker&&!worker.stopped&&now-Number(worker.heartbeat_ms)<15000)return;
-  const snapshot=(await db.q('SELECT created_at,state FROM meeting_snapshots WHERE history_id=$1',[row.history_id])).rows[0];
-  if(!snapshot) {
-    await data.closeLost(row.id,row.owner_id,now);
-    return;
+  const mine=row.owner_id===ownerId;
+  if(!mine){
+    const worker=(await db.q('SELECT * FROM credit_billing_workers WHERE id=$1',[row.owner_id])).rows[0];
+    if(worker&&!worker.stopped&&now-Number(worker.heartbeat_ms)<15000)return;
+    // Wait the adopt grace after the previous worker went quiet so a rolling deploy
+    // can snapshot / restore before we declare the session lost.
+    const deadSince=Number(worker?.heartbeat_ms||0);
+    if(now-deadSince<config.RESTART.adoptGraceMs)return;
   }
-  const cutoff=new Date(snapshot.created_at).getTime()+config.RESTART.restoreMaxMs;
-  if(now>=cutoff) {
-    await data.settle(row.id,{now:cutoff,endReason:'restart-expired'});
-    return;
+  const snapshot=(await db.q('SELECT created_at FROM meeting_snapshots WHERE history_id=$1',[row.history_id])).rows[0];
+  if(snapshot) {
+    const cutoff=new Date(snapshot.created_at).getTime()+config.RESTART.restoreMaxMs;
+    if(now>=cutoff) {
+      await data.skipDowntime(row.id,{now:cutoff});
+      const latest=await data.get(row.id);
+      await data.settle(row.id,{now:Number(latest?.accounted_ms||cutoff),endReason:'restart-expired'});
+      return;
+    }
   }
-  if(now-new Date(snapshot.created_at).getTime()<config.RESTART.adoptGraceMs)return; // let reconnecting clients restore it first
   const meeting=await require('../../rooms/snapshot').getOrRestoreMeeting(row.code);
-  if(meeting&&String(meeting.billingId)===String(row.id)) {
-    return;
-  } else await data.closeLost(row.id,row.owner_id,now);
+  if(meeting&&String(meeting.billingId)===String(row.id))return;
+  await data.closeLost(row.id,row.owner_id,now,{force:true});
 }
 async function tick(now=Date.now()) {
   if(busy||stopping)return;busy=true;
@@ -68,11 +73,15 @@ async function tick(now=Date.now()) {
     const rows=(await db.q("SELECT s.*,w.balance_units FROM credit_billing_sessions s LEFT JOIN credit_wallets w ON w.user_id=s.user_id WHERE s.state='active'")).rows;
     for(let row of rows) {
       try {
-        if(row.owner_id!==ownerId) {await recoverSession(row,now);row=await data.get(row.id);if(row.owner_id!==ownerId||row.state!=='active')continue;}
+        if(row.owner_id!==ownerId) {await recoverSession(row,now);row=await data.get(row.id);if(!row||row.owner_id!==ownerId||row.state!=='active')continue;}
+        const meeting=store.getMeeting(row.code);
+        if(!meeting||String(meeting.billingId)!==String(row.id)) {
+          await recoverSession(row,now);
+          continue;
+        }
         const due=row.user_id==null ? now>=Number(row.free_until_ms||row.started_ms) : now>=Number(row.free_until_ms||row.started_ms) && now-Number(row.accounted_ms)>=Math.min(5000,Number(row.balance_units??0));
         if(due)row=await data.settle(row.id,{now,ownerId});
-        const meeting=store.getMeeting(row.code);
-        if(row.state!=='active'&&meeting&&String(meeting.billingId)===String(row.id))await require('../../rooms/lifecycle').endMeeting(row.code,row.end_reason);
+        if(row.state!=='active')await require('../../rooms/lifecycle').endMeeting(row.code,row.end_reason);
       } catch(e) {console.warn('[billing] reconcile',row.id,e.message);}
     }
     cleanupTick(now).catch(e=>console.warn('[billing] cleanup job',e.message));

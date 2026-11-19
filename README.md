@@ -81,7 +81,16 @@ One Node process serves the API, the front end and a WebSocket hub for live room
    - Monitoring: set `METRICS_TOKEN` to enable `GET /metrics` (Prometheus text, `Authorization: Bearer <token>`).
    - Tables are created on first boot.
 6. **Optional services.** AI summaries (`AI_PRIMARY_*`, `AI_SECONDARY_*`, any OpenAI-compatible provider), speech-to-text (`STT_*`), read-out (`REPLICATE_API_TOKEN`). See below and `.env.example`.
-7. **Restarts and memory.** Deploys do not end live meetings: on shutdown the app saves every live room to Postgres and the new container restores it; browsers show "Reconnecting…" and rejoin by themselves. Keep Coolify's stop grace period at 15 s or more. The Node heap is `NODE_MAX_OLD_SPACE_MB` (default 2048); keep the container limit about 1 GB above it.
+7. **Restarts and memory.** Deploys do not end live meetings: live rooms are snapshotted every 10 s and again on SIGTERM, and the new container restores them on boot (from snapshots or still-open `meeting_history` / billing rows). Browsers show "Reconnecting…" and rejoin by themselves. Billing does not charge the downtime gap. Keep Coolify's stop grace period at **30 s or more** (the process force-exits 8 s after SIGTERM; 15 s is too tight if the new container starts first). The Node heap is `NODE_MAX_OLD_SPACE_MB` (default 2048); keep the container limit about 1 GB above it.
+
+   If a past deploy billed time while the room was down, refund that usage (dry-run first):
+
+   ```bash
+   node scripts/refund-post-deploy-usage.js <cutoff_ms>
+   node scripts/refund-post-deploy-usage.js <cutoff_ms> --apply
+   ```
+
+   `cutoff_ms` is a Unix timestamp in milliseconds: usage with `through_ms` after this is refunded (only the portion after the cutoff). Dry-run prints the per-user, per-session totals; `--apply` credits each wallet and inserts an idempotent `kind='refund'` ledger row (safe to re-run with the same cutoff).
 
 LiveKit runs from the `livekit-server` repo as its own Coolify resource: see [docs/livekit-coolify.md](docs/livekit-coolify.md), and check it with `npm run livekit:check`.
 

@@ -93,6 +93,11 @@ async function history(userId, before) {
       SELECT l.id,l.user_id,l.kind,l.delta_units,l.balance_after_units,NULL,NULL,NULL,l.created_at
       FROM credit_ledger l WHERE l.user_id=$1 AND l.kind='earning_transfer'
       UNION ALL
+      SELECT l.id,l.user_id,l.kind,l.delta_units,l.balance_after_units,NULL,b.code,m.name,l.created_at
+      FROM credit_ledger l JOIN credit_billing_sessions b ON b.id=l.billing_session_id
+      LEFT JOIN meeting_history m ON m.id=b.history_id
+      WHERE l.user_id=$1 AND l.kind='refund'
+      UNION ALL
       SELECT l.id,l.user_id,l.kind,l.delta_units,l.balance_after_units,NULL,b.code,NULL,l.created_at
       FROM credit_ledger l LEFT JOIN credit_billing_sessions b ON b.id=l.billing_session_id
       WHERE l.user_id=$1 AND l.kind='usage' AND l.billing_session_id IS NULL

@@ -37,12 +37,12 @@ async function settleLocked(c,row,now,endReason=null) {
     const freeUntil=Number(row.free_until_ms||row.started_ms), hasStartedBilling=Math.floor(now)>=freeUntil;
     if(!hasStartedBilling&&!endReason)return shape(row);
     const wallet=row.user_id==null?null:(await c.query('SELECT balance_units FROM credit_wallets WHERE user_id=$1 FOR UPDATE',[row.user_id])).rows[0];
-    const available=Number(wallet?.balance_units||0),previous=(endReason&&Math.floor(now)<freeUntil)?Math.floor(now):Math.max(Number(row.accounted_ms),freeUntil);
+    const available=Math.max(0,Number(wallet?.balance_units||0)),previous=(endReason&&Math.floor(now)<freeUntil)?Math.floor(now):Math.max(Number(row.accounted_ms),freeUntil);
     const endpoint=endReason?Math.floor(now):Math.max(freeUntil,Math.floor(now));
-    const elapsed=Math.max(0,endpoint-previous),debit=Math.min(elapsed,available),balance=available-debit;
+    const elapsed=Math.max(0,endpoint-previous),debit=Math.min(elapsed,available),balance=Math.max(0,available-debit);
     const through=previous+debit;
     if(debit>0&&row.user_id!=null) {
-      await c.query('UPDATE credit_wallets SET balance_units=$2,updated_at=NOW() WHERE user_id=$1',[row.user_id,balance]);
+      await c.query('UPDATE credit_wallets SET balance_units=GREATEST(0,$2),updated_at=NOW() WHERE user_id=$1',[row.user_id,balance]);
       await c.query("INSERT INTO credit_ledger(user_id,billing_session_id,through_ms,kind,delta_units,balance_after_units) VALUES($1,$2,$3,'usage',$4,$5)",[row.user_id,id,through,-debit,balance]);
     }
     const exhausted=hasStartedBilling&&balance===0;
@@ -57,8 +57,9 @@ async function reconcileLocked(c,userId,now=Date.now()) {
   return row ? settleLocked(c,row,now) : null;
 }
 async function current(userId,now=Date.now()) {
-  const active=(await db.q("SELECT id FROM credit_billing_sessions WHERE user_id=$1 AND state<>'closed'",[userId])).rows[0];
-  const row=active?await settle(active.id,{now}):null;
+  // Read-only: never settle() here. Wallet polls must not charge, including after a
+  // restart when the meeting is not live in this process.
+  const row=shape((await db.q("SELECT * FROM credit_billing_sessions WHERE user_id=$1 AND state<>'closed'",[userId])).rows[0]);
   const balance=Number((await db.q('SELECT balance_units FROM credit_wallets WHERE user_id=$1',[userId])).rows[0]?.balance_units||0)/U;
   return {balanceCredits:balance,billing:row?{sessionId:String(row.id),code:row.code,state:row.state,lowCredit:row.low_credit&&now>=Number(row.free_until_ms||row.started_ms),remainingMinutes:balance,reason:row.end_reason}:null};
 }
@@ -107,17 +108,35 @@ async function claim(id,ownerId,now=Date.now()) {
     return shape((await c.query('UPDATE credit_billing_sessions SET owner_id=$2 WHERE id=$1 RETURNING *',[id,ownerId])).rows[0]);
   });
 }
-async function closeLost(id,expectedOwner,now=Date.now()) {
+async function closeLost(id,expectedOwner,now=Date.now(),{force=false}={}) {
   const original=await get(id);if(!original)return null;
   return db.tx(async c=>{
     if(original.user_id!=null)await lockUser(c,original.user_id);
     const row=(await c.query('SELECT * FROM credit_billing_sessions WHERE id=$1 FOR UPDATE',[id])).rows[0];
-    if(row.state!=='active'||row.owner_id!==expectedOwner)return shape(row);
-    const worker=(await c.query('SELECT * FROM credit_billing_workers WHERE id=$1',[row.owner_id])).rows[0];
-    if(worker&&!worker.stopped&&now-Number(worker.heartbeat_ms)<15000)return shape(row);
-    if((await c.query('SELECT code FROM meeting_snapshots WHERE history_id=$1',[row.history_id])).rows[0])return shape(row);
+    if(row.state!=='active')return shape(row);
+    if(expectedOwner&&row.owner_id!==expectedOwner)return shape(row);
+    if(!force){
+      const worker=(await c.query('SELECT * FROM credit_billing_workers WHERE id=$1',[row.owner_id])).rows[0];
+      if(worker&&!worker.stopped&&now-Number(worker.heartbeat_ms)<15000)return shape(row);
+      if((await c.query('SELECT code FROM meeting_snapshots WHERE history_id=$1',[row.history_id])).rows[0])return shape(row);
+    } else {
+      await c.query('DELETE FROM meeting_snapshots WHERE history_id=$1',[row.history_id]);
+    }
     return settleLocked(c,row,Number(row.accounted_ms),'restart-lost');
   });
 }
+/** Advance accounted_ms to now without debiting, so a resume never bills the downtime gap. */
+async function skipDowntime(id,{now=Date.now(),ownerId=null}={}) {
+  const original=await get(id);if(!original||original.state!=='active')return original;
+  return db.tx(async c=>{
+    if(original.user_id!=null)await lockUser(c,original.user_id);
+    const row=(await c.query('SELECT * FROM credit_billing_sessions WHERE id=$1 FOR UPDATE',[id])).rows[0];
+    if(!row||row.state!=='active')return shape(row);
+    if(ownerId&&row.owner_id!==ownerId)throw fail(409,'This meeting is reconnecting to another server');
+    const accounted=Math.max(Number(row.accounted_ms),Math.floor(now));
+    if(accounted===Number(row.accounted_ms))return shape(row);
+    return shape((await c.query('UPDATE credit_billing_sessions SET accounted_ms=$2 WHERE id=$1 RETURNING *',[id,accounted])).rows[0]);
+  });
+}
 async function queueCleanup(id,now=Date.now()) {await db.q('UPDATE credit_billing_sessions SET cleanup_until_ms=$2,last_cleanup_ms=NULL WHERE id=$1 AND state<>\'active\'', [id,now+11*60*1000]);}
-module.exports={queueCleanup,claimHost,claim,closeLost,open,settle,get,current,mediaToken,pendingCleanup,markCleaned,heartbeat,reconcileLocked};
+module.exports={queueCleanup,claimHost,claim,closeLost,skipDowntime,open,settle,get,current,mediaToken,pendingCleanup,markCleaned,heartbeat,reconcileLocked};
