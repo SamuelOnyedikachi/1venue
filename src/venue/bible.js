@@ -158,7 +158,7 @@ const ALIASES = {
 function normBookKey(s) {
   return String(s || '').toLowerCase()
     .replace(/['’`]/g, '')
-    .replace(/[-–-_./]/g, '')
+    .replace(/[-–—_./]/g, '')
     .replace(/\s+/g, '')
     .trim();
 }
