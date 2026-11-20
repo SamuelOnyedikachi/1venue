@@ -29,8 +29,9 @@ export async function mount(view) {
       api('/api/billing/history').catch(() => ({ payments: [] })), api('/api/wallet/auto-topup').catch(() => null), api('/api/me/billing-profile').catch(() => ({}))]);
     if (!alive) return;
     body.replaceChildren(h('div', { class: 'bl-grid' },
-      planCard(me, table_), h('div', { class: 'bl-side' }, methodsCard(me, auto), profileCard(prof), autoCard(me, auto))),
-    historyCard(hist.payments), shortLinks(me, table_, venues.venues || []));
+      h('div', { class: 'bl-main' }, planCard(me, table_), historyCard(hist.payments)),
+      h('div', { class: 'bl-side' }, methodsCard(me, auto), profileCard(prof), autoCard(me, auto))),
+    shortLinks(me, table_, venues.venues || []));
     if (location.hash) { const t = document.getElementById(location.hash.slice(1)); if (t) setTimeout(() => t.scrollIntoView({ block: 'start' }), 60); }
   }
 
