@@ -72,7 +72,10 @@ async function recoverSession(row,now=Date.now()) {
     }
   }
   const meeting=await require('../../rooms/snapshot').getOrRestoreMeeting(row.code);
-  if(meeting&&String(meeting.billingId)===String(row.id))return;
+  if(meeting&&String(meeting.billingId)===String(row.id)){
+    if(await data.claim(row.id,ownerId))await data.skipDowntime(row.id,{ownerId});
+    return;
+  }
   await data.closeLost(row.id,row.owner_id,now,{force:true});
 }
 async function tick(now=Date.now()) {

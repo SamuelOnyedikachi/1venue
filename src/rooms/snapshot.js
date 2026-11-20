@@ -58,10 +58,11 @@ async function adoptBilling(meeting) {
   if (!meeting.billingId) return true;
   const billingData = require('../features/wallet/billing-data');
   const ownerId = require('../features/wallet/billing').ownerId;
-  if (!await billingData.claim(meeting.billingId, ownerId)) return false;
-  await billingData.skipDowntime(meeting.billingId, { ownerId });
   const session = await billingData.get(meeting.billingId);
-  if (!session || session.state !== 'active') return false;
+  if (!session || session.state !== 'active') return false; // really ended
+  if (await billingData.claim(meeting.billingId, ownerId)) {
+    await billingData.skipDowntime(meeting.billingId, { ownerId });
+  } // else the old server is still up mid-deploy; billing.tick takes over once it stops
   return true;
 }
 
