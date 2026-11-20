@@ -136,6 +136,19 @@ export function menu(anchor, items, { header = null, sheet: asSheet = isMobile()
     m.append(h('button', { role: 'menuitem', 'data-group': it.group || '', onclick: () => { m.remove(); it.run(); } }, it.icon ? I(it.icon, 18) : null, h('span', { class: 'grow' }, it.label), it.hint ? h('span', { class: 'tiny faint' }, it.hint) : null));
   }
   const back = asSheet ? h('div', { class: 'menu-backdrop', onclick: () => m.remove() }) : null;
+  let lockedY = 0;
+  const lockPage = () => {
+    if (!asSheet || document.documentElement.classList.contains('menu-lock')) return;
+    lockedY = window.scrollY;
+    document.documentElement.classList.add('menu-lock');
+    document.body.style.top = `-${lockedY}px`;
+  };
+  const unlockPage = () => {
+    if (!document.documentElement.classList.contains('menu-lock')) return;
+    document.documentElement.classList.remove('menu-lock');
+    document.body.style.top = '';
+    window.scrollTo(0, lockedY);
+  };
   const place = () => {
     if (asSheet || !m.isConnected) return;
     m.style.maxHeight = ''; m.style.maxWidth = '';
@@ -149,9 +162,10 @@ export function menu(anchor, items, { header = null, sheet: asSheet = isMobile()
   const onScroll = (e) => { if (!m.contains(e.target)) place(); };
   const off = (e) => { if (!m.contains(e.target) && e.target !== back) m.remove(); };
   const remove = m.remove.bind(m);
-  m.remove = () => { remove(); back && back.remove(); removeEventListener('resize', place); removeEventListener('keydown', onKey); removeEventListener('scroll', onScroll, true); document.removeEventListener('pointerdown', off); };
+  m.remove = () => { unlockPage(); remove(); back && back.remove(); removeEventListener('resize', place); removeEventListener('keydown', onKey); removeEventListener('scroll', onScroll, true); document.removeEventListener('pointerdown', off); };
   if (back) document.body.append(back);
   document.body.append(m);
+  lockPage();
   place();
   addEventListener('resize', place); addEventListener('keydown', onKey); addEventListener('scroll', onScroll, true);
   setTimeout(() => { if (m.isConnected) document.addEventListener('pointerdown', off); }, 0);

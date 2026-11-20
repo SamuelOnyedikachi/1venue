@@ -300,7 +300,7 @@ function renderUserSlot() {
       { label: 'Settings', icon: 'settings', group: 'settings', run: () => navigate('/settings') },
       state.user.isAdmin ? { label: 'Admin', icon: 'shield', group: 'admin', run: () => navigate('/admin') } : null, '-',
       { label: 'Sign out', icon: 'logout', group: 'admin', run: logout },
-    ], { cls: 'menu-account' });
+    ]);
     creditControl=creditBadge();
     slot.append(creditControl.badge,b);
   } else {

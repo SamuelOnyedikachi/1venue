@@ -26,15 +26,13 @@ describe('out9 ui and search contracts', () => {
     assert.match(read('public/css/room.css'), /\.pj-circ \{/);
   });
 
-  it('top nav has hover labels, a circular create plus, and a striped account menu', () => {
+  it('top nav has hover labels and a circular create plus', () => {
     const app = read('public/js/app.js');
     assert.match(app, /'data-tip': l/);
     assert.match(app, /top-create/);
-    assert.match(app, /cls: 'menu-account'/);
     const shell = read('public/css/src/00-base/30-shell.css');
     assert.match(shell, /gap: 0\.45rem/);
     assert.match(shell, /border-radius: 50%/);
-    assert.match(read('public/css/src/10-components/modals.css'), /\.menu\.menu-account/);
   });
 
   it('messages new-chat button is circular and reminders also send in-app', () => {

@@ -3306,6 +3306,7 @@ button.list-item:hover {
   max-height: calc(100dvh - 16px);
   max-width: calc(100vw - 16px);
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
 .menu[data-flip-y="1"] {
@@ -3327,7 +3328,10 @@ button.list-item:hover {
   width: 100%;
   max-width: none;
   min-width: 0;
-  max-height: min(78dvh, 640px);
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   padding: 0.4rem 0.6rem calc(0.6rem + env(safe-area-inset-bottom, 0px));
   border-radius: 22px 22px 0 0;
   border-bottom: 0;
@@ -3346,30 +3350,16 @@ button.list-item:hover {
   padding: 0.8rem 0.75rem;
   font-size: 1rem;
 }
-/* Account menu: light alternating theme tints, same on the mobile sheet. */
-.menu.menu-account {
-  padding: 8px;
+html.menu-lock,
+html.menu-lock body {
   overflow: hidden;
+  overscroll-behavior: none;
 }
-.menu.menu-account > button {
-  border-radius: 12px;
-  margin: 2px 0;
-}
-.menu.menu-account > button:nth-of-type(odd) {
-  background: color-mix(in srgb, var(--accent) 8%, var(--s1));
-}
-.menu.menu-account > button:nth-of-type(even) {
-  background: color-mix(in srgb, var(--accent-2, var(--brand, var(--accent))) 9%, var(--s2));
-}
-.menu.menu-account > button:hover {
-  background: color-mix(in srgb, var(--g, var(--accent)) 16%, var(--s1));
-}
-.menu.menu-account > hr {
-  margin: 6px 4px;
-  border-color: color-mix(in srgb, var(--accent) 16%, var(--line));
-}
-.menu.menu-account.menu-sheet > button {
-  border-radius: 14px;
+html.menu-lock body {
+  position: fixed;
+  left: 0;
+  right: 0;
+  width: 100%;
 }
 
 @keyframes menuSheetUp {
