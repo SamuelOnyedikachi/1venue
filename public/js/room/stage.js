@@ -292,9 +292,10 @@ export function createStage(R) {
   function buildScripture() {
     const s = R.scripture;
     const body = h('div', { class: 'scripture-card' });
-    const tsel = translationSelect(R.scrTr(), (v) => { if (!R.canScripture()) R.scrOwnTr = true; R.setBibleTr(v); }, { compact: true });
+    const corpus = R.scrCorpus();
+    const tsel = translationSelect(R.scrTr(), (v) => { if (!R.canScripture()) R.scrOwnTr = true; R.setCorpusTr(corpus, v); }, { compact: true, corpus });
     const selBar = scriptureBody(body);
-    present.append(h('div', { class: 'present-head', 'data-group': 'faith' }, I('bookOpen'), h('b', { class: 'grow' }, s.reference), h('span', { class: 'tiny muted' }, 'by ' + s.by), tsel,
+    present.append(h('div', { class: 'present-head', 'data-group': 'faith' }, I(corpus === 'quran' ? 'book' : 'bookOpen'), h('b', { class: 'grow' }, s.reference), h('span', { class: 'tiny muted' }, 'by ' + s.by), tsel,
       R.canScripture() ? h('button', { class: 'icon-btn sm', type: 'button', 'data-tip': 'Move to sidebar', 'aria-label': 'Move to sidebar', html: icon('sidebar', { size: 15 }), onclick: () => R.showScripture(s.reference, { translation: s.translation, mode: 'side' }) }) : null,
       R.canScripture() ? closeBtn('Clear', () => R.send('scripture-clear', {})) : null), h('div', { class: 'present-body scroll' }, body), selBar);
   }

@@ -1,5 +1,5 @@
 // Room side panel: Chat (everyone / direct / groups), People (stage, waiting, hands, roster + moderation),
-// Engage (polls, Q&A, comments) and Tools (scripture, captions, AI, boards, content, breakouts, …).
+// Engage (polls, Q&A, comments) and Tools (Bible, Qur’an, captions, AI, boards, content, breakouts, …).
 import { h, esc, api, toast, toastErr, avatar, timeAgo, menu, confirmDlg, promptDlg, readFileAsDataUrl, copy, debounce, md, uploadFile, sheet, profilePath } from '../ui.js';
 import { icon } from '../icons.js';
 import { pillComposer } from '../composer.js';
@@ -395,7 +395,8 @@ export function createPanel(R) {
 
   /* ------------------------------------------------------------ TOOLS */
   const TOOLS = [
-    ['scripture', 'Scripture', 'bookOpen', 'faith', 'Show verses - everyone reads in their own translation'],
+    ['bible', 'Bible', 'bookOpen', 'faith', 'Show verses - everyone reads in their own translation'],
+    ['quran', 'Qur’an', 'book', 'faith', 'Show verses - everyone reads in their own translation'],
     ['captions', 'Captions & transcript', 'captions', 'ai', 'Live “Name: text” captions, saved for summaries'],
     ['sounds', 'Sounds', 'music', 'engage', 'Applause, drum roll, suspense - for everyone'],
     ['ai', 'AI assistant', 'sparkles', 'ai', 'Catch up, ask, summarise, translate'],
@@ -415,7 +416,7 @@ export function createPanel(R) {
       const v = R.tools[t]();
       const meta = TOOLS.find((x) => x[0] === t) || [t, t, 'wand', ''];
       return h('div', { class: 'tool-view', 'data-group': meta[3] }, h('div', { class: 'row sub-head' }, ibtn('chevronLeft', 'All tools', () => { sub.tools = null; render(); }), h('span', { class: 'ico-tile sm', 'data-group': meta[3], html: icon(meta[2], { size: 16 }) }), h('b', { class: 'grow' }, meta[1]),
-        t === 'scripture' && R.scripture ? h('span', { class: 'scr-live', 'data-tip': `On screen now · ${R.scripture.reference} · shown by ${R.scripture.by}`, 'aria-label': `On screen now: ${R.scripture.reference}, shown by ${R.scripture.by}` }, h('i', { class: 'rec-dot' })) : null, v.headExtras ? h('span', { class: 'sub-head-extras' }, v.headExtras) : null), v);
+        (t === 'bible' || t === 'quran') && R.scripture && R.scrCorpus() === t ? h('span', { class: 'scr-live', 'data-tip': `On screen now · ${R.scripture.reference} · shown by ${R.scripture.by}`, 'aria-label': `On screen now: ${R.scripture.reference}, shown by ${R.scripture.by}` }, h('i', { class: 'rec-dot' })) : null, v.headExtras ? h('span', { class: 'sub-head-extras' }, v.headExtras) : null), v);
     }
     return h('div', { class: 'tool-grid stagger' }, TOOLS.filter(([id]) => !(['security', 'breakouts'].includes(id) && !R.isMod())).map(([id, label, ic, g, desc]) =>
       h('button', { class: 'tool-card', 'data-group': g, type: 'button', onclick: () => { sub.tools = id; render(); } }, h('span', { class: 'ico-tile', 'data-group': g, html: icon(ic, { size: 20 }) }), h('b', null, label), h('small', null, desc), R.toolBadge(id) ? h('em', { class: 'dot-live' }) : null)));

@@ -183,101 +183,104 @@ const lsGetRaw = (k) => { try { return localStorage.getItem(k); } catch { return
 const lsSetRaw = (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } };
 const note = (t) => h('p', { class: 'tiny muted', style: { margin: '.4rem 0' } }, t);
 
+function scriptureView(R, corpus = 'bible') {
+  // Compact sidebar reader: one control line, then as much room as possible for the verses.
+  const isQuran = corpus === 'quran';
+  const box = h('div', { class: 'scr-tool' });
+  const canShow = R.canScripture();
+  const shared = R.scripture && R.scrCorpus(R.scripture.translation) === corpus ? R.scripture : null;
+  const draft = () => (isQuran ? R.quranDraft : R.bibleDraft) || '';
+  const setDraft = (v) => { if (isQuran) R.quranDraft = v; else R.bibleDraft = v; };
+  const trIdOf = () => R.corpusTr(corpus);
+  const ref = h('input', { class: 'input sm grow', placeholder: isQuran ? 'Al-Ikhlas, Al-Fatihah 1, 2:255, family\u2026' : 'John 3:16, family, hope, \u201ca man shall leave\u2026\u201d', value: draft(), 'aria-label': isQuran ? 'Ayah or topic' : 'Verse or topic', oninput: (e) => { setDraft(e.target.value); } });
+  const tr = translationSelect(shared ? R.scrTr() : trIdOf(), (v) => {
+    if (shared && canShow) R.showScripture(shared.reference, { translation: v }); // live: everyone follows
+    else if (shared) { R.scrOwnTr = true; R.setCorpusTr(corpus, v); R.panel.refresh('tools'); }
+    else { R.setCorpusTr(corpus, v); preview(); }
+  }, { compact: true, corpus });
+  const ib = (ic, label, run, cls = '') => h('button', { class: `scr-ib ${cls}`, type: 'button', title: label, 'data-tip': label, 'aria-label': label, onclick: run, html: icon(ic, { size: 15 }) });
+  const out = h('div', { class: 'scripture-preview scr-read' });
+  const showNow = () => { const q = ref.value.trim() || shared?.reference; if (q) R.showScripture(q, { translation: trIdOf(), mode: shared?.mode || 'side' }); };
+  function openHit(x) {
+    ref.value = x.reference || x; setDraft(ref.value); preview();
+  }
+  function hitRow(x) {
+    const text = x.text || x.excerpt || '';
+    const body = (x.verses && x.verses.length)
+      ? versesEl({ verses: x.verses }, { selectable: false, compact: true })
+      : (text ? h('div', { class: 'scr-hit-text' }, text) : null);
+    return h('div', { class: 'scr-hit' },
+      h('button', { class: 'scr-hit-ref', type: 'button', onclick: () => openHit(x) }, x.reference || x),
+      x.why ? h('div', { class: 'tiny muted' }, x.why) : null,
+      body,
+      h('div', { class: 'row gap-xs', style: { marginTop: '.25rem', flexWrap: 'wrap' } },
+        h('button', { class: 'btn sm', type: 'button', onclick: () => openHit(x), html: icon('bookOpen', { size: 13 }) + ' Open' }),
+        canShow ? h('button', { class: 'btn sm primary', type: 'button', onclick: () => { ref.value = x.reference; setDraft(ref.value); R.showScripture(x.reference, { translation: x.translation || trIdOf(), mode: shared?.mode || 'side' }); }, html: icon('presentation', { size: 13 }) + ' Show' }) : null,
+        makeListenBtn(() => ({
+          verses: x.verses?.length ? x.verses : null,
+          text: text || null,
+          lang: x.lang,
+          translation: x.translation || trIdOf(),
+        }), { headers: R.headers() }),
+        h('button', {
+          class: 'icon-btn has-bg sm', type: 'button',
+          'data-tip': 'Copy', 'aria-label': 'Copy',
+          html: icon('copy', { size: 14 }),
+          onclick: () => copy(`\u201c${x.text || text}\u201d - ${x.reference}${x.short ? ` (${x.short})` : ''}`, 'Verse copied'),
+        }),
+      ));
+  }
+  async function preview() {
+    const q = ref.value.trim(); if (!q) return;
+    if (shared && canShow) return showNow(); // while sharing, previewing a new chapter re-broadcasts it
+    out.replaceChildren(h('div', { class: 'skel', style: { height: '80px' } }));
+    const trId = trIdOf();
+    try {
+      const p = await api(`/api/books/passage?ref=${encodeURIComponent(q)}&t=${trId}`);
+      const head = h('div', { class: 'row between', style: { alignItems: 'center', gap: '.4rem' } },
+        h('b', { class: 'small' }, `${p.reference} \u00b7 ${p.translation?.short || ''}`),
+        makeListenBtn(() => ({ verses: p.verses, lang: p.translation?.lang, translation: trId }), { headers: R.headers() }));
+      out.replaceChildren(head, versesEl(p, { selectable: false }));
+    } catch {
+      try {
+        const r = await api('/api/ai/scripture', { method: 'POST', headers: R.headers(), body: { query: q, translation: trId, corpus } });
+        if (!(r.refs || []).length) {
+          out.replaceChildren(h('p', { class: 'muted small' }, 'No matching passages. Try a reference or topic like \u201cfamily\u201d, \u201chope\u201d.'));
+          return;
+        }
+        out.replaceChildren(
+          h('div', { class: 'tiny muted', style: { marginBottom: '.35rem' } }, `${isQuran ? 'Qur\u2019an' : 'Bible'} topic matches`),
+          h('div', { class: 'scr-hits col', style: { gap: '.55rem' } }, ...(r.refs || []).map(hitRow)),
+        );
+      } catch (e) { out.replaceChildren(h('p', { class: 'muted small' }, 'Couldn\u2019t find that passage.')); }
+    }
+  }
+  ref.addEventListener('keydown', (e) => { if (e.key === 'Enter') preview(); });
+  const onStage = shared && shared.mode === 'stage';
+  // One line: verse | preview | show everyone | clear - icon-only, label on hover.
+  const clear = () => { if (shared && canShow) R.send('scripture-clear', {}); else { ref.value = ''; setDraft(''); out.replaceChildren(); } };
+  box.append(h('div', { class: 'scr-line' }, ref,
+    ib('search', 'Preview', preview),
+    canShow ? ib('presentation', shared ? 'Show this to everyone' : 'Show to everyone', showNow, 'pri') : null,
+    canShow || !shared ? ib('x', shared ? 'Clear for everyone' : 'Clear', clear, 'x') : null));
+  // Translation + big-screen toggle live on the tool header line (panels.js) to free room for verses.
+  tr.classList.add('tr-select');
+  box.headExtras = [tr,
+    canShow && shared ? ib(onStage ? 'sidebar' : 'maximize', onStage ? 'Move to sidebar' : 'Show on the big screen', () => R.showScripture(shared.reference, { translation: shared.translation, mode: onStage ? 'side' : 'stage' })) : null].filter(Boolean);
+  if (shared) {
+    // chapter stepping for the sharer (syncs to everyone)
+    const nav = canShow ? (d) => { const m = /^(.*?)(\d+)(?::[\d\-,]+)?\s*$/.exec(shared.reference); if (!m) return; const ch = Math.max(1, +m[2] + d); R.showScripture(`${m[1].trim()} ${ch}`, { translation: shared.translation }); } : null;
+    const sel = R.stageR.scriptureBody(out);
+    if (nav) box.append(h('div', { class: 'scr-nav' }, ib('chevronLeft', 'Previous chapter', () => nav(-1)), h('span', { class: 'tiny muted grow center' }, shared.reference), ib('chevronRight', 'Next chapter', () => nav(1))));
+    box.append(out, sel);
+  } else { box.append(out); if (ref.value) preview(); }
+  return box;
+}
+
 export function buildTools(R) {
   return {
-    scripture() {
-      // Compact sidebar reader: one control line, then as much room as possible for the verses.
-      const box = h('div', { class: 'scr-tool' });
-      const canShow = R.canScripture();
-      const shared = R.scripture;
-      const ref = h('input', { class: 'input sm grow', placeholder: 'John 3:16, family, hope, “a man shall leave…”', value: R.scriptureDraft || '', 'aria-label': 'Verse or topic', oninput: (e) => { R.scriptureDraft = e.target.value; } });
-      const tr = translationSelect(shared ? R.scrTr() : R.bibleTr(), (v) => {
-        if (shared && canShow) R.showScripture(shared.reference, { translation: v }); // live: everyone follows
-        else if (shared) { R.scrOwnTr = true; R.setBibleTr(v); R.panel.refresh('tools'); }
-        else { R.setBibleTr(v); preview(); }
-      }, { compact: true });
-      const ib = (ic, label, run, cls = '') => h('button', { class: `scr-ib ${cls}`, type: 'button', title: label, 'data-tip': label, 'aria-label': label, onclick: run, html: icon(ic, { size: 15 }) });
-      const out = h('div', { class: 'scripture-preview scr-read' });
-      const showNow = () => { const q = ref.value.trim() || shared?.reference; if (q) R.showScripture(q, { translation: R.bibleTr(), mode: shared?.mode || 'side' }); };
-      function openHit(x) {
-        ref.value = x.reference || x; R.scriptureDraft = ref.value; preview();
-      }
-      function corpusOfTr(id) {
-        return /^quran_/i.test(id || '') ? 'quran' : 'bible';
-      }
-      function hitRow(x) {
-        const text = x.text || x.excerpt || '';
-        const body = (x.verses && x.verses.length)
-          ? versesEl({ verses: x.verses }, { selectable: false, compact: true })
-          : (text ? h('div', { class: 'scr-hit-text' }, text) : null);
-        return h('div', { class: 'scr-hit' },
-          h('button', { class: 'scr-hit-ref', type: 'button', onclick: () => openHit(x) }, x.reference || x),
-          x.why ? h('div', { class: 'tiny muted' }, x.why) : null,
-          body,
-          h('div', { class: 'row gap-xs', style: { marginTop: '.25rem', flexWrap: 'wrap' } },
-            h('button', { class: 'btn sm', type: 'button', onclick: () => openHit(x), html: icon('bookOpen', { size: 13 }) + ' Open' }),
-            canShow ? h('button', { class: 'btn sm primary', type: 'button', onclick: () => { ref.value = x.reference; R.scriptureDraft = ref.value; R.showScripture(x.reference, { translation: x.translation || R.bibleTr(), mode: shared?.mode || 'side' }); }, html: icon('presentation', { size: 13 }) + ' Show' }) : null,
-            makeListenBtn(() => ({
-              verses: x.verses?.length ? x.verses : null,
-              text: text || null,
-              lang: x.lang,
-              translation: x.translation || R.bibleTr(),
-            }), { headers: R.headers() }),
-            h('button', {
-              class: 'icon-btn has-bg sm', type: 'button',
-              'data-tip': 'Copy', 'aria-label': 'Copy',
-              html: icon('copy', { size: 14 }),
-              onclick: () => copy(`“${x.text || text}” - ${x.reference}${x.short ? ` (${x.short})` : ''}`, 'Verse copied'),
-            }),
-          ));
-      }
-      async function preview() {
-        const q = ref.value.trim(); if (!q) return;
-        if (shared && canShow) return showNow(); // while sharing, previewing a new chapter re-broadcasts it
-        out.replaceChildren(h('div', { class: 'skel', style: { height: '80px' } }));
-        const trId = R.bibleTr();
-        const corpus = corpusOfTr(trId);
-        try {
-          const p = await api(`/api/books/passage?ref=${encodeURIComponent(q)}&t=${trId}`);
-          const head = h('div', { class: 'row between', style: { alignItems: 'center', gap: '.4rem' } },
-            h('b', { class: 'small' }, `${p.reference} · ${p.translation?.short || ''}`),
-            makeListenBtn(() => ({ verses: p.verses, lang: p.translation?.lang, translation: trId }), { headers: R.headers() }));
-          out.replaceChildren(head, versesEl(p, { selectable: false }));
-        } catch {
-          try {
-            const r = await api('/api/ai/scripture', { method: 'POST', headers: R.headers(), body: { query: q, translation: trId, corpus } });
-            if (!(r.refs || []).length) {
-              out.replaceChildren(h('p', { class: 'muted small' }, 'No matching passages. Try a reference or topic like “family”, “hope”.'));
-              return;
-            }
-            out.replaceChildren(
-              h('div', { class: 'tiny muted', style: { marginBottom: '.35rem' } }, `${corpus === 'quran' ? 'Qur’an' : 'Bible'} topic matches`),
-              h('div', { class: 'scr-hits col', style: { gap: '.55rem' } }, ...(r.refs || []).map(hitRow)),
-            );
-          } catch (e) { out.replaceChildren(h('p', { class: 'muted small' }, 'Couldn’t find that passage.')); }
-        }
-      }
-      ref.addEventListener('keydown', (e) => { if (e.key === 'Enter') preview(); });
-      const onStage = shared && shared.mode === 'stage';
-      // One line: verse | preview | show everyone | clear - icon-only, label on hover.
-      const clear = () => { if (shared && canShow) R.send('scripture-clear', {}); else { ref.value = ''; R.scriptureDraft = ''; out.replaceChildren(); } };
-      box.append(h('div', { class: 'scr-line' }, ref,
-        ib('search', 'Preview', preview),
-        canShow ? ib('presentation', shared ? 'Show this to everyone' : 'Show to everyone', showNow, 'pri') : null,
-        canShow || !shared ? ib('x', shared ? 'Clear for everyone' : 'Clear', clear, 'x') : null));
-      // Translation + big-screen toggle live on the Scripture header line (panels.js) to free room for verses.
-      tr.classList.add('tr-select');
-      box.headExtras = [tr,
-        canShow && shared ? ib(onStage ? 'sidebar' : 'maximize', onStage ? 'Move to sidebar' : 'Show on the big screen', () => R.showScripture(shared.reference, { translation: shared.translation, mode: onStage ? 'side' : 'stage' })) : null].filter(Boolean);
-      if (shared) {
-        // chapter stepping for the sharer (syncs to everyone)
-        const nav = canShow ? (d) => { const m = /^(.*?)(\d+)(?::[\d\-,]+)?\s*$/.exec(shared.reference); if (!m) return; const ch = Math.max(1, +m[2] + d); R.showScripture(`${m[1].trim()} ${ch}`, { translation: shared.translation }); } : null;
-        const sel = R.stageR.scriptureBody(out);
-        if (nav) box.append(h('div', { class: 'scr-nav' }, ib('chevronLeft', 'Previous chapter', () => nav(-1)), h('span', { class: 'tiny muted grow center' }, shared.reference), ib('chevronRight', 'Next chapter', () => nav(1))));
-        box.append(out, sel);
-      } else { box.append(out); if (ref.value) preview(); }
-      return box;
-    },
+    bible() { return scriptureView(R, 'bible'); },
+    quran() { return scriptureView(R, 'quran'); },
     captions() {
       const box = h('div', { class: 'stack' });
       const c = R.captioner;

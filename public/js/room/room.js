@@ -307,15 +307,34 @@ Object.assign(Room.prototype, {
     const rp = this.media.room && this.media.room.remoteParticipants && this.media.room.remoteParticipants.get(id);
     return rp ? { mic: rp.isMicrophoneEnabled, cam: rp.isCameraEnabled } : { mic: false, cam: false };
   },
-  bibleTr() { return lsGet('venue.bibleTr', this.config.bible?.defaultTranslation || 'kjv'); },
-  setBibleTr(v) { lsSet('venue.bibleTr', v); if (this.scripture && this.canScripture()) this.showScripture(this.scripture.reference, { translation: v }); else if (this.scripture) this.renderStage(true); },
+  scrCorpus(tr) { return /^quran_/i.test(tr || this.scripture?.translation || '') ? 'quran' : 'bible'; },
+  bibleTr() {
+    const v = lsGet('venue.bibleTr', this.config.bible?.defaultTranslation || 'kjv');
+    return this.scrCorpus(v) === 'quran' ? (this.config.bible?.defaultTranslation || 'kjv') : v;
+  },
+  quranTr() {
+    const v = lsGet('venue.quranTr', null);
+    if (v && this.scrCorpus(v) === 'quran') return v;
+    const prev = lsGet('venue.bibleTr', '');
+    return this.scrCorpus(prev) === 'quran' ? prev : 'quran_en_sahih';
+  },
+  corpusTr(corpus) { return corpus === 'quran' ? this.quranTr() : this.bibleTr(); },
+  setCorpusTr(corpus, v) {
+    if (corpus === 'quran') lsSet('venue.quranTr', v);
+    else lsSet('venue.bibleTr', v);
+    if (this.scripture && this.scrCorpus() === corpus) {
+      if (this.canScripture()) this.showScripture(this.scripture.reference, { translation: v });
+      else this.renderStage(true);
+    }
+  },
+  setBibleTr(v) { this.setCorpusTr(this.scrCorpus(v), v); },
   canScripture() { return this.isMod() || (this.stage.enabled && this.isSpeaker(this.me.id)); },
   /** Translation everyone reads a shared passage in: the sharer's, unless this viewer picked their own. */
-  scrTr() { return (this.scripture && !this.scrOwnTr && this.scripture.translation) || this.bibleTr(); },
+  scrTr() { return (this.scripture && !this.scrOwnTr && this.scripture.translation) || this.corpusTr(this.scrCorpus()); },
   /** Broadcast (or re-broadcast) the shared passage; chapter / translation / placement changes all go through here. */
   showScripture(reference, { translation, mode } = {}) {
     if (!reference) return;
-    this.send('scripture-show', { reference, translation: translation || this.bibleTr(), mode: mode || this.scripture?.mode || 'side' });
+    this.send('scripture-show', { reference, translation: translation || this.scrTr(), mode: mode || this.scripture?.mode || 'side' });
   },
   captionLang() { return lsGet('venue.captionLang', 'en'); },
   setCaptionLang(v) { lsSet('venue.captionLang', v); if (this.captioner.on) { this.captioner.stop(); this.captioner.start(); } },
@@ -357,7 +376,7 @@ Object.assign(Room.prototype, {
     try { const r = await api('/api/whiteboards', { method: 'POST', body: { title: title.trim() || 'Meeting board', data: this.myBoard } }); this.myBoardRef = { id: r.id, title: r.title }; lsSet('venue.myboard.ref', this.myBoardRef); toast('Saved to My boards - edits now autosave', { icon: 'check', group: 'content' }); if (this.stageView === 'my-board') this.renderStage(true); } catch (e) { toastErr(e); }
   },
   refreshBar() { refreshBar(); },
-  toolBadge(id) { return (id === 'record' && this.recorder.state !== 'idle') || (id === 'captions' && this.captioner.on) || (id === 'boards' && this.boardSharing) || (id === 'present' && !!this.content); },
+  toolBadge(id) { return (id === 'record' && this.recorder.state !== 'idle') || (id === 'captions' && this.captioner.on) || (id === 'boards' && this.boardSharing) || (id === 'present' && !!this.content) || ((id === 'bible' || id === 'quran') && !!this.scripture && this.scrCorpus() === id); },
   recountDm() { const inc = {}; this.data.dms.forEach((e) => { if (e.fromId !== this.me.id) inc[e.fromId] = (inc[e.fromId] || 0) + 1; }); this.unread.dm = Object.keys(inc).reduce((s, k) => s + Math.max(0, inc[k] - (this.dmRead[k] || 0)), 0); },
   changed() {
     cancelAnimationFrame(this.rafC);
@@ -828,7 +847,7 @@ Object.assign(Room.prototype, {
       { id: 'r-chat', label: 'Chat', short: () => 'Chat' + (R.unread.chat + R.unread.dm ? ` ·${R.unread.chat + R.unread.dm}` : ''), icon: 'chat', group: 'social', kbd: 'C', active: () => R.panel.tab === 'chat', keywords: 'message talk dm private group', run: () => R.panel.toggle('chat') },
       { id: 'r-people', label: 'People', short: () => `People ${R.peopleMap.size}`, icon: 'users', group: 'people', kbd: 'P', active: () => R.panel.tab === 'people', keywords: 'participants attendees roster waiting audience speakers', run: () => R.panel.toggle('people') },
       { id: 'r-engage', label: 'Polls, Q&A & comments', short: () => 'Engage' + (R.unread.engage ? ` ·${R.unread.engage}` : ''), icon: 'poll', group: 'engage', kbd: 'E', active: () => R.panel.tab === 'engage', keywords: 'engage engagement poll vote question qa comments feed', run: () => R.panel.toggle('engage') },
-      { id: 'r-tools', label: 'Tools', short: 'Tools', icon: 'wand', group: 'content', kbd: 'T', active: () => R.panel.tab === 'tools', keywords: 'tools bible scripture captions ai board record more', run: () => R.panel.toggle('tools') },
+      { id: 'r-tools', label: 'Tools', short: 'Tools', icon: 'wand', group: 'content', kbd: 'T', active: () => R.panel.tab === 'tools', keywords: 'tools bible quran scripture captions ai board record more', run: () => R.panel.toggle('tools') },
       { id: 'r-layout', label: 'Change layout', short: () => ({ grid: 'Grid', spotlight: 'Spotlight', speaker: 'Speaker' }[R.layout]), icon: () => ({ grid: 'grid', spotlight: 'spotlight', speaker: 'speaker' }[R.layout]), group: 'media', kbd: 'G', keywords: 'view layout grid spotlight speaker gallery tiles', run: () => R.cycleLayout(1) },
       { id: 'r-force-view', label: () => (R.security?.forceLayout ? 'Stop forcing audience view' : 'Force audience view'), short: () => (R.security?.forceLayout ? 'Unforce view' : 'Force view'), icon: 'lock', group: 'admin', keywords: 'force audience view layout lock grid speaker screenshare everyone follows host forced view', when: () => mod(), active: () => !!R.security?.forceLayout, run: () => {
         const on = !R.security?.forceLayout;
@@ -848,7 +867,8 @@ Object.assign(Room.prototype, {
       { id: 'r-pip', label: 'Picture-in-picture', icon: 'pip', group: 'media', keywords: 'pip float mini window popout', run: () => R.pip() },
       { id: 'r-invite', label: 'Invite people / QR code', icon: 'qr', group: 'people', kbd: 'I', keywords: 'invite link share qr code add people', run: () => R.invite() },
       { id: 'r-copy', label: 'Copy room link', icon: 'link', group: 'people', keywords: 'copy link url code', run: () => copy(location.origin + '/' + fmtCode(R.code)).then(() => toast('Link copied', { icon: 'link' })) },
-      { id: 'r-bible', label: 'Bible & scripture', icon: 'bookOpen', group: 'faith', keywords: 'bible scripture verse kjv web passage sermon john psalm', run: tool('scripture') },
+      { id: 'r-bible', label: 'Bible', icon: 'bookOpen', group: 'faith', keywords: 'bible scripture verse kjv web passage sermon john psalm', run: tool('bible') },
+      { id: 'r-quran', label: 'Qur’an', icon: 'book', group: 'faith', keywords: 'quran qur’an koran surah ayah islam scripture verse', run: tool('quran') },
       { id: 'r-poll', label: 'Create a poll', icon: 'poll', group: 'engage', keywords: 'poll vote survey', run: () => R.panel.open('engage', 'polls') },
       { id: 'r-qa', label: 'Q&A', icon: 'question', group: 'engage', keywords: 'questions ask qa', run: () => R.panel.open('engage', 'qa') },
       { id: 'r-comments', label: 'Comments', icon: 'chats', group: 'social', keywords: 'comments feed social reply like', run: () => R.panel.open('engage', 'comments') },
@@ -888,9 +908,9 @@ Object.assign(Room.prototype, {
         const em = q.match(/^(\p{Extended_Pictographic}\uFE0F?)$/u); if (em) out.push({ id: 'dyn-react', label: 'React ' + em[1], glyph: em[1], short: 'React', group: 'engage', run: () => R.react(em[1]) });
         searchSounds(q).forEach((sd) => out.push({ id: 'dyn-snd-' + sd.id, label: `Play ${sd.label} for everyone`, short: sd.label, glyph: sd.emoji, group: 'engage', run: () => R.playRoomSound(sd.id) }));
         if (q.trim().length >= 3 && !/\s/.test(q.trim())) searchEmoji(q.trim(), 4).forEach((e) => out.push({ id: 'dyn-em-' + e, label: `React ${e} (${emojiName(e)})`, short: emojiName(e).split(' ')[0], glyph: e, group: 'engage', run: () => R.react(e) }));
-        // Qur'an (typed or spoken "surah al kahf 10"): suggest only; the host taps to open it in Scripture.
-        if (looksLikeQuran(q)) surahCommands(q, loadSurahs(refreshBar), () => {}).slice(0, 3).forEach((c) => out.push({ ...c, id: 'dyn-scr-' + c.id, label: 'Qur’an: ' + c.short, run: () => { R.scriptureDraft = c.short.split(' · ')[0]; R.panel.open('tools', 'scripture'); } }));
-        if (/^[1-3]?\s?[a-z]+\.?\s+\d+(:\d+(-\d+)?)?$/i.test(q.trim())) out.push({ id: 'dyn-scr', label: `Scripture: ${q.trim()}`, short: q.trim(), icon: 'bookOpen', group: 'faith', run: () => { R.scriptureDraft = q.trim(); R.panel.open('tools', 'scripture'); } });
+        // Qur'an (typed or spoken "surah al kahf 10"): suggest only; the host taps to open it in the Qur’an tool.
+        if (looksLikeQuran(q)) surahCommands(q, loadSurahs(refreshBar), () => {}).slice(0, 3).forEach((c) => out.push({ ...c, id: 'dyn-scr-' + c.id, label: 'Qur’an: ' + c.short, run: () => { R.quranDraft = c.short.split(' · ')[0]; R.panel.open('tools', 'quran'); } }));
+        if (/^[1-3]?\s?[a-z]+\.?\s+\d+(:\d+(-\d+)?)?$/i.test(q.trim())) out.push({ id: 'dyn-scr', label: `Bible: ${q.trim()}`, short: q.trim(), icon: 'bookOpen', group: 'faith', run: () => { R.bibleDraft = q.trim(); R.panel.open('tools', 'bible'); } });
         const pp = R.people().filter((p) => p.id !== R.me.id && p.name.toLowerCase().includes(q.toLowerCase())).slice(0, 3);
         pp.forEach((p) => out.push({ id: 'dyn-p' + p.id, label: `Message ${p.name}`, short: p.name, icon: 'user', group: 'people', tail: true, run: () => { R.panel.sub.chat = 'dm'; R.dmWith = p.id; R.focusNext = true; R.panel.open('chat'); } }));
         if (q.trim().length > 2) out.push({ id: 'dyn-say', label: `Send “${q.trim().slice(0, 20)}” to chat`, short: 'Send to chat', icon: 'send', group: 'social', tail: true, run: () => R.send('chat', { text: q.trim() }) });
@@ -911,7 +931,8 @@ Object.assign(Room.prototype, {
       it('qr', 'Invite & QR', 'people', () => R.invite()),
       it('pen', 'My board', 'content', () => R.openMyBoard()),
       it('board', 'Team board', 'content', () => R.openTeamBoard()),
-      it('bookOpen', 'Bible', 'faith', () => R.panel.open('tools', 'scripture')),
+      it('bookOpen', 'Bible', 'faith', () => R.panel.open('tools', 'bible')),
+      it('book', 'Qur’an', 'faith', () => R.panel.open('tools', 'quran')),
       it('sparkles', 'AI assistant', 'ai', () => R.panel.open('tools', 'ai')),
       it('presentation', 'Present', 'content', () => R.panel.open('tools', 'present')),
       it('timeline', 'Timeline', 'content', () => R.panel.open('tools', 'timeline')),
