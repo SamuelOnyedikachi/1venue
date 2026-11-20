@@ -6,12 +6,61 @@ const get = async id => shape((await db.q('SELECT * FROM credit_billing_sessions
 async function lockUser(c,id) {
   if (!(await c.query('SELECT id FROM users WHERE id=$1 FOR UPDATE',[id])).rows[0]) throw fail(409,'Billing account is unavailable');
 }
+function workerLiveMs() { return require('../../config').RESTART.adoptGraceMs; }
+/** True only when that worker is not us, not marked stopped, and heartbeating recently. */
+async function workerIsLive(c, workerId, now, selfId) {
+  if (!workerId || (selfId && String(workerId) === String(selfId))) return false;
+  const worker = (await c.query('SELECT * FROM credit_billing_workers WHERE id=$1', [workerId])).rows[0];
+  if (!worker || worker.stopped) return false;
+  return now - Number(worker.heartbeat_ms) < workerLiveMs();
+}
+/** Close a leftover non-closed row so it cannot block a new session (no downtime debit). */
+async function closeStaleRow(c, row, now) {
+  if (row.state === 'active') return settleLocked(c, row, Number(row.accounted_ms), row.end_reason || 'restart-lost');
+  if (row.state === 'closing') await c.query("UPDATE credit_billing_sessions SET state='closed' WHERE id=$1 AND state='closing'", [row.id]);
+  return row;
+}
+/**
+ * If we already own the session, or the current owner is stopped/dead, take ownership.
+ * Throw the reconnecting 409 only when another worker is truly alive.
+ */
+async function takeIfIdle(c, row, ownerId, now, { force=false }={}) {
+  if (!ownerId || String(row.owner_id) === String(ownerId)) return row;
+  if (!force && await workerIsLive(c, row.owner_id, now, ownerId)) {
+    throw fail(409, 'This meeting is reconnecting to another server');
+  }
+  return (await c.query('UPDATE credit_billing_sessions SET owner_id=$2 WHERE id=$1 RETURNING *', [row.id, ownerId])).rows[0];
+}
+/** Reopen a closing/closed row for a meeting that is still live in this process. */
+async function reopenRow(c, row, ownerId, now) {
+  const updated = (await c.query(
+    `UPDATE credit_billing_sessions
+        SET state='active', owner_id=$2, end_reason=NULL, ended_ms=NULL, cleanup_until_ms=NULL, last_cleanup_ms=NULL,
+            accounted_ms=GREATEST(accounted_ms, $3)
+      WHERE id=$1 RETURNING *`,
+    [row.id, ownerId, Math.floor(now)]
+  )).rows[0];
+  if (row.history_id) await c.query('UPDATE meeting_history SET ended_at=NULL WHERE id=$1', [row.history_id]);
+  return updated;
+}
+
 async function open({userId=null,code,name,hostName,ownerId,now=Date.now()}) {
   try { return await db.tx(async c=>{
     if(userId!=null){
       await lockUser(c,userId);
-      if ((await c.query("SELECT id FROM credit_billing_sessions WHERE user_id=$1 AND state<>'closed'",[userId])).rows[0]) throw fail(409,'You already have an open meeting. End it before opening another.');
+      const existing=(await c.query("SELECT * FROM credit_billing_sessions WHERE user_id=$1 AND state<>'closed' FOR UPDATE",[userId])).rows;
+      for (const row of existing) {
+        const ours=ownerId&&String(row.owner_id)===String(ownerId);
+        if (row.state==='active' && (ours || await workerIsLive(c, row.owner_id, now, ownerId))) throw fail(409,'You already have an open meeting. End it before opening another.');
+        await closeStaleRow(c, row, now);
+      }
       if ((await c.query("SELECT code FROM paid_meeting_sessions WHERE host_user_id=$1 AND state='active'",[userId])).rows[0]) throw fail(409,'You already have an open meeting. End it before opening another.');
+    }
+    const staleCode=(await c.query("SELECT * FROM credit_billing_sessions WHERE code=$1 AND state<>'closed' FOR UPDATE",[code])).rows;
+    for (const row of staleCode) {
+      const ours=ownerId&&String(row.owner_id)===String(ownerId);
+      if (row.state==='active' && (ours || await workerIsLive(c, row.owner_id, now, ownerId))) throw fail(409,'This host or room already has an open meeting');
+      await closeStaleRow(c, row, now);
     }
     const historyId=(await c.query('INSERT INTO meeting_history(code,name,host_user_id,host_display_name,max_participants) VALUES($1,$2,$3,$4,1) RETURNING id',[code,name,userId,hostName])).rows[0].id;
     const media='b-'+crypto.randomBytes(16).toString('hex');
@@ -19,12 +68,12 @@ async function open({userId=null,code,name,hostName,ownerId,now=Date.now()}) {
     return {historyId,session:shape(session)};
   }); } catch(e) {if(e.code==='23505')throw fail(409,'This host or room already has an open meeting');throw e;}
 }
-async function settle(id,{now=Date.now(),endReason=null,ownerId=null}={}) {
+async function settle(id,{now=Date.now(),endReason=null,ownerId=null,force=false}={}) {
   const original=await get(id); if(!original)return null;
   return db.tx(async c=>{
     if(original.user_id!=null)await lockUser(c,original.user_id);
-    const row=(await c.query('SELECT * FROM credit_billing_sessions WHERE id=$1 FOR UPDATE',[id])).rows[0];
-    if (row.state==='active' && ownerId && row.owner_id!==ownerId) throw fail(409,'This meeting is reconnecting to another server');
+    let row=(await c.query('SELECT * FROM credit_billing_sessions WHERE id=$1 FOR UPDATE',[id])).rows[0];
+    if (row.state==='active' && ownerId && row.owner_id!==ownerId) row=await takeIfIdle(c,row,ownerId,now,{force});
     return settleLocked(c,row,now,endReason);
   }).then((out)=>{ // a debit happened: maybe auto top-up (async, single-flight, see autotopup.js)
     if(out&&original.user_id!=null)require('./autotopup').maybeAfterDebit(Number(original.user_id),null);
@@ -94,17 +143,16 @@ async function mediaToken(id,room,now=Date.now()) {
 }
 async function pendingCleanup(now=Date.now()) {return (await db.q("SELECT * FROM credit_billing_sessions WHERE state='closing' OR (state='closed' AND cleanup_until_ms>$1 AND (last_cleanup_ms IS NULL OR last_cleanup_ms<=$2))",[now,now-5000])).rows.map(shape);}
 async function markCleaned(id,now=Date.now()) {await db.q("UPDATE credit_billing_sessions SET state='closed',last_cleanup_ms=$2 WHERE id=$1 AND state<>'active'",[id,now]);}
-async function heartbeat(ownerId,stopped=false,now=Date.now()) {await db.q('INSERT INTO credit_billing_workers(id,heartbeat_ms,stopped) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET heartbeat_ms=$2,stopped=(credit_billing_workers.stopped OR EXCLUDED.stopped)',[ownerId,now,stopped]);} // a stopped worker never comes back (an in-flight tick must not undo stop())
+// A running process re-registers itself (stopped=false). stop() sets stopping first, waits
+// for an in-flight tick, then calls heartbeat(id, true), so a tick cannot undo shutdown.
+async function heartbeat(ownerId,stopped=false,now=Date.now()) {await db.q('INSERT INTO credit_billing_workers(id,heartbeat_ms,stopped) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET heartbeat_ms=$2,stopped=EXCLUDED.stopped',[ownerId,now,stopped]);}
 async function claim(id,ownerId,now=Date.now()) {
   const original=await get(id);if(!original)return null;
   return db.tx(async c=>{
     if(original.user_id!=null)await lockUser(c,original.user_id);
     const row=(await c.query('SELECT * FROM credit_billing_sessions WHERE id=$1 FOR UPDATE',[id])).rows[0];
     if(row.state!=='active')return null;
-    if(row.owner_id!==ownerId){
-      const worker=(await c.query('SELECT * FROM credit_billing_workers WHERE id=$1',[row.owner_id])).rows[0];
-      if(worker&&!worker.stopped&&now-Number(worker.heartbeat_ms)<15000)return null;
-    }
+    if(await workerIsLive(c,row.owner_id,now,ownerId))return null;
     return shape((await c.query('UPDATE credit_billing_sessions SET owner_id=$2 WHERE id=$1 RETURNING *',[id,ownerId])).rows[0]);
   });
 }
@@ -116,8 +164,7 @@ async function closeLost(id,expectedOwner,now=Date.now(),{force=false}={}) {
     if(row.state!=='active')return shape(row);
     if(expectedOwner&&row.owner_id!==expectedOwner)return shape(row);
     if(!force){
-      const worker=(await c.query('SELECT * FROM credit_billing_workers WHERE id=$1',[row.owner_id])).rows[0];
-      if(worker&&!worker.stopped&&now-Number(worker.heartbeat_ms)<15000)return shape(row);
+      if(await workerIsLive(c,row.owner_id,now,null))return shape(row);
       if((await c.query('SELECT code FROM meeting_snapshots WHERE history_id=$1',[row.history_id])).rows[0])return shape(row);
     } else {
       await c.query('DELETE FROM meeting_snapshots WHERE history_id=$1',[row.history_id]);
@@ -130,13 +177,31 @@ async function skipDowntime(id,{now=Date.now(),ownerId=null}={}) {
   const original=await get(id);if(!original||original.state!=='active')return original;
   return db.tx(async c=>{
     if(original.user_id!=null)await lockUser(c,original.user_id);
-    const row=(await c.query('SELECT * FROM credit_billing_sessions WHERE id=$1 FOR UPDATE',[id])).rows[0];
+    let row=(await c.query('SELECT * FROM credit_billing_sessions WHERE id=$1 FOR UPDATE',[id])).rows[0];
     if(!row||row.state!=='active')return shape(row);
-    if(ownerId&&row.owner_id!==ownerId)throw fail(409,'This meeting is reconnecting to another server');
+    if(ownerId&&row.owner_id!==ownerId)row=await takeIfIdle(c,row,ownerId,now);
     const accounted=Math.max(Number(row.accounted_ms),Math.floor(now));
     if(accounted===Number(row.accounted_ms))return shape(row);
     return shape((await c.query('UPDATE credit_billing_sessions SET accounted_ms=$2 WHERE id=$1 RETURNING *',[id,accounted])).rows[0]);
   });
 }
 async function queueCleanup(id,now=Date.now()) {await db.q('UPDATE credit_billing_sessions SET cleanup_until_ms=$2,last_cleanup_ms=NULL WHERE id=$1 AND state<>\'active\'', [id,now+11*60*1000]);}
-module.exports={queueCleanup,claimHost,claim,closeLost,skipDowntime,open,settle,get,current,mediaToken,pendingCleanup,markCleaned,heartbeat,reconcileLocked};
+/** Make this session billable by this process: take over an idle owner, or reopen a leftover closing row. */
+async function ensureLive(meeting,{ownerId,now=Date.now(),force=false}={}) {
+  const id=meeting?.billingId; if(id==null)return null;
+  return db.tx(async c=>{
+    const original=await get(id);
+    if(original?.user_id!=null)await lockUser(c,original.user_id);
+    let row=(await c.query('SELECT * FROM credit_billing_sessions WHERE id=$1 FOR UPDATE',[id])).rows[0];
+    if(!row)return null;
+    if(row.state==='active')return shape(await takeIfIdle(c,row,ownerId,now,{force}));
+    // closing/closed leftover (e.g. a manual SQL stop) must not kill a room that is live here.
+    if(force || row.end_reason==='manual-stop' || row.end_reason==='restart-lost' || row.end_reason==='restart-expired'){
+      return shape(await reopenRow(c,row,ownerId,now));
+    }
+    return shape(row);
+  });
+}
+
+module.exports={queueCleanup,claimHost,claim,closeLost,skipDowntime,open,settle,get,current,mediaToken,pendingCleanup,markCleaned,heartbeat,reconcileLocked,ensureLive,workerIsLive,takeIfIdle};
+

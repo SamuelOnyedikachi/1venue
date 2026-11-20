@@ -538,7 +538,7 @@ module.exports = async function handle(req, res, parsed) {
       });
     } catch (e) {
       console.error('[join]', e);
-      return sendJSON(res, 400, { error: publicErr(e, 'Bad request') });
+      return sendJSON(res, e.status || 400, { error: publicErr(e, 'Bad request') });
     }
   }
 
@@ -629,7 +629,7 @@ module.exports = async function handle(req, res, parsed) {
         inviteLink: `/${code}?key=${meeting.inviteToken}`,
       });
     } catch (e) {
-      return sendJSON(res, 400, { error: publicErr(e, 'Bad request') });
+      return sendJSON(res, e.status || 400, { error: publicErr(e, 'Bad request') });
     }
   }
 

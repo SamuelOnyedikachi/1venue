@@ -206,3 +206,70 @@ test('refund-post-deploy-usage.js dry-run and idempotent --apply', { skip, timeo
     await s.stop();
   }
 });
+
+test('join and GET /api/meeting succeed after a manual-stop of sessions and workers', { skip, timeout: 60000 }, async () => {
+  // Reproduces the production state: live room in this process, but SQL set every
+  // billing session to closing/manual-stop, ended history, and marked all workers
+  // stopped — including this process. Join used to 409/400 "reconnecting".
+  const env = isolatedEnv({ RESTART_ADOPT_GRACE_MS: '15000' });
+  const s = await boot(env);
+  try {
+    const host = client(s.base);
+    await host.post('/api/signup', signupPayload());
+    await fundTestWallet(s.base, host.jar.header(), 120, env);
+    const created = await host.post('/api/create', { name: 'Still live', participantName: 'Host Person' });
+    assert.equal(created.status, 200, JSON.stringify(created.body));
+    const { code } = created.body;
+    const now = Date.now();
+    await sql(env, "UPDATE credit_billing_sessions SET state='closing', end_reason='manual-stop', ended_ms=$1, cleanup_until_ms=$2 WHERE code=$3", [now, now + 11 * 60 * 1000, code]);
+    await sql(env, 'UPDATE meeting_history SET ended_at=$1 WHERE code=$2 AND ended_at IS NULL', [new Date(now).toISOString(), code]);
+    await sql(env, 'UPDATE credit_billing_workers SET stopped=TRUE', []);
+
+    const meeting = await client(s.base, host.jar).get('/api/meeting/' + code);
+    assert.equal(meeting.status, 200, 'GET /api/meeting must not 409 after manual-stop: ' + JSON.stringify(meeting.body));
+    assert.equal(meeting.body.name, 'Still live');
+
+    const joined = await client(s.base).post('/api/join', { code, participantName: 'Guest Person' });
+    assert.equal(joined.status, 200, 'join must not be 400/409 Bad request: ' + JSON.stringify(joined.body));
+
+    const rows = await sql(env, 'SELECT state, end_reason, owner_id FROM credit_billing_sessions WHERE code=$1', [code]);
+    assert.equal(rows[0].state, 'active', 'closing/manual-stop row should have been reopened');
+    assert.equal(rows[0].end_reason, null);
+
+    const deadline = Date.now() + 3000;
+    let workers;
+    while (Date.now() < deadline) {
+      workers = await sql(env, 'SELECT stopped FROM credit_billing_workers');
+      if (workers.some((w) => !w.stopped)) break;
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    assert.ok(workers.some((w) => !w.stopped), 'this process should have re-registered after being marked stopped: ' + JSON.stringify(workers));
+  } finally {
+    await s.stop();
+  }
+});
+
+test('a session owned by a stopped or dead worker is taken over, not 409', { skip, timeout: 60000 }, async () => {
+  const env = isolatedEnv({ RESTART_ADOPT_GRACE_MS: '15000' });
+  const s = await boot(env);
+  try {
+    const host = client(s.base);
+    await host.post('/api/signup', signupPayload());
+    await fundTestWallet(s.base, host.jar.header(), 120, env);
+    const created = await host.post('/api/create', { name: 'Dead owner', participantName: 'Host Person' });
+    assert.equal(created.status, 200, JSON.stringify(created.body));
+    const { code } = created.body;
+    await sql(env, "UPDATE credit_billing_sessions SET owner_id='dead-worker' WHERE code=$1", [code]);
+    await sql(env, "INSERT INTO credit_billing_workers(id,heartbeat_ms,stopped) VALUES('dead-worker', $1, TRUE)", [Date.now() - 60_000]);
+
+    const meeting = await client(s.base, host.jar).get('/api/meeting/' + code);
+    assert.equal(meeting.status, 200, JSON.stringify(meeting.body));
+    const joined = await client(s.base).post('/api/join', { code, participantName: 'Guest Person' });
+    assert.equal(joined.status, 200, JSON.stringify(joined.body));
+    const rows = await sql(env, 'SELECT owner_id, state FROM credit_billing_sessions WHERE code=$1', [code]);
+    assert.equal(rows[0].state, 'active');
+    assert.notEqual(rows[0].owner_id, 'dead-worker');
+  } finally {
+    await s.stop();
+  }
+});

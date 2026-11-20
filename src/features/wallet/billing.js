@@ -14,6 +14,15 @@ async function start({user,code,name,hostName}) {
 }
 async function check(meeting) {
   if(!meeting?.billingId)return null;
+  const live=store.getMeeting(meeting.code);
+  const force=!!(live&&String(live.billingId)===String(meeting.billingId));
+  // A room live in this process is always joinable: take over a stale owner or
+  // reopen a leftover closing/manual-stop row instead of 409/410.
+  const ensured=await data.ensureLive(meeting,{ownerId,force});
+  if(!ensured||ensured.state!=='active') {
+    await require('../../rooms/lifecycle').endMeeting(meeting.code,ensured?.end_reason||'credits-exhausted');
+    throw fail(410,'This meeting has ended because its credits ran out or it was closed');
+  }
   const row=await data.settle(meeting.billingId,{ownerId});
   if(!row||row.state!=='active') {
     await require('../../rooms/lifecycle').endMeeting(meeting.code,row?.end_reason||'credits-exhausted');
@@ -80,7 +89,7 @@ async function tick(now=Date.now()) {
           continue;
         }
         const due=row.user_id==null ? now>=Number(row.free_until_ms||row.started_ms) : now>=Number(row.free_until_ms||row.started_ms) && now-Number(row.accounted_ms)>=Math.min(5000,Number(row.balance_units??0));
-        if(due)row=await data.settle(row.id,{now,ownerId});
+        if(due)row=await data.settle(row.id,{now,ownerId,force:true});
         if(row.state!=='active')await require('../../rooms/lifecycle').endMeeting(row.code,row.end_reason);
       } catch(e) {console.warn('[billing] reconcile',row.id,e.message);}
     }
@@ -93,7 +102,14 @@ async function cleanupTick(now=Date.now()) {
     for(const row of await data.pendingCleanup(now)) {
       try {
         const meeting=store.getMeeting(row.code);
-        if(meeting&&String(meeting.billingId)===String(row.id))await require('../../rooms/lifecycle').endMeeting(row.code,row.end_reason);
+        if(meeting&&String(meeting.billingId)===String(row.id)){
+          // Don't tear down a room that is still live here because of a leftover
+          // closing row (manual SQL stop, restart-lost). Credit exhaustion is
+          // already ended from tick() before we get here.
+          if(row.end_reason==='credits-exhausted'||row.end_reason==='credits-required'){
+            await require('../../rooms/lifecycle').endMeeting(row.code,row.end_reason);
+          } else continue;
+        }
         await closeMedia(row,now);
       } catch(e){console.warn('[billing] media cleanup',row.id,e.message);}
     }
