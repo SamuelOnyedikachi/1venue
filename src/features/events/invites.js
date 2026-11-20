@@ -29,6 +29,7 @@ async function notifyInvite(row, ev, actor, invitee, mode) {
   const whenStr = when(ev.startsAt);
   const link = eventUrl(ev);
   if (invitee && invitee.id && !invitee.is_system) {
+    await supersedeInviteCards(invitee.id, ev.id, Number(row.id));
     await notify.send(invitee.id, {
       style: 'detailed',
       text: `${inviter} invited you to speak at ${ev.title}${whenStr ? ` on ${whenStr}` : ''}. ${mode === 'active' ? 'Your name is listed on the event until you accept or decline.' : 'Accept to be listed on the event page, or decline with a short comment.'}`,
@@ -99,6 +100,10 @@ async function accept(user, inviteId) {
   const row = await getInvite(Number(inviteId));
   if (!row || Number(row.user_id) !== Number(user.id)) throw fail(404, 'Invite not found');
   if (row.status === 'declined') throw fail(409, 'This invite was already declined');
+  if (row.status === 'active') {
+    await updateInviteCards(user.id, row.id, 'active');
+    return { ok: true, status: 'active', already: true, eventId: Number(row.event_id || row.event_pk) };
+  }
   await q("UPDATE event_speakers SET status='active', responded_at=NOW() WHERE id=$1", [row.id]);
   await updateInviteCards(user.id, row.id, 'active');
   await require('../messages/notify').send(user.id, { text: `You’re confirmed as a speaker at ${row.title}.`, links: [{ label: 'Open event', href: `/e/${row.slug}` }], style: 'compact' });
@@ -148,6 +153,24 @@ async function reviewReport(adminId, id, b = {}) {
 }
 
 
+async function supersedeInviteCards(userId, eventId, exceptInviteId) {
+  try {
+    const { conversation } = await require('../messages/notify').ensureThread(userId);
+    const threadId = conversation && conversation.dm_thread_id;
+    if (!threadId) return;
+    const rows = await many("SELECT id, payload FROM dm_messages WHERE thread_id=$1 AND kind='card'", [threadId]);
+    for (const row of rows) {
+      let p = row.payload;
+      if (typeof p === 'string') { try { p = JSON.parse(p); } catch (_) { continue; } }
+      if (!p || p.type !== 'speaker_invite') continue;
+      if (Number(p.eventId) !== Number(eventId)) continue;
+      if (exceptInviteId && Number(p.inviteId) === Number(exceptInviteId)) continue;
+      if (p.status === 'superseded') continue;
+      await q('UPDATE dm_messages SET payload=$2 WHERE id=$1', [row.id, JSON.stringify({ ...p, status: 'superseded' })]);
+    }
+  } catch (e) { console.warn('[invites] supersede cards', e.message); }
+}
+
 async function updateInviteCards(userId, inviteId, status) {
   try {
     const { conversation } = await require('../messages/notify').ensureThread(userId);
@@ -190,5 +213,5 @@ async function onSignupLink(userId, email) {
 
 module.exports = {
   when, eventUrl, lookupUser, applyInvite, afterSave, notifyInvite,
-  accept, decline, report, listReports, reviewReport, getInvite, listMine, updateInviteCards, onSignupLink, MAX_PENDING,
+  accept, decline, report, listReports, reviewReport, getInvite, listMine, updateInviteCards, supersedeInviteCards, onSignupLink, MAX_PENDING,
 };

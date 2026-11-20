@@ -96,9 +96,12 @@ function paint() {
 async function join(r, title, { outgoing = false, ai = null } = {}) {
   const video = r.call.kind === 'video';
   const isAi = !!(ai && (ai.ai || ai.greeting || r.call?.ai));
-  const el = h('div', { class: 'call-bar', role: 'region', 'aria-label': 'Call' },
+  const el = h('div', { class: 'call-bar' + (isAi ? ' is-ai' : ''), role: 'region', 'aria-label': 'Call' },
     h('div', { class: 'call-media' }),
     h('div', { class: 'call-head' }, h('span', { class: 'call-dot' }), h('b', { class: 'ellipsis' }, title || (isAi ? 'Notification' : 'Call')), h('span', { class: 'call-state' }, '')),
+    isAi ? h('div', { class: 'call-ai' },
+      h('span', { class: 'call-level', title: 'Microphone level', 'aria-hidden': 'true' }, h('i')),
+      h('span', { class: 'call-ai-state' }, 'Connecting…')) : null,
     h('div', { class: 'call-ctl' },
       h('span', { 'data-k': 'mute' }), isAi ? null : h('span', { 'data-k': 'cam' }),
       isAi ? null : ib('users', 'Make it a meeting (screen share, more people)', toMeeting),
@@ -181,7 +184,7 @@ async function playUrl(url, text) {
     await new Promise((res) => {
       const u = new SpeechSynthesisUtterance(text);
       u.onend = res; u.onerror = res;
-      cur.player = { pause() { try { speechSynthesis.cancel(); } catch { /* */ } res(); } };
+      cur.player = { paused: false, pause() { this.paused = true; try { speechSynthesis.cancel(); } catch { /* */ } res(); } };
       speechSynthesis.speak(u);
     });
   }
@@ -195,31 +198,51 @@ async function startAiAgent(ai, call) {
   const extraQ = Math.max(0, Number(settings.silenceQuestionMs) || 0);
   const callId = call.id;
   const aiId = (ai && ai.aiCallId) || callId;
+  const setAi = (state, err, { toastError = false } = {}) => {
+    if (!cur || cur.call.id !== callId) return;
+    cur.aiState = state;
+    const label = err || ({ listening: 'Listening', thinking: 'Thinking…', speaking: 'Speaking' }[state] || '');
+    const el = cur.el.querySelector('.call-ai-state');
+    if (el) el.textContent = label;
+    cur.el.dataset.aiState = state;
+    if (err && toastError) toast(err, { icon: 'mic' });
+  };
+  const setLevel = (lvl) => {
+    if (!cur) return;
+    const bar = cur.el.querySelector('.call-level i');
+    if (bar) bar.style.transform = `scaleX(${Math.min(1, Math.max(0.04, lvl * 8))})`;
+  };
+  setAi('speaking');
   if (ai && (ai.audioUrl || ai.greeting)) {
     const asked = /\?\s*$/.test(ai.greeting || '');
     if (asked) silenceMs = Math.min(4000, silenceMs + extraQ);
     await playUrl(ai.audioUrl, ai.greeting);
   }
-  let stream, ctx, rec, speaking = false, lastVoice = 0, chunks = [], sending = false, stopped = false;
+  let stream, ctx, rec, speaking = false, lastVoice = 0, voiceSince = 0, chunks = [], sending = false, stopped = false, ignoreUntil = 0, reuseLk = false;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-  } catch {
-    toast('Microphone is needed so Notification can hear you. You can also type in the chat.', { icon: 'micOff' });
+    const lkTrack = [...(cur.room?.localParticipant?.audioTrackPublications?.values?.() || [])][0]?.track?.mediaStreamTrack;
+    if (lkTrack && lkTrack.readyState === 'live') { stream = new MediaStream([lkTrack]); reuseLk = true; }
+    else stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
+  } catch (e) {
+    setAi('listening', 'Microphone is needed so Notification can hear you. You can also type in the chat.', { toastError: true });
     return;
   }
   const AC = window.AudioContext || window.webkitAudioContext;
   ctx = new AC();
+  try { await ctx.resume(); } catch { /* */ }
   const src = ctx.createMediaStreamSource(stream);
   const analyser = ctx.createAnalyser();
   analyser.fftSize = 2048;
   src.connect(analyser);
   const data = new Uint8Array(analyser.fftSize);
-  const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+  const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '');
   const startRec = () => {
     chunks = [];
-    rec = new MediaRecorder(stream, { mimeType: mime });
-    rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
-    rec.start(200);
+    try {
+      rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+      rec.start(200);
+    } catch (e) { console.warn('ai-call recorder', e); }
   };
   startRec();
   const rms = () => {
@@ -228,41 +251,70 @@ async function startAiAgent(ai, call) {
     for (let i = 0; i < data.length; i++) { const v = (data[i] - 128) / 128; s += v * v; }
     return Math.sqrt(s / data.length);
   };
+  const playing = () => {
+    if (!cur || !cur.player) return false;
+    if (typeof cur.player.paused === 'boolean') return cur.player.paused === false;
+    return true;
+  };
   const flush = async () => {
     if (sending || stopped || !cur || cur.call.id !== callId) return;
     sending = true;
+    setAi('thinking');
     try {
       const recRef = rec;
       if (recRef && recRef.state === 'recording') recRef.stop();
       const blob = await new Promise((res) => {
-        const t = setTimeout(() => res(new Blob(chunks, { type: mime })), 800);
-        recRef.onstop = () => { clearTimeout(t); res(new Blob(chunks, { type: mime })); };
+        const t = setTimeout(() => res(new Blob(chunks, { type: recRef && recRef.mimeType || mime || 'audio/webm' })), 800);
+        if (recRef) recRef.onstop = () => { clearTimeout(t); res(new Blob(chunks, { type: recRef.mimeType || mime || 'audio/webm' })); };
       });
       startRec();
-      if (blob.size < 800) return;
+      if (blob.size < 400) { setAi('listening'); return; }
       const buf = await blob.arrayBuffer();
       const bytes = new Uint8Array(buf);
       let bin = '';
       for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
       const b64 = btoa(bin);
-      const r = await api(`/api/messages/ai-calls/${aiId}/turn`, { method: 'POST', body: { audio: b64, mime, pendingQuestion: /\?\s*$/.test((ai && ai.greeting) || '') } });
-      if (!r || r.wait || !cur || cur.call.id !== callId) return;
-      if (r.silenceMs) silenceMs = Math.min(4000, Math.max(800, Number(r.silenceMs) || silenceMs));
-      if (r.audioUrl || r.text) await playUrl(r.audioUrl, r.text);
-    } catch (e) { console.warn('ai-call turn', e); }
-    finally { sending = false; speaking = false; }
+      const r = await api(`/api/messages/ai-calls/${aiId}/turn`, { method: 'POST', body: { audio: b64, mime: blob.type || mime || 'audio/webm' } });
+      if (!cur || cur.call.id !== callId) return;
+      if (r && r.silenceMs) silenceMs = Math.min(4000, Math.max(800, Number(r.silenceMs) || silenceMs));
+      if (!r || r.wait) { setAi('listening', r && r.wait ? 'Didn’t catch that, try again' : null); return; }
+      if (r.audioUrl || r.text) {
+        setAi('speaking');
+        ignoreUntil = Date.now() + 400;
+        await playUrl(r.audioUrl, r.text);
+        ignoreUntil = Date.now() + 350;
+      }
+      setAi('listening');
+    } catch (e) {
+      console.warn('ai-call turn', e);
+      setAi('listening', e.message || 'Could not send what you said', { toastError: true });
+    } finally { sending = false; speaking = false; }
   };
+  setAi('listening');
   const tick = () => {
     if (stopped || !cur || cur.call.id !== callId) return;
+    if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
     const lvl = rms();
-    const voice = lvl > 0.045;
-    if (voice) {
-      lastVoice = Date.now();
-      if (cur.player) { try { cur.player.pause(); } catch { /* */ } cur.player = null; } // barge-in
-      speaking = true;
-    } else if (speaking && Date.now() - lastVoice >= silenceMs) {
-      speaking = false;
-      flush();
+    setLevel(lvl);
+    const now = Date.now();
+    const ttsOn = playing();
+    const thresh = ttsOn ? 0.12 : 0.02;
+    const voice = !cur.muted && lvl > thresh && now >= ignoreUntil;
+    if (ttsOn && !voice) { lastVoice = 0; voiceSince = 0; speaking = false; }
+    else if (voice) {
+      if (!voiceSince) voiceSince = now;
+      lastVoice = now;
+      if (now - voiceSince >= 80) {
+        if (cur.player) { try { cur.player.pause(); } catch { /* */ } cur.player = null; }
+        speaking = true;
+        if (cur.aiState !== 'thinking') setAi('listening');
+      }
+    } else {
+      voiceSince = 0;
+      if (speaking && now - lastVoice >= silenceMs) {
+        speaking = false;
+        flush();
+      }
     }
     cur.aiTick = requestAnimationFrame(tick);
   };
@@ -271,7 +323,7 @@ async function startAiAgent(ai, call) {
     stopped = true;
     if (cur.aiTick) cancelAnimationFrame(cur.aiTick);
     try { rec && rec.state !== 'inactive' && rec.stop(); } catch { /* */ }
-    try { stream && stream.getTracks().forEach((t) => t.stop()); } catch { /* */ }
+    try { if (!reuseLk && stream) stream.getTracks().forEach((tr) => tr.stop()); } catch { /* */ }
     try { ctx && ctx.close(); } catch { /* */ }
     try { cur.player && cur.player.pause(); } catch { /* */ }
   };

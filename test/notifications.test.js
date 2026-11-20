@@ -103,5 +103,55 @@ test('AI call silence is clamped to 800–4000 ms and defaults to 1500', async (
 test('requestCall falls back to a message when AI calls are disabled', async () => {
   const r = await aiCalls.requestCall(guest.id, { reason: 'Test call', requested: true });
   assert.equal(r.ok, false);
-  assert.equal(r.fallback, 'message');
+  assert.equal(r.fallback, 'disabled');
+});
+
+
+test('sanitizeAssistantText strips fences and parseAction keeps the action', () => {
+  const raw = 'I heard you accepted the invite. Here is the action:\n```\n. If you need to reach out, use https://1venue.live/messages.';
+  assert.equal(/```/.test(notify.sanitizeAssistantText(raw)), false);
+  const parsed = notify.parseAction('Sure.\n```json\n{"action":"accept_invite","inviteId":12}\n```');
+  assert.equal(parsed.action.action, 'accept_invite');
+  assert.equal(parsed.action.inviteId, 12);
+  assert.equal(/```|accept_invite/.test(parsed.text), false);
+});
+
+test('intentFromText recognises accept and decline in natural phrasing', () => {
+  assert.equal(notify.intentFromText('thanks I accept the invite, thanks for calling'), 'accept_invite');
+  assert.equal(notify.intentFromText('I will speak'), 'accept_invite');
+  assert.equal(notify.intentFromText('I have to decline because I am travelling'), 'decline_invite');
+  assert.equal(notify.intentFromText('What time does it start?'), null);
+});
+
+test('call greetings are natural and inbound calls ask how they can help', () => {
+  assert.equal(aiCalls.callGreeting('Your speaker invite for Music is coming up soon.'), 'Hi, this is Notification. Your speaker invite for Music is coming up soon.');
+  assert.equal(aiCalls.callGreeting('You called Notification.', { inbound: true }), 'Hi, this is Notification. How can I help?');
+  assert.match(aiCalls.callGreeting('You called Notification.'), /How can I help/);
+  assert.doesNotMatch(aiCalls.callGreeting('Your invite is coming up soon.'), /I[’']m calling because/);
+  assert.doesNotMatch(aiCalls.callGreeting('A thing.'), /finished speaking/i);
+});
+
+test('urgent call fallbacks are sent at most once per invite per reason', async () => {
+  const dedupe = { type: 'speaker_invite', id: 900001, recipient: `user:${guest.id}`, userId: guest.id };
+  const a = await aiCalls.requestCall(guest.id, { reason: 'Your speaker invite for Notify Seminar is coming up soon.', requested: false, dedupe });
+  const b = await aiCalls.requestCall(guest.id, { reason: 'Your speaker invite for Notify Seminar is coming up soon.', requested: false, dedupe });
+  assert.equal(a.ok, false);
+  assert.equal(a.skipped, undefined);
+  assert.equal(b.ok, false);
+  assert.equal(b.skipped, true);
+});
+
+test('fulfillInviteIntent accepts a pending invite from chat wording', async () => {
+  const ev2 = await data.createEvent({ id: host.id, username: 'hostn', displayName: 'Host' }, { title: 'Chat Accept Gig', category: 'seminar' });
+  await events.setSpeakers(ev2.id, [
+    { name: 'Ada', email: 'hostn@example.test' },
+    { name: 'Sam', userId: guest.id, email: 'speakern@example.test' },
+  ], { actor: { id: host.id } });
+  const pending = (await events.listSpeakers(ev2.id, { isHost: true })).find((s) => Number(s.userId) === Number(guest.id));
+  assert.equal(pending.status, 'pending');
+  const r = await notify.fulfillInviteIntent({ id: guest.id }, 'thanks I accept the invite, thanks for calling', null);
+  assert.equal(r.handled, true);
+  assert.match(r.text, /confirmed/i);
+  const after = (await events.listSpeakers(ev2.id)).find((s) => Number(s.userId) === Number(guest.id));
+  assert.ok(after && after.status === 'active');
 });

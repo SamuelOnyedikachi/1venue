@@ -302,7 +302,7 @@ export async function mount(view, params) {
   function cardEl(p) {
     if (!p) return null;
     if (p.type === 'speaker_invite') {
-      const resolved = p.status === 'active' || p.status === 'accepted' || p.status === 'declined';
+      const resolved = p.status === 'active' || p.status === 'accepted' || p.status === 'declined' || p.status === 'superseded';
       const comment = h('input', { class: 'input sm', placeholder: 'Comment to decline (required)', hidden: true });
       const act = async (action) => {
         try {
@@ -318,7 +318,7 @@ export async function mount(view, params) {
         h('div', { class: 'col', style: { gap: '.35rem' } },
           p.slug ? h('a', { class: 'btn sm', href: `/e/${p.slug}`, 'data-link': '' }, 'Event') : null,
           resolved
-            ? h('span', { class: 'chip tiny' }, p.status === 'declined' ? 'Declined' : 'Accepted')
+            ? h('span', { class: 'chip tiny' }, p.status === 'declined' ? 'Declined' : p.status === 'superseded' ? 'Updated' : 'Accepted')
             : h('div', { class: 'row wrap', style: { gap: '.35rem' } },
               h('button', { class: 'btn sm primary', type: 'button', onclick: () => act('accept') }, 'Accept'),
               h('button', { class: 'btn sm', type: 'button', onclick: () => act('decline') }, 'Decline'),

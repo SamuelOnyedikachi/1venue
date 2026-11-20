@@ -31,15 +31,20 @@ async function deliver(r, fn, counts) {
   }
 }
 
-async function maybeCall(userId, reason, ev) {
-  if (!config.NOTIFY.callsEnabled || !userId) return;
+async function maybeCall(userId, reason, ev, inviteId) {
+  if (!userId) return;
   const start = ev && ev.starts_at ? new Date(ev.starts_at).getTime() : 0;
   const urgent = start && start - Date.now() <= config.NOTIFY.urgentWindowMin * 60000 && start > Date.now();
   if (!urgent) return;
   try {
-    await require('../messages/ai-calls').requestCall(userId, { reason, requested: false });
+    await require('../messages/ai-calls').requestCall(userId, {
+      reason,
+      requested: false,
+      dedupe: { type: 'speaker_invite', id: Number(inviteId), recipient: `user:${userId}`, userId },
+    });
   } catch (e) { console.warn('[notify-worker] call', e.message); }
 }
+
 
 let running = false;
 async function tick(now = new Date()) {
@@ -80,7 +85,7 @@ async function tick(now = new Date()) {
               card: { type: 'speaker_invite', title: row.title, eventId: Number(row.event_id), inviteId: Number(row.id), slug: row.slug, when: row.starts_at },
             });
           }, counts);
-          if (lead === 1440) await maybeCall(row.user_id, `Your speaker invite for ${row.title} is coming up soon.`, row);
+          if (lead === 1440) await maybeCall(row.user_id, `Your speaker invite for ${row.title} is coming up soon.`, row, row.id);
         }
         if (to) {
           await deliver({ type: 'speaker_invite', id: row.id, lead, channel: 'email', recipient: String(to).toLowerCase(), userId: row.user_id || null }, async () => {

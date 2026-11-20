@@ -160,14 +160,84 @@ async function runNotifyModel(messages) {
   return { text: '', provider: 'none', model: null, unavailable: true };
 }
 
-function parseAction(text) {
-  const m = String(text || '').match(/```json\s*([\s\S]*?)```/i) || String(text || '').match(/\{\s*"action"\s*:\s*"[^"]+[\s\S]*\}/);
-  if (!m) return { text: String(text || '').trim(), action: null };
-  let action = null;
-  try { action = JSON.parse(m[1] || m[0]); } catch (_) { action = null; }
-  const cleaned = String(text || '').replace(m[0], '').trim();
-  return { text: cleaned, action: action && typeof action === 'object' ? action : null };
+function sanitizeAssistantText(s) {
+  return String(s || '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/```[\s\S]*$/g, ' ')
+    .replace(/\{\s*"action"\s*:\s*"[^"]*"[\s\S]*?\}/g, ' ')
+    .replace(/\{\s*"action"\s*:\s*[\s\S]*$/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
+
+function parseAction(text) {
+  const raw = String(text || '');
+  const m = raw.match(/```(?:json)?\s*([\s\S]*?)```/i) || raw.match(/\{\s*"action"\s*:\s*"[^"]+"[\s\S]*?\}/);
+  let action = null;
+  if (m) {
+    try { action = JSON.parse(m[1] || m[0]); } catch (_) { action = null; }
+  }
+  return { text: sanitizeAssistantText(raw), action: action && typeof action === 'object' && action.action ? action : null };
+}
+
+function intentFromText(text) {
+  const t = String(text || '').trim();
+  if (!t) return null;
+  const low = t.toLowerCase();
+  const decline = /\b(decline|reject|can'?t make it|cannot make it|won'?t (be able to )?speak|i(?:'m| am) out)\b/.test(low);
+  const accept = /\b((?:i\s+)?accept(?:s|ed|ing)?(?:\s+(?:the\s+)?invite)?|count me in|i(?:'ll| will) speak|i(?:'m| am) in)\b/.test(low);
+  if (decline && !accept) return 'decline_invite';
+  if (accept && !decline) return 'accept_invite';
+  return null;
+}
+
+function declineCommentFrom(text) {
+  const t = String(text || '').trim();
+  const m = t.match(/\b(?:because|since|as)\s+(.+)/i) || t.match(/\bdecline\w*(?:\s+(?:the\s+)?invite)?[,.:\s]+(.+)/i);
+  const c = (m ? m[1] : '').trim();
+  return c.length >= 2 ? c.slice(0, 500) : '';
+}
+
+async function fulfillInviteIntent(user, text, action) {
+  if (!user) return null;
+  const invites = require('../events/invites');
+  const extra = await extraOf(user.id);
+  let kind = (action && (action.action === 'accept_invite' || action.action === 'decline_invite') && action.action) || intentFromText(text);
+  const pendingDeclineId = extra && extra.pendingDeclineInviteId ? Number(extra.pendingDeclineInviteId) : null;
+  if (!kind && pendingDeclineId && String(text || '').trim().length >= 2 && !/\?\s*$/.test(String(text || '').trim())) {
+    kind = 'decline_invite';
+    action = { ...(action || {}), action: 'decline_invite', inviteId: pendingDeclineId, comment: String(text).trim() };
+  }
+  if (!kind) return null;
+  const mine = await invites.listMine(user).catch(() => ({ invites: [] }));
+  const pending = (mine.invites || []).filter((i) => i.status === 'pending');
+  let inviteId = Number((action && (action.inviteId || action.eventId)) || pendingDeclineId) || null;
+  if (inviteId && !(mine.invites || []).some((i) => Number(i.id) === inviteId)) inviteId = null;
+  if (!inviteId) {
+    if (!pending.length) return { handled: true, text: 'I don’t have a pending speaker invite for you right now.' };
+    if (pending.length > 1) {
+      const list = pending.map((i) => i.title).join('; ');
+      return { handled: true, text: `You have ${pending.length} pending invites: ${list}. Which one should I ${kind === 'decline_invite' ? 'decline' : 'accept'}?` };
+    }
+    inviteId = pending[0].id;
+  }
+  const row = (mine.invites || []).find((i) => Number(i.id) === Number(inviteId)) || pending[0];
+  const title = (row && row.title) || 'the event';
+  if (kind === 'decline_invite') {
+    const comment = String((action && action.comment) || declineCommentFrom(text) || '').trim();
+    if (comment.length < 2) {
+      await patchExtra(user.id, { pendingDeclineInviteId: inviteId });
+      return { handled: true, needComment: true, inviteId, text: `Please add a short comment so I can decline the invite to speak at ${title}.` };
+    }
+    await invites.decline(user, inviteId, comment);
+    await patchExtra(user.id, { pendingDeclineInviteId: null });
+    return { handled: true, messaged: true, text: `You’ve declined the invite to speak at ${title}. You won’t be listed on the event page.` };
+  }
+  const out = await invites.accept(user, inviteId);
+  await patchExtra(user.id, { pendingDeclineInviteId: null });
+  return { handled: true, messaged: !out.already, text: `You’re confirmed as a speaker at ${title}.` };
+}
+
 
 async function dailyCount(userId) {
   const r = await one(`SELECT COUNT(*) AS n FROM ai_usage WHERE use_case='notify' AND ok=TRUE AND created_at >= date_trunc('day', NOW())`).catch(() => ({ n: 0 }));
@@ -189,6 +259,11 @@ async function onUserMessage(user, c, message) {
   if ((await dailyCount(user.id)) > config.NOTIFY.aiDaily * 50) { /* server-wide soft guard */ }
   const start = Date.now();
   try {
+    const early = await fulfillInviteIntent(user, message.text || '', null);
+    if (early && early.handled) {
+      if (!early.messaged) await send(user.id, { text: sanitizeAssistantText(early.text), style: 'compact', notify: false });
+      return;
+    }
     const history = await require('./service').listMessages(user.id, c.id, { limit: 12 }).catch(() => []);
     const msgs = (history.messages || history || []).slice(-10).map((m) => ({
       role: Number(m.fromUserId) === Number(bot.id) ? 'assistant' : 'user',
@@ -196,24 +271,29 @@ async function onUserMessage(user, c, message) {
     }));
     const system = {
       role: 'system',
-      content: `You are Notification, the official 1venue assistant writing as a verified in-app contact. Be brief and natural. You may include links on the site: ${siteRoutes()}. Never invent URLs outside this site, never ask for passwords, and never claim to be a human. If the user wants to accept or decline a speaker invite, RSVP, or change reminder/email prefs, propose a single JSON action in a fenced json block like {"action":"accept_invite"|"decline_invite"|"rsvp"|"unrsvp"|"call_me"|"set_pref","eventId":0,"inviteId":0,"comment":"","pref":{}} and also say in plain language what you would do. Do not say the action is already done.`,
+      content: `You are Notification, the official 1venue assistant writing as a verified in-app contact. Be brief and natural. You may include links on the site: ${siteRoutes()}. Never invent URLs outside this site, never ask for passwords, and never claim to be a human. Never show JSON or code fences to the user. If they clearly accept or decline a speaker invite, confirm in plain language only — the server will carry it out. For other actions (RSVP or prefs) you may include a single JSON action in a fenced json block like {"action":"rsvp"|"unrsvp"|"call_me"|"set_pref","eventId":0,"pref":{}} and also say in plain language what you would do.`,
     };
     const out = await runNotifyModel([system, ...msgs.filter((m) => m.content), { role: 'user', content: String(message.text || '').slice(0, 2000) }]);
     await logAiUsage({ useCase: 'notify', provider: out.provider, model: out.model, ok: !out.unavailable, latencyMs: Date.now() - start, error: out.unavailable ? 'unavailable' : null });
     if (out.unavailable) {
-      await send(user.id, { text: 'I can’t reach the assistant right now. You can still open /messages, /settings#email or the event page from the earlier message.', style: 'compact', notify: false });
+      await send(user.id, { text: 'I can’t reach the assistant right now. You can still open the event page from the earlier message, or try again in a moment.', style: 'compact', notify: false });
       return;
     }
     const parsed = parseAction(out.text);
+    const acted = await fulfillInviteIntent(user, message.text || '', parsed.action);
+    if (acted && acted.handled) {
+      if (!acted.messaged) await send(user.id, { text: sanitizeAssistantText(acted.text || parsed.text), style: 'compact', notify: false });
+      return;
+    }
     if (parsed.action && parsed.action.action) {
       await send(user.id, {
-        text: parsed.text || 'I can do that — please confirm.',
+        text: sanitizeAssistantText(parsed.text) || 'I can do that — please confirm.',
         style: 'compact',
         card: { type: 'confirm', title: labelFor(parsed.action), action: parsed.action, eventId: parsed.action.eventId, inviteId: parsed.action.inviteId },
         notify: false,
       });
     } else if (parsed.text) {
-      await send(user.id, { text: parsed.text.slice(0, 2000), style: 'compact', notify: false });
+      await send(user.id, { text: sanitizeAssistantText(parsed.text).slice(0, 2000), style: 'compact', notify: false });
     }
   } catch (e) {
     console.warn('[notify] ai', e.message);
@@ -290,5 +370,5 @@ module.exports = {
   systemUser, isSystemUser, ensureThread, send, reachOut,
   extraOf, patchExtra, speakerInviteMode, callPrefs, inQuietHours,
   onUserMessage, runAction, labelFor, notifyFollowersOfVenue, conversationIsNotify,
-  runNotifyModel, parseAction,
+  runNotifyModel, parseAction, sanitizeAssistantText, intentFromText, fulfillInviteIntent,
 };
