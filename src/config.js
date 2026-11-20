@@ -19,6 +19,14 @@ const PUBLIC = path.join(__dirname, '..', 'public');
 const DEFAULT_SECRET = 'change-me-in-production-1venue-secret-key-32chars';
 const JWT_SECRET = env('JWT_SECRET', DEFAULT_SECRET);
 const PUBLIC_URL = env('PUBLIC_URL', '').replace(/\/$/, '');
+/** Absolute site URL from PUBLIC_URL. Relative paths stay relative if PUBLIC_URL is empty, unless `fallback` is set. */
+function siteUrl(path, { fallback } = {}) {
+  const s = path == null ? '' : String(path);
+  if (/^https?:\/\//i.test(s)) return s;
+  const base = PUBLIC_URL || (fallback ? String(fallback).replace(/\/$/, '') : '');
+  const rel = !s ? '' : (s.startsWith('/') ? s : '/' + s);
+  return base ? base + rel : rel;
+}
 const APP_NAME = env('APP_NAME', '1venue');
 
 const LIVEKIT_URL = env('LIVEKIT_URL');
@@ -280,7 +288,7 @@ const MIME = {
 
 module.exports = {
   env, int, bool, METRICS,
-  PORT, PUBLIC, JWT_SECRET, DEFAULT_SECRET, PUBLIC_URL, APP_NAME,
+  PORT, PUBLIC, JWT_SECRET, DEFAULT_SECRET, PUBLIC_URL, siteUrl, APP_NAME,
   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
   AUTH, ALLOW_LOCAL_SIGNUP, ADMIN_EMAILS, CANONICAL_HOST,
   MEETING_INACTIVITY_MS, MEETING_CLEANUP_INTERVAL_MS, MAX_PARTICIPANTS, MAX_AUDIENCE, DEFAULT_SPEAKER_SEATS,

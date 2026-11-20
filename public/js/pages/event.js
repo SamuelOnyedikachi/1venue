@@ -129,7 +129,7 @@ export async function mount(view, { slug }) {
         live ? h('span', { class: 'pill live static' }, `LIVE · ${fmtNum(ev.live?.viewers || ev.liveViewers || 0)} watching`) : ev.status === 'ended' ? h('span', { class: 'pill static' }, 'Ended') : null),
       h('h1', null, ev.title),
       h('div', { class: 'row wrap ev-meta' },
-        h('a', { class: 'row', href: profilePath(ev.host), 'data-link': '' }, avatar(ev.host.name, ev.host.avatarUrl, 'sm ring'), h('strong', null, ev.host.name), ev.host.verified ? h('span', { class: 'chip tiny verified-badge', title: 'Verified host', html: icon('check', { size: 12 }) + 'Verified' }) : null),
+        h('a', { class: 'row', href: profilePath(ev.host), 'data-link': '', style: { alignItems: 'center', gap: '.35rem' } }, avatar(ev.host.name, ev.host.avatarUrl, 'sm ring'), h('strong', null, ev.host.name), verifiedDot(ev.host, { title: 'Verified host' })),
         h('span', { html: icon('calendar', { size: 16 }) + esc(whenLine) }),
         placeMeta,
         h('span', { html: icon('ticket', { size: 16 }) + fmtNum(ev.rsvps || 0) + ' going' }))));
@@ -333,6 +333,7 @@ function editSpeakers(ev, done) {
       h('button', { class: 'icon-btn', 'data-group': 'admin', 'aria-label': 'Remove', html: icon('x'), onclick: () => { rows.splice(i, 1); paint(); } }))));
   };
   paint();
+  const sugBtn = (fn, ...kids) => h('button', { type: 'button', onpointerdown: (e) => { e.preventDefault(); e.stopPropagation(); fn(); } }, ...kids);
   const runSearch = debounce(async () => {
     const q = search.value.trim();
     if (q.length < 2) { sug.hidden = true; return; }
@@ -340,21 +341,21 @@ function editSpeakers(ev, done) {
       const r = await api('/api/users/search?q=' + encodeURIComponent(q));
       const users = r.users || [];
       sug.replaceChildren();
-      users.forEach((u) => sug.append(h('button', { type: 'button', onclick: () => {
+      users.forEach((u) => sug.append(sugBtn(() => {
         if (rows.some((x) => x.userId === u.id)) return;
         rows.push({ userId: u.id, name: u.name, avatarUrl: u.avatarUrl, headline: u.handle ? '@' + u.handle : '' });
         search.value = ''; sug.hidden = true; paint();
-      } }, avatar(u.name, u.avatarUrl, 'sm'), h('div', { class: 'grow' }, h('b', null, u.name), h('div', { class: 'tiny muted' }, u.handle ? '@' + u.handle : '')))));
+      }, avatar(u.name, u.avatarUrl, 'sm'), h('div', { class: 'grow' }, h('b', null, u.name), h('div', { class: 'tiny muted' }, u.handle ? '@' + u.handle : '')))));
       if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(q)) {
-        sug.append(h('button', { type: 'button', onclick: () => {
+        sug.append(sugBtn(() => {
           rows.push({ name: q.split('@')[0], email: q.toLowerCase(), headline: 'Invited by email' });
           search.value = ''; sug.hidden = true; paint();
-        } }, h('span', { class: 'ico-tile sm', html: icon('mail', { size: 14 }) }), h('b', null, 'Invite ' + q)));
+        }, h('span', { class: 'ico-tile sm', html: icon('mail', { size: 14 }) }), h('b', null, 'Invite ' + q)));
       } else if (!users.length) {
-        sug.append(h('button', { type: 'button', onclick: () => {
+        sug.append(sugBtn(() => {
           rows.push({ name: q, headline: '' });
           search.value = ''; sug.hidden = true; paint();
-        } }, h('span', { class: 'ico-tile sm', html: icon('userPlus', { size: 14 }) }), h('b', null, 'Add “' + q + '”')));
+        }, h('span', { class: 'ico-tile sm', html: icon('userPlus', { size: 14 }) }), h('b', null, 'Add “' + q + '”')));
       }
       sug.hidden = !sug.childNodes.length;
     } catch { sug.hidden = true; }

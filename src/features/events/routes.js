@@ -63,6 +63,10 @@ module.exports = function routes(route, kit) {
     const svg = qr().svg(`${ctx.origin}/e/${ev.slug}`, { accent: ev.theme.accent, accent2: ev.theme.accent2, title: ev.title, category: ev.category, when, subtitle: `by ${ev.host.name}`, seed: ev.slug, dark: s.get('dark') === '1', frame: s.get('frame') !== '0' });
     return { raw: svg, type: 'image/svg+xml; charset=utf-8', headers: { 'Cache-Control': 'public, max-age=300', ...(s.get('download') ? attach(`${ev.slug}-qr.svg`) : {}) } };
   });
+  route('GET', '/api/events/invites/mine', async (ctx) => {
+    const u = await requireUser(ctx.req, ctx.res);
+    return require('./invites').listMine(u);
+  });
   route('POST', '/api/events/invites/(\\d+)/(accept|decline|report)', async (ctx, [id, action]) => {
     const u = await requireUser(ctx.req, ctx.res);
     const invites = require('./invites');

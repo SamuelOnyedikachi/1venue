@@ -26,7 +26,13 @@ function coverPrompt({ title, description, category, accent, accent2 } = {}) {
     'Sleek, modern, minimal, cinematic lighting, rich depth, subtle gradients, high-end magazine aesthetic, sharp focus, 16:9 wide composition with calm negative space on the left side.',
     c1 ? `Colour palette led by ${c1}${c2 ? ` and ${c2}` : ''}, harmonious and tasteful.` : '',
     'Purely visual: no text, no letters, no words, no numbers, no captions, no logos, no watermarks, no signage, no typography.',
+    'If any people appear they must have anatomically correct human bodies: exactly one head, two arms, two hands, two legs and two feet, five fingers per hand, natural proportions, no extra or missing or fused limbs, no distorted anatomy.',
   ].filter(Boolean).join(' ');
 }
 
-module.exports = { coverPrompt };
+/** Used by models that accept a negative prompt (not flux-schnell). */
+function coverNegative() {
+  return 'extra limbs, six legs, three arms, mutated hands, fused fingers, extra fingers, missing limbs, deformed anatomy, poorly drawn hands, poorly drawn faces, extra heads, cloned body, disfigured, mutation, text, letters, typography, watermark, logo';
+}
+
+module.exports = { coverPrompt, coverNegative };

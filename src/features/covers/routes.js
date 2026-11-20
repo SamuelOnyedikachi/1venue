@@ -11,7 +11,7 @@
 const crypto = require('crypto');
 const replicate = require('../../lib/replicate');
 const usage = require('../../lib/usage');
-const { coverPrompt } = require('./prompt');
+const { coverPrompt, coverNegative } = require('./prompt');
 
 const TTL = 30 * 60 * 1000;
 const MAX_KEEP = 300;
@@ -50,7 +50,14 @@ module.exports = function routes(route, kit) {
     try {
       r = await replicate.run({
         token: token(), apiBase: config.STT.replicate.apiBase, model: C.model, timeoutMs: C.timeoutMs, tag: 'covers',
-        input: { prompt: coverPrompt(b), aspect_ratio: '16:9', num_outputs: C.options, output_format: 'webp', output_quality: 90, megapixels: '1', go_fast: true, num_inference_steps: 4, seed: crypto.randomInt(1, 2 ** 31 - 1) },
+        input: (() => {
+          const model = C.model || '';
+          const schnell = /schnell/i.test(model);
+          const input = { prompt: coverPrompt(b), aspect_ratio: '16:9', num_outputs: C.options, output_format: 'webp', output_quality: 90, seed: crypto.randomInt(1, 2 ** 31 - 1) };
+          if (schnell) { input.megapixels = '1'; input.go_fast = true; input.num_inference_steps = 4; }
+          else { input.num_inference_steps = 28; input.guidance = 3.5; input.negative_prompt = coverNegative(); }
+          return input;
+        })(),
       });
     } catch (e) { await usage.refund(`u:${u.id}`, 'cover', 1).catch(() => {}); throw e; }
     const urls = (Array.isArray(r.output) ? r.output : [r.output]).filter((x) => typeof x === 'string').slice(0, C.options);

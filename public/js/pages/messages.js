@@ -15,7 +15,18 @@ import { safeText, safeList, put, add } from '../safe-text.js';
 const I = (n, s = 18) => h('span', { class: 'i', html: icon(n, { size: s }) });
 const vMark = (on) => on ? h('span', { class: 'verified-dot', title: 'Verified', 'aria-label': 'Verified', html: icon('check', { size: 11 }) }) : null;
 const ib = (ic, label, run, cls = '') => h('button', { class: `icon-btn ${cls}`, type: 'button', 'aria-label': label, 'data-tip': label, onclick: run, html: icon(ic, { size: 20 }) });
-const linkify = (s) => esc(s).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+const siteBase = () => String((state.config && state.config.publicUrl) || (typeof location !== 'undefined' ? location.origin : '') || '').replace(/\/$/, '');
+const siteHref = (path) => {
+  if (!path) return path;
+  if (/^https?:\/\//i.test(path)) return path;
+  return siteBase() + (path.startsWith('/') ? path : '/' + path);
+};
+const linkify = (s) => {
+  const base = siteBase();
+  let t = String(s || '');
+  if (base) t = t.replace(/(^|[\s:(])(\/(?:e|v|u|a|messages|settings|discover|wallet|dashboard|host|books)[^\s<]*)/g, (_, pre, path) => pre + base + path);
+  return esc(t).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+};
 const hhmm = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const dayKey = (t) => new Date(t).toDateString();
 const dayLabel = (t) => { const d = new Date(t), now = new Date(); if (d.toDateString() === now.toDateString()) return 'Today'; const y = new Date(now); y.setDate(now.getDate() - 1); if (d.toDateString() === y.toDateString()) return 'Yesterday'; return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }); };
@@ -89,7 +100,7 @@ export async function mount(view, params) {
     return h('a', { class: `msg-item${S.conv && S.conv.id === c.id ? ' on' : ''}${c.unread ? ' unread' : ''}`, href: `/messages/${c.id}`, 'data-link': '', role: 'listitem' },
       av,
       h('span', { class: 'msg-item-main' },
-        h('span', { class: 'msg-item-top' }, c.starred ? h('span', { class: 'msg-star', html: icon('star', { size: 13 }) }) : null, h('b', { class: 'ellipsis' }, c.title), vMark(c.peer && c.peer.verified),
+        h('span', { class: 'msg-item-top' }, c.starred ? h('span', { class: 'msg-star', html: icon('star', { size: 13 }) }) : null, h('span', { class: 'msg-item-who' }, h('b', { class: 'ellipsis' }, c.title), vMark(c.peer && c.peer.verified)),
           c.labels && c.labels.length ? h('span', { class: 'msg-labels' }, c.labels.slice(0, 2).map((l) => h('span', { class: 'msg-label', style: { '--lc': l.color } }, l.name)), c.labels.length > 2 ? h('span', { class: 'msg-label more' }, `+${c.labels.length - 2}`) : null) : null,
           c.pinned ? I('pin', 14) : null, c.muted ? I('volumeX', 14) : null, h('time', null, timeAgo(c.lastMessageAt))),
         h('span', { class: 'msg-item-bot' }, c.followUp ? h('span', { class: 'msg-flag', 'data-tip': 'Follow up', html: icon('flag', { size: 12 }) }) : null,
@@ -154,6 +165,7 @@ export async function mount(view, params) {
       const [c, m] = await Promise.all([api(`/api/messages/conversations/${id}`), api(`/api/messages/conversations/${id}/messages?limit=50`)]);
       S.conv = c.conversation; S.msgs = m.messages; S.hasMore = m.hasMore; S.hidden = m.hiddenBefore; S.typing.clear(); S.editing = null;
       S.replyTo = null; S.pins = c.conversation.pins || []; S.pinIdx = 0;
+      await refreshInviteStatuses();
     } catch (e) { toastErr(e); navigate('/messages', { replace: true }); return; }
     setActiveConversation(S.conv.id);
     composer = null;
@@ -167,6 +179,26 @@ export async function mount(view, params) {
     if (c.peer && c.peer.deleted) return 'Account deleted';
     if (!c.presence) return '';
     return c.presence.online ? 'Online' : c.presence.lastSeenAt ? `Last seen ${timeAgo(c.presence.lastSeenAt)}` : '';
+  }
+  async function maybeShowCallsOptIn(c, el) {
+    if (!c || !c.peer || !c.peer.system || !el) return;
+    try {
+      const r = await api('/api/account/notifications');
+      const calls = r.calls || {};
+      if (calls.enabled) return;
+      el.hidden = false;
+      el.replaceChildren(
+        h('div', { class: 'grow col', style: { gap: '.15rem', minWidth: 0 } },
+          h('b', null, 'Allow voice calls'),
+          h('span', { class: 'tiny muted' }, 'Notification can call you in the app when something needs a conversation.')),
+        h('button', { class: 'btn sm primary', type: 'button', onclick: async () => {
+          try {
+            await api('/api/account/notifications', { method: 'PUT', body: { calls: { enabled: true, optOut: false } } });
+            el.remove();
+            toast('Voice calls allowed', { icon: 'phone' });
+          } catch (e) { toastErr(e); }
+        } }, 'Allow'));
+    } catch { /* prefs unavailable */ }
   }
   function paintThread() {
     const c = S.conv;
@@ -191,9 +223,11 @@ export async function mount(view, params) {
       ib('info', 'Contact details', () => toggleSide(), 'msg-info-btn'),
       ib('moreV', 'More', (e) => moreMenu(e.currentTarget)));
     const foot = c.canSend ? h('div', { class: 'msg-foot' }, replyBar, composerEl()) : h('div', { class: 'msg-readonly' }, I(c.readOnly ? 'lock' : 'info', 16), h('span', null, c.reason || 'You can’t send messages here'));
-    put(threadPane, head, pinBar, msgsEl, typingEl, foot);
+    const callsOpt = h('div', { class: 'msg-calls-optin', hidden: true });
+    put(threadPane, head, pinBar, msgsEl, typingEl, callsOpt, foot);
     paintPins(); paintReply();
     paintMsgs(true);
+    maybeShowCallsOptIn(c, callsOpt);
   }
   function composerEl() {
     if (!composer) {
@@ -241,26 +275,55 @@ export async function mount(view, params) {
     // An analysis that was run from the ⋯ menu stays visible under the file (tap to open it again).
     return h('div', { class: 'msg-file-wrap' }, card, h('button', { class: 'msg-transcript msg-ai-inline', type: 'button', onclick: () => analyseFile(m) }, I('sparkles', 14), h('span', null, done)));
   }
+  async function refreshInviteStatuses() {
+    const ids = [...new Set((S.msgs || []).filter((m) => m.payload && m.payload.type === 'speaker_invite' && m.payload.inviteId).map((m) => m.payload.inviteId))];
+    if (!ids.length) return false;
+    try {
+      const r = await api('/api/events/invites/mine');
+      const map = Object.fromEntries((r.invites || []).map((i) => [Number(i.id), i.status]));
+      let changed = false;
+      for (const m of S.msgs) {
+        if (m.payload && m.payload.type === 'speaker_invite') {
+          const st = map[Number(m.payload.inviteId)];
+          if (st && m.payload.status !== st) { m.payload = { ...m.payload, status: st }; changed = true; }
+        }
+      }
+      return changed;
+    } catch { return false; }
+  }
+  function markInviteStatus(inviteId, status) {
+    for (const m of S.msgs || []) {
+      if (m.payload && m.payload.type === 'speaker_invite' && Number(m.payload.inviteId) === Number(inviteId)) {
+        m.payload = { ...m.payload, status };
+      }
+    }
+    paintMsgs(false);
+  }
   function cardEl(p) {
     if (!p) return null;
     if (p.type === 'speaker_invite') {
+      const resolved = p.status === 'active' || p.status === 'accepted' || p.status === 'declined';
       const comment = h('input', { class: 'input sm', placeholder: 'Comment to decline (required)', hidden: true });
       const act = async (action) => {
         try {
           if (action === 'decline' && !comment.value.trim()) { comment.hidden = false; comment.focus(); return toast('Add a short comment to decline', { icon: 'info' }); }
           await api(`/api/events/invites/${p.inviteId}/${action}`, { method: 'POST', body: action === 'decline' ? { comment: comment.value } : {} });
           toast(action === 'accept' ? 'Invite accepted' : action === 'report' ? 'Report sent' : 'Invite declined', { icon: 'check' });
+          if (action === 'accept') markInviteStatus(p.inviteId, 'active');
+          else if (action === 'decline') markInviteStatus(p.inviteId, 'declined');
         } catch (e) { toastErr(e); }
       };
       return h('div', { class: 'msg-card' }, h('span', { class: 'msg-card-ic', html: icon('stage', { size: 20 }) }),
         h('div', { class: 'msg-card-main' }, h('b', null, p.title || 'Speaker invite'), h('span', { class: 'tiny muted' }, [p.inviter, p.when && fmtDate(p.when)].filter(Boolean).join(' · ') || 'You’re invited to speak')),
         h('div', { class: 'col', style: { gap: '.35rem' } },
           p.slug ? h('a', { class: 'btn sm', href: `/e/${p.slug}`, 'data-link': '' }, 'Event') : null,
-          h('div', { class: 'row wrap', style: { gap: '.35rem' } },
-            h('button', { class: 'btn sm primary', type: 'button', onclick: () => act('accept') }, 'Accept'),
-            h('button', { class: 'btn sm', type: 'button', onclick: () => act('decline') }, 'Decline'),
-            h('button', { class: 'btn sm ghost', type: 'button', onclick: () => act('report') }, 'Report')),
-          comment));
+          resolved
+            ? h('span', { class: 'chip tiny' }, p.status === 'declined' ? 'Declined' : 'Accepted')
+            : h('div', { class: 'row wrap', style: { gap: '.35rem' } },
+              h('button', { class: 'btn sm primary', type: 'button', onclick: () => act('accept') }, 'Accept'),
+              h('button', { class: 'btn sm', type: 'button', onclick: () => act('decline') }, 'Decline'),
+              h('button', { class: 'btn sm ghost', type: 'button', onclick: () => act('report') }, 'Report')),
+          resolved ? null : comment));
     }
     if (p.type === 'confirm') {
       const comment = h('input', { class: 'input sm', placeholder: 'Comment (required to decline)', hidden: !(p.action && p.action.action === 'decline_invite') });
@@ -343,6 +406,7 @@ export async function mount(view, params) {
       const r = await api(`/api/messages/conversations/${S.conv.id}/messages?before=${S.msgs[0].id}&limit=50`);
       const h0 = msgsEl.scrollHeight;
       S.msgs = [...r.messages, ...S.msgs]; S.hasMore = r.hasMore; S.hidden = r.hiddenBefore;
+      await refreshInviteStatuses();
       paintMsgs(false); msgsEl.scrollTop = msgsEl.scrollHeight - h0;
     } catch (e) { toastErr(e); } finally { S.loadingOlder = false; }
   }

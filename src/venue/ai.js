@@ -8,12 +8,19 @@ const config = require('../config');
 function providers() {
   return [config.AI.primary, config.AI.secondary].filter((p) => p && p.baseUrl && p.model);
 }
+function replicateReady() {
+  return !!(config.STT && config.STT.replicate && config.STT.replicate.token && config.NOTIFY && config.NOTIFY.aiModel);
+}
 function status() {
   const ps = providers();
+  const rep = replicateReady();
   return {
-    enabled: ps.length > 0 && !config.AI.mock,
-    mock: config.AI.mock || ps.length === 0,
-    providers: ps.map((p) => ({ name: p.name, model: p.model })),
+    enabled: (ps.length > 0 || rep) && !config.AI.mock,
+    mock: config.AI.mock || (ps.length === 0 && !rep),
+    providers: [
+      ...ps.map((p) => ({ name: p.name, model: p.model })),
+      ...(rep && !config.AI.mock ? [{ name: 'replicate', model: config.NOTIFY.aiModel }] : []),
+    ],
   };
 }
 
@@ -40,9 +47,28 @@ async function callProvider(p, messages, { maxTokens, temperature, json }) {
   }
 }
 
+async function callReplicate(messages, opts = {}) {
+  const token = config.STT.replicate.token;
+  const model = config.NOTIFY.aiModel;
+  if (!token || !model) throw new Error('Replicate is not configured');
+  const { run } = require('../lib/replicate');
+  const system = messages[0] && messages[0].role === 'system' ? messages[0].content : '';
+  const rest = messages.filter((m) => m.role !== 'system');
+  let prompt = rest.map((m) => `${m.role === 'assistant' ? 'Assistant' : 'User'}: ${m.content}`).join('\n') + '\nAssistant:';
+  if (opts.json) prompt += '\nReply with a single JSON object only.';
+  const out = await run({
+    token, apiBase: config.STT.replicate.apiBase, model,
+    input: { prompt, system_prompt: system, max_tokens: opts.maxTokens || config.AI.maxTokens, temperature: opts.temperature ?? 0.3 },
+    timeoutMs: Math.min(config.AI.timeoutMs || 45_000, 25_000), tag: 'ai', wait: 20,
+  });
+  const text = Array.isArray(out.output) ? out.output.join('') : (typeof out.output === 'string' ? out.output : '');
+  if (!String(text).trim()) throw new Error('Replicate returned no content');
+  return String(text).trim();
+}
+
 /**
  * chat(useCase, messages, opts) -> { text, provider, model, mock }
- * Tries primary then secondary. Falls back to the mock when both fail.
+ * Tries OpenAI-compatible primary/secondary, then Replicate, then the local heuristic.
  */
 async function chat(useCase, messages, opts = {}) {
   const data = require('./data');
@@ -57,6 +83,17 @@ async function chat(useCase, messages, opts = {}) {
     } catch (e) {
       errors.push(e.message);
       data.logAiUsage({ useCase, provider: p.name, model: p.model, ok: false, latencyMs: Date.now() - t0, error: e.message });
+    }
+  }
+  if (!config.AI.mock && replicateReady()) {
+    const t0 = Date.now();
+    try {
+      const text = await callReplicate(messages, opts);
+      data.logAiUsage({ useCase, provider: 'replicate', model: config.NOTIFY.aiModel, ok: true, latencyMs: Date.now() - t0 });
+      return { text, provider: 'replicate', model: config.NOTIFY.aiModel, mock: false };
+    } catch (e) {
+      errors.push(e.message);
+      data.logAiUsage({ useCase, provider: 'replicate', model: config.NOTIFY.aiModel, ok: false, latencyMs: Date.now() - t0, error: e.message });
     }
   }
   const text = mock(useCase, messages, opts);

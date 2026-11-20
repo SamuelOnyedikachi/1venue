@@ -4255,6 +4255,7 @@ button.list-item:hover {
   margin-left: 0.3rem;
   vertical-align: middle;
 }
+.ev-hero .verified-dot, .venue-hero .verified-dot { box-shadow: 0 0 0 2px rgba(255,255,255,.4); }
 /* --- src/10-components/voice-mic.css --- */
 /* Voice typing mic toggle (public/js/voice.js): floats at the right edge of the hovered / focused field. */
 .vmic {
@@ -9930,7 +9931,10 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
 .page-messages .msg-av-ic.meeting { color: var(--g-media); background: color-mix(in srgb, var(--g-media) 14%, var(--s2)); }
 .page-messages .msg-item-main { display: flex; flex-direction: column; gap: .2rem; min-width: 0; flex: 1; }
 .page-messages .msg-item-top, .page-messages .msg-item-bot { display: flex; align-items: center; gap: .35rem; min-width: 0; }
-.page-messages .msg-item-top b { flex: 1 1 auto; min-width: 0; font-weight: 600; }
+.page-messages .msg-item-who { display: flex; align-items: center; gap: .25rem; flex: 1 1 auto; min-width: 0; }
+.page-messages .msg-item-who b { flex: 0 1 auto; min-width: 0; font-weight: 600; }
+.page-messages .msg-item-who .verified-dot { flex: none; margin-left: 0; }
+.page-messages .msg-item-top b { min-width: 0; font-weight: 600; }
 .page-messages .msg-item-top .i { color: var(--faint); display: inline-flex; }
 .page-messages .msg-item-top time { font-size: .72rem; color: var(--faint); flex: none; margin-left: auto; }
 .page-messages .msg-star { color: #f5b301; display: inline-flex; flex: none; }
@@ -10114,6 +10118,9 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
 /* Notification cards and AI-call caption */
 .page-messages .msg-card .input.sm { margin-top: .25rem; }
 .call-ring-txt span { display: block; max-width: 22rem; }
+
+.page-messages .msg-calls-optin { display: flex; align-items: center; gap: .75rem; margin: 0 .75rem .55rem; padding: .7rem .85rem; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--s1); }
+.page-messages .msg-calls-optin[hidden] { display: none; }
 /* --- src/20-pages/plans.css --- */
 /* Plans and pricing (/upgrade). Every button is the one theme-accent .btn.primary, so it follows the
    user's accent and light / dark theme. */

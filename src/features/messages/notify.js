@@ -50,19 +50,22 @@ async function send(userId, { text = '', style = 'compact', links = [], card = n
   try {
     const service = require('./service');
     const { bot, conversation } = await ensureThread(userId);
+    const { siteUrl } = require('../../config');
     const lines = [];
     if (text) lines.push(String(text).trim());
     for (const l of links || []) {
       if (!l) continue;
-      const href = typeof l === 'string' ? l : l.href || l.url;
-      const label = typeof l === 'string' ? l : (l.label ? `${l.label}: ${href}` : href);
+      const raw = typeof l === 'string' ? l : l.href || l.url;
+      const href = raw ? siteUrl(raw) : '';
+      const label = typeof l === 'string' ? href : (l.label ? `${l.label}: ${href}` : href);
       if (href) lines.push(label);
     }
+    const payload = card ? { ...card, ...(card.link ? { link: siteUrl(card.link) } : {}) } : null;
     const body = lines.join(style === 'detailed' ? '\n\n' : '\n').slice(0, 2000);
-    const kind = card ? 'card' : 'text';
+    const kind = payload ? 'card' : 'text';
     const row = await service.insertMessage(conversation, {
       senderUserId: bot.id, senderName: bot.display_name || 'Notification',
-      text: body, kind, payload: card || null,
+      text: body, kind, payload,
     });
     return service.deliver(conversation, row, { senderId: bot.id, notify });
   } catch (e) {
@@ -98,7 +101,7 @@ function callPrefs(extra) {
   return {
     enabled: !!c.enabled,
     optOut: !!c.optOut,
-    quietStart: c.quietStart || '22:00',
+    quietStart: c.quietStart || '23:00',
     quietEnd: c.quietEnd || '07:00',
   };
 }
@@ -107,7 +110,7 @@ function inQuietHours(prefs, now = new Date()) {
   const tz = process.env.REMINDER_TIMEZONE || 'Africa/Lagos';
   let hm = '00:00';
   try { hm = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: tz }).format(now); } catch (_) { hm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`; }
-  const [qs, qe] = [prefs.quietStart || '22:00', prefs.quietEnd || '07:00'];
+  const [qs, qe] = [prefs.quietStart || '23:00', prefs.quietEnd || '07:00'];
   if (qs === qe) return false;
   if (qs < qe) return hm >= qs && hm < qe;
   return hm >= qs || hm < qe; // overnight window
@@ -128,7 +131,11 @@ async function conversationIsNotify(c, bot) {
   return Number(thread.user_a_id) === Number(bot.id) || Number(thread.user_b_id) === Number(bot.id);
 }
 
-const SITE_ROUTES = `/e/{slug} events, /messages inbox, /settings#email email and call prefs, /settings#notifications, /discover, /wallet, /dashboard, /v/{slug} venues, /books Bible and Qur’an.`;
+function siteRoutes() {
+  const { siteUrl } = require('../../config');
+  const u = (p) => siteUrl(p) || p;
+  return `${u('/e/{slug}')} events, ${u('/messages')} inbox, ${u('/settings')}#email email and call prefs, ${u('/settings')}#notifications, ${u('/discover')}, ${u('/wallet')}, ${u('/dashboard')}, ${u('/v/{slug}')} venues, ${u('/books')} Bible and Qur’an. Always write these as full absolute URLs.`;
+}
 
 async function runNotifyModel(messages) {
   const { AI_MOCK } = { AI_MOCK: require('../../config').AI.mock };
@@ -189,7 +196,7 @@ async function onUserMessage(user, c, message) {
     }));
     const system = {
       role: 'system',
-      content: `You are Notification, the official 1venue assistant writing as a verified in-app contact. Be brief and natural. You may include links on the site: ${SITE_ROUTES}. Never invent URLs outside this site, never ask for passwords, and never claim to be a human. If the user wants to accept or decline a speaker invite, RSVP, or change reminder/email prefs, propose a single JSON action in a fenced json block like {"action":"accept_invite"|"decline_invite"|"rsvp"|"unrsvp"|"call_me"|"set_pref","eventId":0,"inviteId":0,"comment":"","pref":{}} and also say in plain language what you would do. Do not say the action is already done.`,
+      content: `You are Notification, the official 1venue assistant writing as a verified in-app contact. Be brief and natural. You may include links on the site: ${siteRoutes()}. Never invent URLs outside this site, never ask for passwords, and never claim to be a human. If the user wants to accept or decline a speaker invite, RSVP, or change reminder/email prefs, propose a single JSON action in a fenced json block like {"action":"accept_invite"|"decline_invite"|"rsvp"|"unrsvp"|"call_me"|"set_pref","eventId":0,"inviteId":0,"comment":"","pref":{}} and also say in plain language what you would do. Do not say the action is already done.`,
     };
     const out = await runNotifyModel([system, ...msgs.filter((m) => m.content), { role: 'user', content: String(message.text || '').slice(0, 2000) }]);
     await logAiUsage({ useCase: 'notify', provider: out.provider, model: out.model, ok: !out.unavailable, latencyMs: Date.now() - start, error: out.unavailable ? 'unavailable' : null });

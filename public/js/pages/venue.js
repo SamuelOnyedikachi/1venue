@@ -2,7 +2,7 @@
 import { icon } from '../icons.js';
 import { h, api, toast, toastErr, timeAgo, copy, promptDlg, sheet } from '../ui.js';
 import { state, requireLogin, navigate } from '../app.js';
-import { empty } from '../components.js';
+import { empty, verifiedDot } from '../components.js';
 
 const fmtCode = (c) => String(c || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const vlink = (slug) => `${location.origin}/v/${slug}`;
@@ -245,7 +245,7 @@ async function ownerView(wrap, v) {
       h('div', { class: 'row', style: { gap: '.6rem', alignItems: 'center' } },
         brand && brand.logoUrl ? h('img', { src: brand.logoUrl, alt: '', width: 40, height: 40, style: { borderRadius: '10px', objectFit: 'cover' } }) : venueMark(v.name, 26),
         h('h1', { style: { margin: 0 } }, v.name),
-        v.verified ? h('span', { class: 'chip tiny verified-badge', title: 'Verified host', html: icon('check', { size: 12 }) + 'Verified' }) : null),
+        verifiedDot(v.verified, { title: 'Verified host' })),
       h('div', { class: 'row', style: { gap: '6px' } },
         h('button', { class: 'btn sm ghost', html: icon('link', { size: 15 }) + 'Copy link', onclick: () => copy(vlink(v.slug), 'Venue link copied') }),
         h('button', { class: 'btn sm ghost', html: icon('pencil', { size: 15 }) + 'Rename', onclick: async () => {

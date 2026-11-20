@@ -13,8 +13,7 @@ const when = (d) => {
   try { return new Date(d).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: tz, timeZoneName: 'short' }); } catch (_) { return new Date(d).toUTCString(); }
 };
 function eventUrl(ev) {
-  const base = (require('../../config').PUBLIC_URL || '').replace(/\/$/, '');
-  return `${base}/e/${ev.slug}`;
+  return require('../../config').siteUrl(`/e/${ev.slug}`, { fallback: 'https://1venue.live' });
 }
 
 async function lookupUser({ userId, email }) {
@@ -101,6 +100,7 @@ async function accept(user, inviteId) {
   if (!row || Number(row.user_id) !== Number(user.id)) throw fail(404, 'Invite not found');
   if (row.status === 'declined') throw fail(409, 'This invite was already declined');
   await q("UPDATE event_speakers SET status='active', responded_at=NOW() WHERE id=$1", [row.id]);
+  await updateInviteCards(user.id, row.id, 'active');
   await require('../messages/notify').send(user.id, { text: `You’re confirmed as a speaker at ${row.title}.`, links: [{ label: 'Open event', href: `/e/${row.slug}` }], style: 'compact' });
   return { ok: true, status: 'active', eventId: Number(row.event_id || row.event_pk) };
 }
@@ -111,6 +111,7 @@ async function decline(user, inviteId, comment) {
   const row = await getInvite(Number(inviteId));
   if (!row || Number(row.user_id) !== Number(user.id)) throw fail(404, 'Invite not found');
   await q("UPDATE event_speakers SET status='declined', decline_comment=$2, responded_at=NOW() WHERE id=$1", [row.id, note.slice(0, 500)]);
+  await updateInviteCards(user.id, row.id, 'declined');
   await require('../messages/notify').send(user.id, { text: `You’ve declined the invite to speak at ${row.title}. You won’t be listed on the event page.`, style: 'compact' });
   return { ok: true, status: 'declined', eventId: Number(row.event_id || row.event_pk) };
 }
@@ -146,6 +147,32 @@ async function reviewReport(adminId, id, b = {}) {
   return { ok: true };
 }
 
+
+async function updateInviteCards(userId, inviteId, status) {
+  try {
+    const { conversation } = await require('../messages/notify').ensureThread(userId);
+    const threadId = conversation && conversation.dm_thread_id;
+    if (!threadId) return;
+    const rows = await many("SELECT id, payload FROM dm_messages WHERE thread_id=$1 AND kind='card'", [threadId]);
+    for (const row of rows) {
+      let p = row.payload;
+      if (typeof p === 'string') { try { p = JSON.parse(p); } catch (_) { continue; } }
+      if (!p || p.type !== 'speaker_invite' || Number(p.inviteId) !== Number(inviteId)) continue;
+      await q('UPDATE dm_messages SET payload=$2 WHERE id=$1', [row.id, JSON.stringify({ ...p, status })]);
+    }
+  } catch (e) { console.warn('[invites] update cards', e.message); }
+}
+
+async function listMine(user) {
+  const rows = await many(`SELECT es.id, es.status, es.event_id, es.responded_at, e.slug, e.title
+    FROM event_speakers es JOIN events e ON e.id=es.event_id
+    WHERE es.user_id=$1 ORDER BY es.id DESC LIMIT 200`, [user.id]);
+  return { invites: rows.map((r) => ({
+    id: Number(r.id), status: r.status, eventId: Number(r.event_id),
+    slug: r.slug, title: r.title, respondedAt: r.responded_at,
+  })) };
+}
+
 async function onSignupLink(userId, email) {
   if (!email) return 0;
   const rows = await many(`SELECT es.* FROM event_speakers es WHERE es.user_id=$1 AND es.status IN ('pending','active') AND es.invited_at IS NOT NULL`, [userId]).catch(() => []);
@@ -163,5 +190,5 @@ async function onSignupLink(userId, email) {
 
 module.exports = {
   when, eventUrl, lookupUser, applyInvite, afterSave, notifyInvite,
-  accept, decline, report, listReports, reviewReport, getInvite, onSignupLink, MAX_PENDING,
+  accept, decline, report, listReports, reviewReport, getInvite, listMine, updateInviteCards, onSignupLink, MAX_PENDING,
 };

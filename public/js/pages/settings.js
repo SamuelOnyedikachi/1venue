@@ -113,9 +113,9 @@ async function notificationsCard(card, row, toggle) {
         toggle(() => !!calls.enabled && !calls.optOut, (v) => save({ calls: { ...calls, enabled: v, optOut: !v } })), 'notifications'),
       row('moon', 'ai', 'Quiet hours', 'Uses Africa/Lagos. Notification won’t call during this window unless you asked it to.',
         (() => {
-          const a = h('input', { class: 'input sm', type: 'time', value: calls.quietStart || '22:00' });
+          const a = h('input', { class: 'input sm', type: 'time', value: calls.quietStart || '23:00' });
           const b = h('input', { class: 'input sm', type: 'time', value: calls.quietEnd || '07:00' });
-          const go = () => save({ calls: { ...calls, quietStart: a.value || '22:00', quietEnd: b.value || '07:00' } });
+          const go = () => save({ calls: { ...calls, quietStart: a.value || '23:00', quietEnd: b.value || '07:00' } });
           a.onchange = go; b.onchange = go;
           return h('div', { class: 'row', style: { gap: '.4rem' } }, a, h('span', { class: 'tiny muted' }, 'to'), b);
         })(), 'email'),

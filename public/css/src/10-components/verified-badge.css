@@ -18,3 +18,4 @@
   margin-left: 0.3rem;
   vertical-align: middle;
 }
+.ev-hero .verified-dot, .venue-hero .verified-dot { box-shadow: 0 0 0 2px rgba(255,255,255,.4); }

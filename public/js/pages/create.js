@@ -23,17 +23,25 @@ export async function mount(view, params) {
   let catTouched = !!editing, themeTouched = !!editing;
   let acc = ev.theme?.accent || '#2563eb', acc2 = ev.theme?.accent2 || '#7c3aed';
   let materialIds = [];
-  let speakers = []; // { userId?, name, email?, headline?, avatarUrl? }
+  const mapSpeaker = (s) => ({ id: s.id, userId: s.userId, name: s.name, headline: s.headline || '', avatarUrl: s.avatarUrl || null, email: s.email || '', status: s.status || 'active' });
+  let speakers = [];
+  let speakersLoaded = !editing;
+  if (editing && Array.isArray(editing.speakers)) {
+    speakers = editing.speakers.map(mapSpeaker);
+    speakersLoaded = true;
+  }
 
   if (editing) {
     try {
       const r = await api(`/api/events/${editing.id}/materials`);
       materialIds = (r.materials || []).map((m) => m.id);
     } catch { /* */ }
-    try {
-      const sp = await api(`/api/events/${editing.id}`);
-      if (Array.isArray(sp.speakers)) speakers = sp.speakers.map((s) => ({ userId: s.userId, name: s.name, headline: s.headline || '', avatarUrl: s.avatarUrl || null, email: s.email || '', status: s.status || 'active', id: s.id }));
-    } catch { /* */ }
+    if (!speakersLoaded) {
+      try {
+        const sp = await api(`/api/events/${encodeURIComponent(editing.slug || params.edit)}`);
+        if (Array.isArray(sp.speakers)) { speakers = sp.speakers.map(mapSpeaker); speakersLoaded = true; }
+      } catch { /* */ }
+    }
   }
 
   const title = h('input', { class: 'input lg', placeholder: 'Give it a name people will click', value: ev.title || '', maxlength: 120 });
@@ -103,6 +111,7 @@ export async function mount(view, params) {
       h('button', { class: 'rm', type: 'button', 'aria-label': 'Remove', onclick: () => { speakers.splice(i, 1); paintSpeakers(); } }, '−'))));
   };
   paintSpeakers();
+  const sugBtn = (fn, ...kids) => h('button', { type: 'button', onpointerdown: (e) => { e.preventDefault(); e.stopPropagation(); fn(); } }, ...kids);
   const searchSpeakers = debounce(async () => {
     const q = speakerInput.value.trim();
     if (q.length < 2) { speakerSug.hidden = true; return; }
@@ -111,30 +120,30 @@ export async function mount(view, params) {
       const users = r.users || [];
       speakerSug.replaceChildren();
       users.forEach((u) => {
-        speakerSug.append(h('button', { type: 'button', onclick: () => {
+        speakerSug.append(sugBtn(() => {
           if (speakers.some((s) => s.userId === u.id)) return toast('Already added', { icon: 'info' });
           speakers.push({ userId: u.id, name: u.name, avatarUrl: u.avatarUrl || null, headline: u.handle ? '@' + u.handle : '' });
           speakerInput.value = ''; speakerSug.hidden = true; paintSpeakers();
-        } }, avatar(u.name, u.avatarUrl, 'sm'), h('div', { class: 'grow' }, h('b', null, u.name), h('div', { class: 'tiny muted' }, u.handle ? '@' + u.handle : (u.email || '')))));
+        }, avatar(u.name, u.avatarUrl, 'sm'), h('div', { class: 'grow' }, h('b', null, u.name), h('div', { class: 'tiny muted' }, u.handle ? '@' + u.handle : (u.email || '')))));
       });
       const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(q);
       if (isEmail && !users.some((u) => (u.email || '').toLowerCase() === q.toLowerCase())) {
-        speakerSug.append(h('button', { type: 'button', onclick: () => {
+        speakerSug.append(sugBtn(() => {
           speakers.push({ name: q.split('@')[0], email: q.toLowerCase(), headline: 'Invited by email' });
           speakerInput.value = ''; speakerSug.hidden = true; paintSpeakers();
-        } }, h('span', { class: 'ico-tile sm', html: icon('mail', { size: 16 }) }), h('div', { class: 'grow' }, h('b', null, 'Invite ' + q), h('div', { class: 'tiny muted' }, 'Will sync when they sign up'))));
+        }, h('span', { class: 'ico-tile sm', html: icon('mail', { size: 16 }) }), h('div', { class: 'grow' }, h('b', null, 'Invite ' + q), h('div', { class: 'tiny muted' }, 'Will sync when they sign up'))));
       }
       if (!users.length && !isEmail) {
-        speakerSug.append(h('button', { type: 'button', onclick: () => {
+        speakerSug.append(sugBtn(() => {
           speakers.push({ name: q, headline: '' });
           speakerInput.value = ''; speakerSug.hidden = true; paintSpeakers();
-        } }, h('span', { class: 'ico-tile sm', html: icon('userPlus', { size: 16 }) }), h('div', { class: 'grow' }, h('b', null, 'Add “' + q + '”'), h('div', { class: 'tiny muted' }, 'Guest speaker'))));
+        }, h('span', { class: 'ico-tile sm', html: icon('userPlus', { size: 16 }) }), h('div', { class: 'grow' }, h('b', null, 'Add “' + q + '”'), h('div', { class: 'tiny muted' }, 'Guest speaker'))));
       }
       speakerSug.hidden = !speakerSug.childNodes.length;
     } catch { speakerSug.hidden = true; }
   }, 220);
   speakerInput.addEventListener('input', searchSpeakers);
-  speakerInput.addEventListener('blur', () => setTimeout(() => { speakerSug.hidden = true; }, 180));
+  speakerInput.addEventListener('blur', (e) => { if (speakerSug.contains(e.relatedTarget)) return; setTimeout(() => { if (!speakerSug.contains(document.activeElement)) speakerSug.hidden = true; }, 250); });
 
   // Materials: searchable picker with "Upload materials" inside it.
   const matPicker = materialPicker({ selected: materialIds, onChange: (ids) => { materialIds = ids; } });
@@ -244,18 +253,24 @@ export async function mount(view, params) {
     });
   }
 
+  function fillField(el, value) {
+    if (!el) return;
+    el.value = value == null ? '' : value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
   function applyDraft(r, apply) {
-    if (apply.title && r.title) title.value = r.title;
-    if (apply.description && r.description) desc.value = r.description;
-    if (apply.tags && Array.isArray(r.tags) && r.tags.length) tags.value = r.tags.join(', ');
-    if (apply.category && r.category) { category = r.category; catSel.value = r.category; catTouched = true; syncMeetingAccess(); }
+    if (apply.title && r.title) fillField(title, r.title);
+    if (apply.description && r.description) fillField(desc, r.description);
+    if (apply.tags && Array.isArray(r.tags) && r.tags.length) fillField(tags, r.tags.join(', '));
+    if (apply.category && r.category) { category = r.category; catSel.value = r.category; catSel.dispatchEvent(new Event('change', { bubbles: true })); catTouched = true; syncMeetingAccess(); }
     if (apply.theme && r.theme && r.theme.accent) setTheme(r.theme.accent, r.theme.accent2);
-    if (apply.starts && r.start) starts.value = r.start;
-    if (apply.ends && r.end) ends.value = r.end;
+    if (apply.starts && r.start) fillField(starts, r.start);
+    if (apply.ends && r.end) fillField(ends, r.end);
     if (apply.venue && r.venue) {
       const place = String(r.venue).trim();
       if (place && !desc.value.toLowerCase().includes(place.toLowerCase())) {
-        desc.value = (desc.value.trim() ? desc.value.trim() + '\n\n' : '') + 'Where: ' + place;
+        fillField(desc, (desc.value.trim() ? desc.value.trim() + '\n\n' : '') + 'Where: ' + place);
       }
     }
     preview();
@@ -295,7 +310,7 @@ export async function mount(view, params) {
       const checks = {};
       const row = (key, label, el, ic) => {
         const already = !!filled[key];
-        const c = h('input', { type: 'checkbox', checked: !already });
+        const c = h('input', { type: 'checkbox', checked: true });
         checks[key] = c;
         const hint = already ? h('label', { class: 'draft-chk' }, c, `Replace the ${label.toLowerCase()} I already filled`) : h('span', { hidden: true }, c);
         return field(label, ic, h('div', { class: 'col', style: { gap: '.35rem' } }, el, hint));
@@ -310,10 +325,10 @@ export async function mount(view, params) {
           start: startIn.value, end: endIn.value, venue: venueIn.value.trim(),
         }, apply);
         done = true; s.close(); resolve('use');
-        toast(r.mock ? 'AI demo mode - add RunPod keys for real suggestions' : 'Drafted with AI', { icon: 'sparkles', group: 'ai' });
+        toast(r.mock ? 'Local draft applied — the AI writer was not available' : 'Draft applied', { icon: 'sparkles', group: 'ai' });
       };
       s.body.append(
-        h('p', { class: 'muted small', style: { margin: '0 0 .8rem' } }, 'Edit anything you like. Fields you already filled are left alone unless you tick the box.'),
+        r.mock ? h('p', { class: 'banner warn small', style: { margin: '0 0 .8rem' } }, 'This is a local draft, not from the AI. Check REPLICATE_API_TOKEN (or AI_PRIMARY_*) and try again.') : h('p', { class: 'muted small', style: { margin: '0 0 .8rem' } }, 'Use this overwrites the matching fields on the event form. Untick any you want to keep as they are.'),
         row('title', 'Title', tIn, 'type'),
         row('description', 'Description', dIn, 'notes'),
         row('category', 'Category', catIn, 'tag'),
@@ -342,6 +357,7 @@ export async function mount(view, params) {
           notes = notes || [title.value, desc.value].filter((x) => String(x).trim()).join('\n');
         }
         const r = await api('/api/ai/title', { method: 'POST', body: { notes, category, tzOffset: new Date().getTimezoneOffset(), now: new Date().toISOString() } });
+        if (r.mock) toast('The AI writer was not available, so this draft was built locally', { icon: 'info', group: 'ai' });
         const outcome = await showDraftPreview(r, { notes });
         if (outcome === 'use' || outcome === false) return;
         if (outcome && outcome.retry) { ask = false; continue; }
@@ -354,16 +370,21 @@ export async function mount(view, params) {
   const submit = h('button', { class: 'btn primary lg', type: 'submit', html: icon(editing ? 'check' : 'calendarPlus', { size: 18 }) + (editing ? 'Save changes' : 'Publish event') });
   const liveNow = editing ? null : h('button', { type: 'button', class: 'btn lg', 'data-group': 'engage', html: icon('radio', { size: 18 }) + 'Publish & go live' });
 
-  const body = () => ({
-    title: title.value, description: desc.value, category, visibility, tags: tags.value,
-    speakerSeats: seats, theme: { accent: acc, accent2: acc2 }, coverUrl,
-    startsAt: starts.value ? new Date(starts.value).toISOString() : null,
-    endsAt: ends.value ? new Date(ends.value).toISOString() : null,
-    speakers: speakers.map((s) => ({ userId: s.userId || null, name: s.name, headline: s.headline || null, avatarUrl: s.avatarUrl || null, email: s.email || null })),
-    meetingAccessMode: category === 'meeting' ? meetingAccessMode : 'host_funded',
-    meetingDurationMin: category === 'meeting' && meetingAccessMode === 'paid_entry' ? Number(meetingDuration.value) : null,
-    meetingEntryPriceCredits: category === 'meeting' && meetingAccessMode === 'paid_entry' ? Number(entryPrice.value) : null,
-  });
+  const body = () => {
+    const out = {
+      title: title.value, description: desc.value, category, visibility, tags: tags.value,
+      speakerSeats: seats, theme: { accent: acc, accent2: acc2 }, coverUrl,
+      startsAt: starts.value ? new Date(starts.value).toISOString() : null,
+      endsAt: ends.value ? new Date(ends.value).toISOString() : null,
+      meetingAccessMode: category === 'meeting' ? meetingAccessMode : 'host_funded',
+      meetingDurationMin: category === 'meeting' && meetingAccessMode === 'paid_entry' ? Number(meetingDuration.value) : null,
+      meetingEntryPriceCredits: category === 'meeting' && meetingAccessMode === 'paid_entry' ? Number(entryPrice.value) : null,
+    };
+    if (!editing || speakersLoaded) {
+      out.speakers = speakers.map((s) => ({ id: s.id, userId: s.userId || null, name: s.name, headline: s.headline || null, avatarUrl: s.avatarUrl || null, email: s.email || null, status: s.status || undefined }));
+    }
+    return out;
+  };
 
   async function save(goLive) {
     try {
