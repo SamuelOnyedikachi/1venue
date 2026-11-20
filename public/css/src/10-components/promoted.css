@@ -78,13 +78,14 @@
 .promo-inline-rows {
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
+  gap: 0.875rem;
 }
 .promo-rail .feed-promo,
 .profile-promoted .feed-promo,
 .ev-rail-block .feed-promo {
-  margin-inline: 0;
+  margin: 0;
 }
+
 
 @media (min-width: 1180px) {
   .rail-layout {

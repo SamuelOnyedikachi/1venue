@@ -44,7 +44,7 @@ test('phone: Nigeria default, E.164 storage, invalid numbers rejected', () => {
 
 test('service worker treats /auth/* as network-only and is bumped (v35, messages)', () => {
   const sw = fs.readFileSync(path.join(root, 'public/sw.js'), 'utf8');
-  assert.match(sw, /const VERSION = 'v62-2026-11-20'/);
+  assert.match(sw, /const VERSION = 'v63-2026-11-20'/);
   assert.match(sw, /addEventListener\('push'/);
   assert.match(sw, /pathname\.startsWith\('\/auth\/'\)/);
 });

@@ -30,7 +30,7 @@ describe('out12 account menu', () => {
   });
 
   it('bumps the cache versions', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v62-2026-11-20'/);
-    assert.match(read('public/index.html'), /app\.css\?v=49/);
+    assert.match(read('public/sw.js'), /VERSION = 'v63-2026-11-20'/);
+    assert.match(read('public/index.html'), /app\.css\?v=50/);
   });
 });

@@ -4014,13 +4014,14 @@ html.menu-lock body {
 .promo-inline-rows {
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
+  gap: 0.875rem;
 }
 .promo-rail .feed-promo,
 .profile-promoted .feed-promo,
 .ev-rail-block .feed-promo {
-  margin-inline: 0;
+  margin: 0;
 }
+
 
 @media (min-width: 1180px) {
   .rail-layout {
@@ -10801,6 +10802,22 @@ body[data-page="profile"] .main {
 .profile-body { gap: 0.8rem; min-width: 0; }
 
 .profile-rail-body { padding: 0 0.9rem 0.85rem; }
+.profile-promo-tiles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+.profile-promo-tiles > .ev-tile,
+.profile-promo-tiles > .promo-card,
+.profile-promo-tiles > .card {
+  margin: 0;
+  position: relative;
+}
+.profile-promo-tiles > .ev-tile:hover,
+.profile-promo-tiles > .ev-tile:focus-visible,
+.profile-promo-tiles > .card.hover:hover {
+  z-index: 1;
+}
 .profile-soon-row {
   display: flex;
   align-items: center;
