@@ -63,7 +63,8 @@ describe('device auto-select', () => {
   it('hooks prejoin, device sheet, watchdog, and a speaker test', () => {
     const room = read('public/js/room/room.js');
     assert.match(room, /pickWorking/);
-    assert.match(room, /Not working\? Try next/);
+    assert.match(room, /Try next/);
+    assert.match(room, /icon\('refresh'/);
     assert.match(room, /Play test sound/);
     assert.match(room, /startWatchdog/);
     assert.match(room, /setSinkId/);

@@ -452,7 +452,7 @@ p {
   }
   .topnav {
     flex: 0 1 auto;
-    gap: 0;
+    gap: 0.45rem;
     margin-left: 0;
     overflow-x: auto;
     scrollbar-width: none;
@@ -470,12 +470,19 @@ p {
     padding-inline: 0.5rem;
     font-size: 0;
   }
-  .top-desktop {
+  .top-desktop,
+  .top-create {
     width: 36px;
+    height: 36px;
     min-width: 36px;
     justify-content: center;
-    padding-inline: 0;
+    padding: 0;
+    gap: 0;
     font-size: 0;
+    border-radius: 50%;
+  }
+  .top-create-lbl {
+    display: none;
   }
 }
 
@@ -3339,6 +3346,32 @@ button.list-item:hover {
   padding: 0.8rem 0.75rem;
   font-size: 1rem;
 }
+/* Account menu: light alternating theme tints, same on the mobile sheet. */
+.menu.menu-account {
+  padding: 8px;
+  overflow: hidden;
+}
+.menu.menu-account > button {
+  border-radius: 12px;
+  margin: 2px 0;
+}
+.menu.menu-account > button:nth-of-type(odd) {
+  background: color-mix(in srgb, var(--accent) 8%, var(--s1));
+}
+.menu.menu-account > button:nth-of-type(even) {
+  background: color-mix(in srgb, var(--accent-2, var(--brand, var(--accent))) 9%, var(--s2));
+}
+.menu.menu-account > button:hover {
+  background: color-mix(in srgb, var(--g, var(--accent)) 16%, var(--s1));
+}
+.menu.menu-account > hr {
+  margin: 6px 4px;
+  border-color: color-mix(in srgb, var(--accent) 16%, var(--line));
+}
+.menu.menu-account.menu-sheet > button {
+  border-radius: 14px;
+}
+
 @keyframes menuSheetUp {
   from {
     transform: translateY(40px);
@@ -9912,7 +9945,9 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
 .page-messages .msg-list-head h1 { margin: 0 0 0 .2rem; font-size: 1.35rem; letter-spacing: -.01em; }
 .msg-brand { display: inline-grid; place-items: center; flex: none; filter: drop-shadow(0 6px 14px color-mix(in srgb, var(--accent) 35%, transparent)); }
 .msg-brand svg { display: block; }
-.page-messages .msg-new { color: #fff; background: var(--accent-action, var(--accent)); border-radius: 12px; }
+.page-messages .msg-list-head .icon-btn { border-radius: 50%; background: var(--s2); }
+.page-messages .msg-list-head .icon-btn:hover { background: color-mix(in srgb, var(--accent) 12%, var(--s2)); }
+.page-messages .msg-new { color: #fff; background: var(--accent-action, var(--accent)); border-radius: 50%; }
 .page-messages .msg-new:hover { background: color-mix(in srgb, var(--accent-action, var(--accent)) 88%, #000); }
 .page-messages .msg-search { display: flex; align-items: center; gap: .45rem; margin: .4rem .85rem .5rem; padding: 0 .35rem 0 .8rem; height: 42px; border-radius: var(--r-pill); background: var(--s2); border: 1px solid transparent; color: var(--muted); transition: border-color .15s, background .15s; }
 .page-messages .msg-search:focus-within { border-color: color-mix(in srgb, var(--accent) 55%, transparent); background: var(--s1); }

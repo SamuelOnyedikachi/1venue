@@ -31,7 +31,9 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
 .page-messages .msg-list-head h1 { margin: 0 0 0 .2rem; font-size: 1.35rem; letter-spacing: -.01em; }
 .msg-brand { display: inline-grid; place-items: center; flex: none; filter: drop-shadow(0 6px 14px color-mix(in srgb, var(--accent) 35%, transparent)); }
 .msg-brand svg { display: block; }
-.page-messages .msg-new { color: #fff; background: var(--accent-action, var(--accent)); border-radius: 12px; }
+.page-messages .msg-list-head .icon-btn { border-radius: 50%; background: var(--s2); }
+.page-messages .msg-list-head .icon-btn:hover { background: color-mix(in srgb, var(--accent) 12%, var(--s2)); }
+.page-messages .msg-new { color: #fff; background: var(--accent-action, var(--accent)); border-radius: 50%; }
 .page-messages .msg-new:hover { background: color-mix(in srgb, var(--accent-action, var(--accent)) 88%, #000); }
 .page-messages .msg-search { display: flex; align-items: center; gap: .45rem; margin: .4rem .85rem .5rem; padding: 0 .35rem 0 .8rem; height: 42px; border-radius: var(--r-pill); background: var(--s2); border: 1px solid transparent; color: var(--muted); transition: border-color .15s, background .15s; }
 .page-messages .msg-search:focus-within { border-color: color-mix(in srgb, var(--accent) 55%, transparent); background: var(--s1); }

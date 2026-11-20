@@ -126,9 +126,9 @@ export const closeTopSheet = () => { const s = sheetStack[sheetStack.length - 1]
  * screen and scrolls when it is too tall. On phones it is a bottom sheet instead. Pass { header } for
  * extra content on top (e.g. quick reactions) so it is measured before the menu is placed.
  */
-export function menu(anchor, items, { header = null, sheet: asSheet = isMobile() } = {}) {
+export function menu(anchor, items, { header = null, sheet: asSheet = isMobile(), cls = '' } = {}) {
   document.querySelectorAll('.menu').forEach((x) => x.remove());
-  const m = h('div', { class: 'menu' + (asSheet ? ' menu-sheet' : ''), role: 'menu' });
+  const m = h('div', { class: 'menu' + (asSheet ? ' menu-sheet' : '') + (cls ? ' ' + cls : ''), role: 'menu' });
   if (header) m.append(header);
   for (const it of items) {
     if (it === '-') { m.append(h('hr')); continue; }

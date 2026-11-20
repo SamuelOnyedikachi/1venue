@@ -134,3 +134,17 @@ test('discovery combines host, tag and text filters on SQLite', async () => {
   }
   assert.deepEqual(await data.discover({ host: 'unknown_host', tag: 'hosting' }), []);
 });
+
+test('discover matches multi-word queries across title, host, category, and falls back to OR', async () => {
+  const ev = await data.createEvent({ id: user.id, username: 'host', displayName: 'Ada' }, { title: 'Music as Inner Peace', category: 'seminar', tags: ['youth'] });
+  const ids = async (q) => (await data.discover({ q })).map((e) => e.id);
+  assert.ok((await ids('music')).includes(ev.id));
+  assert.ok((await ids('seminars')).includes(ev.id), 'singular category matches plural query');
+  assert.ok((await ids('music seminars')).includes(ev.id), 'AND across title + category');
+  assert.ok((await ids('ada seminars')).includes(ev.id), 'AND across host + category');
+  assert.ok((await ids('sqlite seminar')).length >= 1);
+  assert.ok((await ids('music unicorns')).includes(ev.id), 'OR fallback when AND is empty');
+  const people = await data.searchUsers('ada host');
+  assert.ok(people.some((u) => u.id === user.id || u.username === 'host'));
+});
+

@@ -155,9 +155,17 @@ async function profileRail(userId, viewerId) {
   return { upcoming, stats, venues, similarHosts: similar };
 }
 async function searchUsers(term, limit = 8) {
-  const t = `%${String(term).toLowerCase()}%`;
-  return (await many(`SELECT * FROM users WHERE LOWER(COALESCE(display_name,'')) LIKE $1 OR LOWER(COALESCE(handle,'')) LIKE $1
-     OR LOWER(username) LIKE $1 ORDER BY id DESC LIMIT $2`, [t, limit])).map(userCard);
+  const tokens = [...new Set(String(term || '').toLowerCase().match(/[\p{L}\p{N}]+/gu) || [])].slice(0, 8);
+  if (!tokens.length) return [];
+  const field = (i) => `LOWER(COALESCE(display_name,'')) LIKE $${i} OR LOWER(COALESCE(handle,'')) LIKE $${i} OR LOWER(username) LIKE $${i}`;
+  const run = async (join) => {
+    const params = tokens.map((t) => `%${t}%`);
+    const where = tokens.map((_, i) => `(${field(i + 1)})`).join(join);
+    return many(`SELECT * FROM users WHERE ${where} ORDER BY id DESC LIMIT $${params.length + 1}`, [...params, limit]);
+  };
+  let rows = await run(' AND ');
+  if (!rows.length && tokens.length > 1) rows = await run(' OR ');
+  return rows.map(userCard);
 }
 
 // ---------------------------------------------------------------- follows / posts

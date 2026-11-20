@@ -300,7 +300,7 @@ function renderUserSlot() {
       { label: 'Settings', icon: 'settings', group: 'settings', run: () => navigate('/settings') },
       state.user.isAdmin ? { label: 'Admin', icon: 'shield', group: 'admin', run: () => navigate('/admin') } : null, '-',
       { label: 'Sign out', icon: 'logout', group: 'admin', run: logout },
-    ]);
+    ], { cls: 'menu-account' });
     creditControl=creditBadge();
     slot.append(creditControl.badge,b);
   } else {
@@ -319,16 +319,17 @@ function buildShell() {
     'data-nav-books': '',
     'aria-haspopup': 'menu',
     'aria-label': 'Books - Bible and Qur’an',
+    'data-tip': 'Books',
     html: icon('bookOpen', { size: 18 }) + 'Books',
   });
   booksBtn.onclick = (e) => { e.preventDefault(); openBooksPicker(booksBtn); };
   const top = h('header', { class: 'topbar' },
     h('a', { class: 'brand', href: '/', 'data-link': '', html: LOGO(30) + '<span>1venue</span>' }),
     h('nav', { class: 'topnav', 'aria-label': 'Primary' },
-      ...NAV.map(([p, ic, l]) => h('a', { href: p, 'data-link': '', 'data-nav': p, html: icon(ic, { size: 18 }) + l })),
+      ...NAV.map(([p, ic, l]) => h('a', { href: p, 'data-link': '', 'data-nav': p, 'data-tip': l, 'aria-label': l, html: icon(ic, { size: 18 }) + l })),
       booksBtn),
     h('div', { class: 'grow' }),
-    h('a', { class: 'btn sm primary top-desktop', href: '/create', 'data-link': '', html: icon('plus', { size: 16 }) + 'Create' }),
+    h('a', { class: 'btn sm primary top-desktop top-create', href: '/create', 'data-link': '', 'data-tip': 'Create', 'aria-label': 'Create', html: icon('plus', { size: 18 }) + '<span class="top-create-lbl">Create</span>' }),
     h('div', { class: 'row', 'data-group': 'nav', style: { gap: '2px' } },
       themeBtn, h('div', { id: 'userslot', class: 'row' })),
   );

@@ -1,6 +1,7 @@
 /**
  * Reminder scheduler: an in-process tick (every REMINDER_TICK_MS, default 60 s) that emails, and
- * optionally WhatsApps, people before scheduled events and meetings start.
+ * optionally WhatsApps, people before scheduled events and meetings start. The same tick also
+ * writes a Notification in-app message (channel 'inapp'), deduped through reminder_sends.
  *
  * Idempotent across restarts and replicas: before anything is sent, a row is INSERTed into
  * reminder_sends with a UNIQUE (target, lead, channel, recipient) key. Only the process whose
@@ -13,7 +14,7 @@
  * Hosts need a plan with "reminders" (WhatsApp also needs "whatsapp"); per event they can turn
  * reminders off with settings.reminders=false.
  */
-const { q, many } = require('../../core/db');
+const { q, many, one } = require('../../core/db');
 const plans = require('../../lib/plans');
 const whatsapp = require('./whatsapp');
 
@@ -50,12 +51,34 @@ async function deliver(r, msg, counts) {
       if (r.userId) data.unsubUrl = mail.unsubUrl(r.userId, 'reminders');
       const out = await require('../mail/mailer').send('reminder', r.recipient, data);
       await done(r, out.sent || out.reason === 'not-configured' ? 'sent' : 'failed', out.sent ? null : out.reason);
+    } else if (r.channel === 'inapp') {
+      if (!r.userId) { await done(r, 'failed', 'no-user'); counts.failed++; return; }
+      const mail = require('../mail/prefs');
+      if (!(await mail.canSend(r.userId, 'reminders'))) { await done(r, 'sent', 'opted-out'); counts.sent++; return; }
+      const notify = require('../messages/notify');
+      const extra = await notify.extraOf(r.userId);
+      const call = notify.callPrefs(extra);
+      const quiet = notify.inQuietHours({ ...call, enabled: true, optOut: false });
+      await notify.send(r.userId, {
+        style: 'compact',
+        text: msg.intro || msg.title,
+        links: msg.link ? [{ label: msg.button || 'Open', href: msg.link }] : [],
+        card: { type: msg.kind || 'event', title: msg.name, link: msg.link, when: msg.when },
+        notify: !quiet,
+      });
+      await done(r, 'sent');
     } else {
       await whatsapp.send({ to: r.recipient, params: [msg.name, msg.when, msg.link] });
       await done(r, 'sent');
     }
     counts.sent++;
   } catch (e) { counts.failed++; await done(r, 'failed', String(e.message || e).slice(0, 200)).catch(() => {}); }
+}
+
+async function userIdForEmail(email) {
+  if (!email) return null;
+  const u = await one('SELECT id FROM users WHERE lower(email)=lower($1) LIMIT 1', [String(email)]);
+  return u ? u.id : null;
 }
 
 let running = false;
@@ -86,9 +109,10 @@ async function tick(now = new Date()) {
       if (!e.features.reminders) continue;
       const people = await many(`SELECT id, email, phone FROM users WHERE id=$1 OR id IN (SELECT user_id FROM event_rsvps WHERE event_id=$2)
         OR id IN (SELECT user_id FROM tickets WHERE event_id=$2 AND status='valid')`, [ev.host_user_id, ev.id]);
-      const msg = { name: ev.title, when: when(ev.starts_at), link: new URL(`/e/${ev.slug}`, site).href, title: `${ev.title} starts in ${label(lead)}`, intro: `${ev.title} starts ${when(ev.starts_at)}.`, button: 'Open event' };
+      const msg = { kind: 'event', name: ev.title, when: when(ev.starts_at), link: new URL(`/e/${ev.slug}`, site).href, title: `${ev.title} starts in ${label(lead)}`, intro: `${ev.title} starts ${when(ev.starts_at)}.`, button: 'Open event' };
       for (const p of people) {
         if (p.email) await deliver({ type: 'event', id: ev.id, lead, channel: 'email', recipient: String(p.email).toLowerCase(), userId: p.id }, msg, counts);
+        if (p.id) await deliver({ type: 'event', id: ev.id, lead, channel: 'inapp', recipient: 'user:' + p.id, userId: p.id }, msg, counts);
         if (waOn && e.features.whatsapp && p.phone) await deliver({ type: 'event', id: ev.id, lead, channel: 'whatsapp', recipient: p.phone, userId: p.id }, msg, counts);
       }
     }
@@ -101,9 +125,13 @@ async function tick(now = new Date()) {
       const e = await ent(m.host_user_id);
       if (!e.features.reminders) continue;
       let inv = []; try { inv = JSON.parse(m.invitees || '[]'); } catch (_) {}
-      const msg = { name: m.name, when: when(m.scheduled_start), link: new URL(`/${m.code}`, site).href, title: `${m.name} starts in ${label(lead)}`, intro: `${m.name} starts ${when(m.scheduled_start)}.`, button: 'Join meeting' };
+      const msg = { kind: 'meeting', name: m.name, when: when(m.scheduled_start), link: new URL(`/${m.code}`, site).href, title: `${m.name} starts in ${label(lead)}`, intro: `${m.name} starts ${when(m.scheduled_start)}.`, button: 'Join meeting' };
       const emails = [...new Set([m.email, ...inv].filter(Boolean).map((x) => String(x).toLowerCase()))];
-      for (const em of emails) await deliver({ type: 'meeting', id: m.id, lead, channel: 'email', recipient: em, userId: em === String(m.email).toLowerCase() ? m.host_user_id : null }, msg, counts);
+      for (const em of emails) {
+        const uid = em === String(m.email).toLowerCase() ? m.host_user_id : await userIdForEmail(em);
+        await deliver({ type: 'meeting', id: m.id, lead, channel: 'email', recipient: em, userId: uid }, msg, counts);
+        if (uid) await deliver({ type: 'meeting', id: m.id, lead, channel: 'inapp', recipient: 'user:' + uid, userId: uid }, msg, counts);
+      }
       if (waOn && e.features.whatsapp && m.phone) await deliver({ type: 'meeting', id: m.id, lead, channel: 'whatsapp', recipient: m.phone, userId: m.host_user_id }, msg, counts);
     }
     if (counts.sent || counts.failed) console.log(`[reminders] sent ${counts.sent}, failed ${counts.failed}, already sent ${counts.skipped}`);

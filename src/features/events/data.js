@@ -147,6 +147,39 @@ async function getEventByCode(code) {
 /**
  * Discovery: full-text + trigram fuzzy search across public events.
  */
+
+function searchTokens(term) {
+  return [...new Set(String(term || '').toLowerCase().match(/[\p{L}\p{N}]+/gu) || [])].slice(0, 8);
+}
+function tokenVariants(tok) {
+  const out = [tok];
+  if (tok.length > 3 && tok.endsWith('s') && !tok.endsWith('ss')) out.push(tok.slice(0, -1));
+  return out;
+}
+/** One token may match any searchable field. Returns a SQL fragment and pushes params. */
+function tokenFieldClause(tok, params) {
+  const idxs = tokenVariants(tok).map((v) => { params.push(v); return params.length; });
+  const like = (col) => idxs.map((i) => (USE_PG ? `${col} ILIKE '%' || $${i} || '%'` : `LOWER(COALESCE(${col},'')) LIKE '%' || $${i} || '%'`)).join(' OR ');
+  const cat = idxs.map((i) => (USE_PG
+    ? `(LOWER(e.category) LIKE '%' || $${i} || '%' OR $${i} LIKE LOWER(e.category) || '%')`
+    : `(LOWER(e.category) LIKE '%' || $${i} || '%' OR $${i} LIKE LOWER(e.category) || '%')`)).join(' OR ');
+  const tags = USE_PG
+    ? idxs.map((i) => `EXISTS (SELECT 1 FROM unnest(COALESCE(e.tags, ARRAY[]::text[])) t WHERE t ILIKE '%' || $${i} || '%')`).join(' OR ')
+    : idxs.map((i) => `EXISTS (SELECT 1 FROM json_each(e.tags) WHERE LOWER(value) LIKE '%' || $${i} || '%')`).join(' OR ');
+  return `(${like('e.title')} OR ${like('e.description')} OR ${like('e.host_name')} OR ${like('u.username')} OR ${like("COALESCE(u.display_name,'')")} OR (${cat}) OR (${tags}))`;
+}
+function discoverSearch(term, params) {
+  const tokens = searchTokens(term);
+  if (!tokens.length) return null;
+  const clauses = tokens.map((t) => tokenFieldClause(t, params));
+  return {
+    tokens,
+    andWhere: clauses.map((c) => `(${c})`).join(' AND '),
+    orWhere: clauses.map((c) => `(${c})`).join(' OR '),
+    rank: clauses.map((c) => `(CASE WHEN ${c} THEN 1 ELSE 0 END)`).join(' + '),
+  };
+}
+
 async function discover({ q: term, category, status, tag, host, limit = 24, offset = 0, viewerId } = {}) {
   const where = ["e.visibility='public'", "e.status <> 'draft'", "e.status <> 'cancelled'"];
   const params = [viewerId || 0];
@@ -161,19 +194,13 @@ async function discover({ q: term, category, status, tag, host, limit = 24, offs
     if (/^\d+$/.test(h)) { params.push(Number(h)); where.push(`e.host_user_id=$${params.length}`); }
     else { params.push(h.toLowerCase()); where.push(`LOWER(u.username)=$${params.length}`); }
   }
+  let search = null;
   if (term && String(term).trim()) {
-    const t = String(term).trim().slice(0, 100);
-    params.push(t);
-    const i = params.length;
-    if (USE_PG) {
-      where.push(`(e.search @@ plainto_tsquery('simple', $${i}) OR e.title % $${i} OR e.title ILIKE '%' || $${i} || '%' OR e.host_name ILIKE '%' || $${i} || '%')`);
-      rank = `(e.status='live') DESC, ts_rank(e.search, plainto_tsquery('simple', $${i})) + similarity(e.title, $${i}) DESC`;
-    } else {
-      const words = t.toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
-      const fts = words.map((word) => `"${word.replace(/"/g, '')}"*`).join(' ');
-      if (fts) params.push(fts);
-      where.push(`(${fts ? `e.id IN (SELECT rowid FROM event_search WHERE event_search MATCH $${params.length}) OR ` : ''}e.title LIKE '%' || $${i} || '%' OR e.host_name LIKE '%' || $${i} || '%')`);
-      rank = `(e.status='live') DESC, (lower(e.title)=lower($${i})) DESC, e.started_at DESC NULLS LAST`;
+    // Snapshot param length so AND / OR queries can share the same bound values.
+    search = discoverSearch(String(term).trim().slice(0, 100), params);
+    if (search) {
+      where.push(`(${search.andWhere})`);
+      rank = `(e.status='live') DESC, (${search.rank}) DESC, e.started_at DESC NULLS LAST`;
     }
   } else {
     rank = `(e.status='live') DESC, (e.status='scheduled') DESC, ${rank}`;
@@ -182,8 +209,17 @@ async function discover({ q: term, category, status, tag, host, limit = 24, offs
   let boost = 1;
   try { boost = require('../../lib/plans').platform(await require('../../lib/plans').getSettings()).verifiedBoost; } catch (_) {}
   if (boost) rank = rank.replace("(e.status='live') DESC", `(e.status='live') DESC, (CASE WHEN ${verifiedSql('u')} THEN 1 ELSE 0 END) DESC`);
-  params.push(Math.min(60, limit), Math.max(0, offset));
-  const rows = await many(`${EVENT_SELECT('$1')} WHERE ${where.join(' AND ')} ORDER BY ${rank} LIMIT $${params.length - 1} OFFSET $${params.length}`, params);
+  const run = async (filter) => {
+    const p = params.concat([Math.min(60, limit), Math.max(0, offset)]);
+    const sql = `${EVENT_SELECT('$1')} WHERE ${filter} ORDER BY ${rank} LIMIT $${p.length - 1} OFFSET $${p.length}`;
+    return many(sql, p);
+  };
+  let rows = await run(where.join(' AND '));
+  if (search && !rows.length && search.tokens.length > 1 && !offset) {
+    const orWhere = where.slice();
+    orWhere[orWhere.length - 1] = `(${search.orWhere})`;
+    rows = await run(orWhere.join(' AND '));
+  }
   return rows.map(eventOut);
 }
 async function categoryCounts() {
@@ -304,4 +340,4 @@ async function syncSpeakerInvites(userId, email) {
   return r.rowCount || 0;
 }
 
-module.exports = { CATEGORIES, slugify, eventOut, EVENT_SELECT, uniqueEventCode, validateEventInput, createEvent, updateEvent, deleteEvent, getEventById, getEventBySlug, getEventByCode, discover, categoryCounts, myEvents, rsvpedEvents, toggleRsvp, markEventLive, markEventEnded, updateViewers, listSpeakers, setSpeakers, syncSpeakerInvites };
+module.exports = { CATEGORIES, slugify, eventOut, EVENT_SELECT, uniqueEventCode, validateEventInput, createEvent, updateEvent, deleteEvent, getEventById, getEventBySlug, getEventByCode, discover, searchTokens, categoryCounts, myEvents, rsvpedEvents, toggleRsvp, markEventLive, markEventEnded, updateViewers, listSpeakers, setSpeakers, syncSpeakerInvites };

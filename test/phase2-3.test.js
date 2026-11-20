@@ -197,9 +197,12 @@ test('recurring series and reminders: tick twice sends each reminder once', { sk
   const a = await reminders.tick(new Date());
   const b = await reminders.tick(new Date());
   const rows = (await db.q("SELECT * FROM reminder_sends WHERE target_type='event' AND target_id=$1", [evs[0].id])).rows;
-  assert.equal(rows.length, 2, 'host and RSVP, one row each');
+  const emails = rows.filter((r) => r.channel === 'email');
+  const inapp = rows.filter((r) => r.channel === 'inapp');
+  assert.equal(emails.length, 2, 'host and RSVP email, one row each');
+  assert.equal(inapp.length, 2, 'host and RSVP in-app, one row each');
   assert.ok(rows.every((r) => Number(r.lead_min) === 60));
-  assert.ok(a.sent + a.failed >= 2); assert.equal(b.sent, 0, 'second tick (or a restart) sends nothing new');
+  assert.ok(a.sent + a.failed >= 4); assert.equal(b.sent, 0, 'second tick (or a restart) sends nothing new');
   const list = (await alice.get('/api/series')).body.series;
   assert.ok(list.some((x) => x.id === sr.body.series.id));
   assert.equal((await bob.del('/api/series/' + sr.body.series.id)).status, 404, 'not yours');
