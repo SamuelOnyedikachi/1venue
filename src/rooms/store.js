@@ -69,6 +69,7 @@ function createParticipant({
   device = 'desktop',
   status = 'ACTIVE',
   email = null,
+  verified = false,
 }) {
   return {
     id,
@@ -79,6 +80,7 @@ function createParticipant({
     userId,
     username: username || null,
     email,
+    verified: !!verified,
     device,
     mutedByHost: false,
     handRaisedAt: null,
@@ -144,6 +146,7 @@ function serializeParticipant(meeting, p) {
     sharing: !!p.sharing,
     userId: p.userId || null,
     username: p.username || null,
+    verified: !!p.verified,
     device: p.device || 'desktop',
     mutedByHost: !!p.mutedByHost,
     handRaised: !!p.handRaisedAt,

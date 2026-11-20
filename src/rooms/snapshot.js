@@ -75,9 +75,22 @@ function finishRestored(meeting, from) {
   return meeting;
 }
 
+async function attachVerified(meeting) {
+  const people = meeting && meeting.participants instanceof Map ? [...meeting.participants.values()] : [];
+  const ids = [...new Set(people.map((p) => p.userId).filter(Boolean).map(Number))];
+  if (!ids.length) return;
+  const { isVerified } = require('../lib/auth');
+  const rows = (await db.q('SELECT id, email, email_verified_at, verified_active FROM users WHERE id = ANY($1::int[])', [ids])).rows;
+  const byId = new Map(rows.map((r) => [Number(r.id), isVerified(r)]));
+  for (const p of people) {
+    if (p.userId) p.verified = !!byId.get(Number(p.userId));
+  }
+}
+
 async function place(code, meeting, from) {
   finishRestored(meeting, from);
   if (!(await adoptBilling(meeting))) return null;
+  try { await attachVerified(meeting); } catch (e) { console.warn('[snapshot] verified', meeting && meeting.code, e.message); }
   store.setMeeting(code, meeting);
   try { await snapshotOne(meeting); } catch (e) { console.warn('[snapshot] resave', code, e.message); }
   console.log(`[snapshot] restored ${code} from ${from} (${meeting.participants.size} participants)`);

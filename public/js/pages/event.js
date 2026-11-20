@@ -1,7 +1,7 @@
 import { icon } from '../icons.js';
 import { h, api, esc, frag, fmtDate, fmtNum, toast, toastErr, sheet, confirmDlg, avatar, md, download, copy, debounce, uploadFile, profilePath } from '../ui.js';
 import { state, navigate, requireLogin } from '../app.js';
-import { catOf, commentThread, shareLink, sectionHead, empty, followBtn, railSoonRow, railHostBlock } from '../components.js';
+import { catOf, commentThread, shareLink, sectionHead, empty, followBtn, railSoonRow, railHostBlock, verifiedDot } from '../components.js';
 import { registerCommands, unregisterCommands } from '../commands.js';
 import { promoCompact, loadPromos } from '../promo.js';
 import { loadMoney, fmtMoney, checkoutSheet } from '../money.js';
@@ -159,7 +159,7 @@ export async function mount(view, { slug }) {
       h('p', { class: 'small', style: { margin: 0 } }, `${ev.meetingEntryPriceCredits} credits · ${ev.meetingDurationMin} minutes advertised. Sign in and ask to join; credits are charged only when the host accepts you.`))
     : null;
   const speakersBlock = speakers.length ? h('div', null, sectionHead('Speakers', 'stage'), h('div', { class: 'speaker-cards' }, speakers.map((sp) => h(sp.userId ? 'a' : 'div', { class: 'card speaker-card', href: sp.userId ? profilePath({ username: sp.username, id: sp.userId }) : null, 'data-link': sp.userId ? '' : null, style: { '--c1': c1, '--c2': c2 } },
-    h('div', { class: 'band' }), avatar(sp.name, sp.avatarUrl, 'xl ring'), h('strong', null, sp.name), h('span', { class: 'muted small' }, sp.headline || 'Speaker'))))) : null;
+    h('div', { class: 'band' }), avatar(sp.name, sp.avatarUrl, 'xl ring'), h('strong', { class: 'row', style: { alignItems: 'center', justifyContent: 'center', gap: '.25rem' } }, sp.name, verifiedDot(sp)), h('span', { class: 'muted small' }, sp.headline || 'Speaker'))))) : null;
 
   const panel = (...nodes) => h('section', { class: 'ev-panel' }, ...nodes.filter(Boolean));
   const liveSlot = h('div');

@@ -84,8 +84,8 @@ async function listVerified() {
     .map((r) => ({ id: r.id, username: r.username, name: r.display_name || r.username, email: r.email, verifiedAt: r.verified_at, active: !!r.verified_active }));
 }
 async function isVerified(userId) {
-  const r = await one('SELECT verified_active FROM users WHERE id=$1', [userId]);
-  return !!(r && r.verified_active);
+  const r = await one('SELECT email, email_verified_at, verified_active FROM users WHERE id=$1', [userId]);
+  return require('../../lib/auth').isVerified(r);
 }
 
 module.exports = { cleanBranding, imageUrl, publicBranding, saveBranding, refreshVerified, setVerified, listVerified, isVerified };

@@ -13,6 +13,7 @@ import { openMini } from '../messages/mini.js';
 import { safeText, safeList, put, add } from '../safe-text.js';
 
 const I = (n, s = 18) => h('span', { class: 'i', html: icon(n, { size: s }) });
+const vMark = (on) => on ? h('span', { class: 'verified-dot', title: 'Verified', 'aria-label': 'Verified', html: icon('check', { size: 11 }) }) : null;
 const ib = (ic, label, run, cls = '') => h('button', { class: `icon-btn ${cls}`, type: 'button', 'aria-label': label, 'data-tip': label, onclick: run, html: icon(ic, { size: 20 }) });
 const linkify = (s) => esc(s).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
 const hhmm = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -88,7 +89,7 @@ export async function mount(view, params) {
     return h('a', { class: `msg-item${S.conv && S.conv.id === c.id ? ' on' : ''}${c.unread ? ' unread' : ''}`, href: `/messages/${c.id}`, 'data-link': '', role: 'listitem' },
       av,
       h('span', { class: 'msg-item-main' },
-        h('span', { class: 'msg-item-top' }, c.starred ? h('span', { class: 'msg-star', html: icon('star', { size: 13 }) }) : null, h('b', { class: 'ellipsis' }, c.title),
+        h('span', { class: 'msg-item-top' }, c.starred ? h('span', { class: 'msg-star', html: icon('star', { size: 13 }) }) : null, h('b', { class: 'ellipsis' }, c.title), vMark(c.peer && c.peer.verified),
           c.labels && c.labels.length ? h('span', { class: 'msg-labels' }, c.labels.slice(0, 2).map((l) => h('span', { class: 'msg-label', style: { '--lc': l.color } }, l.name)), c.labels.length > 2 ? h('span', { class: 'msg-label more' }, `+${c.labels.length - 2}`) : null) : null,
           c.pinned ? I('pin', 14) : null, c.muted ? I('volumeX', 14) : null, h('time', null, timeAgo(c.lastMessageAt))),
         h('span', { class: 'msg-item-bot' }, c.followUp ? h('span', { class: 'msg-flag', 'data-tip': 'Follow up', html: icon('flag', { size: 12 }) }) : null,
@@ -171,7 +172,9 @@ export async function mount(view, params) {
     const c = S.conv;
     const back = h('a', { class: 'icon-btn msg-back', href: '/messages', 'data-link': '', 'aria-label': 'Back to chats', html: icon('chevronLeft', { size: 22 }) });
     const av = c.type === 'dm' ? avatar(c.title, c.avatarUrl, 'md') : h('span', { class: `av md msg-av-ic ${c.type}`, html: icon(c.type === 'meeting' ? 'video' : 'users', { size: 20 }) });
-    const titleEl = c.type === 'dm' && c.peer && c.peer.username ? h('a', { href: `/u/${c.peer.username}`, 'data-link': '', class: 'ellipsis' }, c.title) : h('span', { class: 'ellipsis' }, c.title);
+    const titleEl = h('span', { class: 'row', style: { alignItems: 'center', gap: '.2rem', minWidth: 0 } },
+      c.type === 'dm' && c.peer && c.peer.username ? h('a', { href: `/u/${c.peer.username}`, 'data-link': '', class: 'ellipsis' }, c.title) : h('span', { class: 'ellipsis' }, c.title),
+      vMark(c.peer && c.peer.verified));
     const canCall = c.canSend && c.type !== 'meeting';
     const head = h('header', { class: 'msg-thread-head' }, back, h('button', { class: 'msg-head-who', type: 'button', 'aria-label': 'Contact details', onclick: () => toggleSide() }, av,
       h('div', { class: 'msg-thread-title' }, h('b', null, titleEl), h('span', { class: 'muted tiny msg-presence' }, presenceText(c)))),
@@ -262,7 +265,8 @@ export async function mount(view, params) {
     const ticks = mine && !m.deleted ? h('span', { class: `msg-ticks${read ? ' read' : ''}`, 'aria-label': read ? 'Read' : c.type === 'dm' ? 'Delivered' : 'Sent', html: icon(c.type === 'dm' ? 'checkCheck' : 'check', { size: 15 }) }) : null;
     const seen = null;
     const pinned = S.pins.some((p) => p.id === m.id);
-    const bubble = h('div', { class: 'msg-bubble' }, showName ? h('b', { class: 'msg-who' }, m.fromName) : null, body,
+    const fromVerified = !!(c.peer && Number(c.peer.id) === Number(m.fromUserId) && c.peer.verified) || !!(c.members || []).find((u) => Number(u.id) === Number(m.fromUserId))?.verified;
+    const bubble = h('div', { class: 'msg-bubble' }, showName ? h('b', { class: 'msg-who row', style: { alignItems: 'center', gap: '.2rem' } }, m.fromName, vMark(fromVerified)) : null, body,
       h('span', { class: 'msg-meta' }, pinned ? I('pin', 11) : null, m.payload && m.payload.scheduled ? I('clock', 11) : null, m.editedAt && !m.deleted ? 'edited · ' : '', hhmm(m.createdAt), ticks));
     const row = h('div', { class: `msg-row${mine ? ' mine' : ''}${grouped ? ' grouped' : ''}`, 'data-id': m.id },
       !mine && c.type !== 'dm' ? (grouped ? h('span', { class: 'msg-av-gap' }) : avatar(m.fromName, null, 'sm')) : null,

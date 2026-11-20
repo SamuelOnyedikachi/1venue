@@ -16,6 +16,7 @@ const { normCode } = require('../../lib/codes');
 const { rateLimit } = require('../../lib/http');
 const { normalizeAttachment } = require('../../lib/attachment');
 const access = require('./access');
+const { isVerified } = require('../../lib/auth');
 const socket = require('./socket');
 const push = require('./push');
 
@@ -137,7 +138,7 @@ async function decorate(rows, me, { unread = true } = {}) {
   if (!rows.length) return [];
   const e = await ent(me); const cutoff = retentionCutoff(e);
   const dmPeers = [...new Set(rows.filter((r) => r.type === 'dm').map((r) => peerOf(r, me)).filter(Boolean))];
-  const peers = new Map((dmPeers.length ? await many('SELECT id, username, display_name, avatar_url FROM users WHERE id = ANY($1::int[])', [dmPeers]) : []).map((u) => [Number(u.id), u]));
+  const peers = new Map((dmPeers.length ? await many('SELECT id, username, display_name, avatar_url, email, email_verified_at, verified_active FROM users WHERE id = ANY($1::int[])', [dmPeers]) : []).map((u) => [Number(u.id), u]));
   const blocked = await access.blockedByMe(me);
   const groupIds = rows.filter((r) => r.type !== 'dm').map((r) => Number(r.id));
   const counts = new Map((groupIds.length ? await many('SELECT conversation_id, COUNT(*) AS n FROM conversation_members WHERE conversation_id = ANY($1::int[]) AND left_at IS NULL GROUP BY conversation_id', [groupIds]) : []).map((r) => [Number(r.conversation_id), Number(r.n)]));
@@ -152,7 +153,7 @@ async function decorate(rows, me, { unread = true } = {}) {
     out.push({
       id: c.id, type: c.type, subtype: subtype(c),
       title: c.type === 'dm' ? (pu ? pu.display_name || pu.username : ANON) : c.title || 'Group',
-      peer: c.type === 'dm' ? (pu ? { id: Number(pu.id), username: pu.username, name: pu.display_name || pu.username, avatarUrl: pu.avatar_url || null } : { id: null, name: ANON, deleted: true }) : null,
+      peer: c.type === 'dm' ? (pu ? { id: Number(pu.id), username: pu.username, name: pu.display_name || pu.username, avatarUrl: pu.avatar_url || null, verified: isVerified(pu) } : { id: null, name: ANON, deleted: true }) : null,
       avatarUrl: pu ? pu.avatar_url || null : null,
       lastMessageAt: c.last_message_at || c.created_at, lastPreview: c.last_preview || '',
       unread: unread ? await unreadCount(c, me, cutoff) : 0,
@@ -249,8 +250,8 @@ async function getConversation(me, id) {
     out.peerReplied = await hasSent(c, out.peer.id);
     out.peerReadId = out.peerReplied && pr ? Number(pr.last_read_message_id) : 0;
   } else if (c.type !== 'dm') {
-    out.members = (await many(`SELECT u.id, u.username, u.display_name, u.avatar_url, m.role FROM conversation_members m JOIN users u ON u.id=m.user_id
-      WHERE m.conversation_id=$1 AND m.left_at IS NULL ORDER BY m.role, m.joined_at LIMIT 200`, [c.id])).map((u) => ({ id: Number(u.id), username: u.username, name: u.display_name || u.username, avatarUrl: u.avatar_url || null, role: u.role }));
+    out.members = (await many(`SELECT u.id, u.username, u.display_name, u.avatar_url, u.email, u.email_verified_at, u.verified_active, m.role FROM conversation_members m JOIN users u ON u.id=m.user_id
+      WHERE m.conversation_id=$1 AND m.left_at IS NULL ORDER BY m.role, m.joined_at LIMIT 200`, [c.id])).map((u) => ({ id: Number(u.id), username: u.username, name: u.display_name || u.username, avatarUrl: u.avatar_url || null, role: u.role, verified: isVerified(u) }));
   }
   out.pins = await require('./power').listPins(c, me).catch(() => []);
   return out;

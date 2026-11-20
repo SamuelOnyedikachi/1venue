@@ -183,6 +183,7 @@ async function route() {
       state.route = { path, params, mod };
       const isRoom = !!mod.isRoom; setRoomMode(isRoom);
       highlightNav(path);
+      if (state.user) import('./messages/live.js').then((m) => m.refreshUnread()).catch(() => {});
       const res = await mod.mount(view, params);
       if (seq !== routeSeq) { try { (res || mod).unmount?.(); } catch { /* ignore */ } return; }
       currentPage = res || mod;

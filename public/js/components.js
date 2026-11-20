@@ -19,13 +19,20 @@ export const CAT = {
 };
 export const catOf = (k) => CAT[k] || CAT.other;
 
+/** Small verified check next to a name. Pass a user/host/peer or a boolean. */
+export function verifiedDot(on, { title = 'Verified' } = {}) {
+  if (on && typeof on === 'object') on = !!(on.verified);
+  if (!on) return null;
+  return h('span', { class: 'verified-dot', title, 'aria-label': title, html: icon('check', { size: 11 }) });
+}
+
 export function eventCard(ev, { compact = false } = {}) {
   const [cl, ci] = catOf(ev.category);
   const dateLabel = ev.startsAt ? fmtDate(ev.startsAt, { weekday: undefined }) : null;
   const host = ev.host ? h('span', { class: 'ev-meta-item ev-host' },
     avatar(ev.host.name, ev.host.avatarUrl, 'sm'),
     h('span', { class: 'ev-host-name' }, ev.host.name || ''),
-    ev.host.verified ? h('span', { class: 'verified-dot', title: 'Verified host', 'aria-label': 'Verified host', html: icon('check', { size: 11 }) }) : null) : null;
+    verifiedDot(ev.host, { title: 'Verified host' })) : null;
   const when = dateLabel ? h('span', { class: 'ev-meta-when' },
     h('span', { class: 'ev-meta-item ev-when' },
       h('span', { class: 'ic', html: icon('calendar', { size: 13 }) }), h('span', { class: 'ev-meta-txt' }, dateLabel))) : null;
@@ -230,6 +237,7 @@ export function postCard(p, { onDelete } = {}) {
       h('a', { class: 'feed-post-av', href: profilePath(p.author), 'data-link': '' }, avatar(p.author.name, p.author.avatarUrl)),
       h('div', { class: 'feed-post-meta grow' },
         h('a', { class: 'name', href: profilePath(p.author), 'data-link': '' }, p.author.name),
+        verifiedDot(p.author),
         kind
           ? h('span', { class: 'feed-post-kind muted small', html: icon(kind[1], { size: 13, cls: 'inline' }) + ' ' + kind[0] })
           : null,

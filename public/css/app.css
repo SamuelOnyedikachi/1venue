@@ -3156,6 +3156,7 @@ button.list-item:hover {
 /* --- src/10-components/messages-ui.css --- */
 /* Messages pieces that live outside the page: nav unread badge, sheets and the quick-react row. */
 .nav-badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; margin-left: .3rem; border-radius: var(--r-pill); background: var(--g-admin); color: #fff; font-size: .66rem; font-weight: 600; line-height: 1; }
+.topnav .nav-badge { flex-shrink: 0; }
 .bottomnav .nav-badge { position: absolute; top: 6px; left: calc(50% + 4px); margin: 0; box-shadow: 0 0 0 2px var(--s1); }
 .msg-pick { display: flex; flex-direction: column; gap: .15rem; max-height: 46vh; overflow-y: auto; margin: .25rem 0 .75rem; }
 .msg-pick-row { display: flex; align-items: center; gap: .6rem; padding: .5rem .55rem; border-radius: var(--r-sm); text-align: left; color: var(--text); }

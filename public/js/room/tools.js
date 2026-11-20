@@ -186,6 +186,7 @@ const note = (t) => h('p', { class: 'tiny muted', style: { margin: '.4rem 0' } }
 function scriptureView(R, corpus = 'bible') {
   // Compact sidebar reader: one control line, then as much room as possible for the verses.
   const isQuran = corpus === 'quran';
+  const defaultRef = isQuran ? 'Al-Fatihah 1-7' : 'John 3:16';
   const box = h('div', { class: 'scr-tool' });
   const canShow = R.canScripture();
   const shared = R.scripture && R.scrCorpus(R.scripture.translation) === corpus ? R.scripture : null;
@@ -258,7 +259,10 @@ function scriptureView(R, corpus = 'bible') {
   ref.addEventListener('keydown', (e) => { if (e.key === 'Enter') preview(); });
   const onStage = shared && shared.mode === 'stage';
   // One line: verse | preview | show everyone | clear - icon-only, label on hover.
-  const clear = () => { if (shared && canShow) R.send('scripture-clear', {}); else { ref.value = ''; setDraft(''); out.replaceChildren(); } };
+  const clear = () => {
+    if (shared && canShow) R.send('scripture-clear', {});
+    else { ref.value = defaultRef; setDraft(''); preview(); }
+  };
   box.append(h('div', { class: 'scr-line' }, ref,
     ib('search', 'Preview', preview),
     canShow ? ib('presentation', shared ? 'Show this to everyone' : 'Show to everyone', showNow, 'pri') : null,
@@ -273,7 +277,11 @@ function scriptureView(R, corpus = 'bible') {
     const sel = R.stageR.scriptureBody(out);
     if (nav) box.append(h('div', { class: 'scr-nav' }, ib('chevronLeft', 'Previous chapter', () => nav(-1)), h('span', { class: 'tiny muted grow center' }, shared.reference), ib('chevronRight', 'Next chapter', () => nav(1))));
     box.append(out, sel);
-  } else { box.append(out); if (ref.value) preview(); }
+  } else {
+    box.append(out);
+    if (!ref.value.trim()) ref.value = defaultRef;
+    preview();
+  }
   return box;
 }
 

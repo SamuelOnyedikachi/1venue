@@ -1,7 +1,7 @@
 import { icon } from '../icons.js';
 import { h, api, toast, toastErr, avatar, fmtNum, sheet, uploadFile, profilePath } from '../ui.js';
 import { state, navigate, requireLogin, refreshSession } from '../app.js';
-import { postCard, eventCard, empty, followBtn, shareLink } from '../components.js';
+import { postCard, eventCard, empty, followBtn, shareLink, verifiedDot } from '../components.js';
 import { composer } from './feed.js';
 import { loadPromos, promoCard } from '../promo.js';
 
@@ -211,7 +211,7 @@ export async function mount(view, params) {
       h('div', { class: 'profile-cover' + (u.coverUrl ? ' has-img' : '') },
         u.coverUrl ? h('img', { src: u.coverUrl, alt: '', loading: 'lazy' }) : h('div', { class: 'band' })),
       h('div', { class: 'in' }, avatar(u.name, u.avatarUrl, 'xxl ring'),
-        h('div', { class: 'grow profile-copy' }, h('h1', null, u.name), u.username || u.handle ? h('div', { class: 'muted profile-handle' }, '@' + (u.username || u.handle)) : null),
+        h('div', { class: 'grow profile-copy' }, h('h1', { class: 'row', style: { alignItems: 'center', gap: '.35rem', flexWrap: 'wrap' } }, u.name, verifiedDot(u)), u.username || u.handle ? h('div', { class: 'muted profile-handle' }, '@' + (u.username || u.handle)) : null),
         h('div', { class: 'row wrap profile-actions' },
           u.isMe ? h('button', { class: 'btn sm', html: icon('pen', { size: 15 }) + 'Edit profile', onclick: () => edit(u) }) : state.user ? followBtn(u, (on) => { u.followers += on ? 1 : -1; }) : null,
           msgBtn,

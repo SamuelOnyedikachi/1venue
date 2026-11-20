@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const { q, tx, one, many } = require('../../core/db');
 const { createPost } = require('../social/data');
 const { UNITS_PER_CREDIT } = require('../wallet/rules');
+const { isVerified, verifiedSql } = require('../../lib/auth');
 
 // ---------------------------------------------------------------- events
 const CATEGORIES = ['talk_show', 'presentation', 'seminar', 'sermon', 'webinar', 'workshop', 'meeting', 'concert', 'class', 'other'];
@@ -32,7 +33,7 @@ function eventOut(r) {
     createdAt: r.created_at,
   };
 }
-const EVENT_SELECT = (viewer = '0') => `SELECT e.*, u.avatar_url AS host_avatar, u.username AS host_username, u.verified_active AS host_verified,
+const EVENT_SELECT = (viewer = '0') => `SELECT e.*, u.avatar_url AS host_avatar, u.username AS host_username, ${verifiedSql('u')} AS host_verified,
   (SELECT COUNT(*) FROM event_rsvps WHERE event_id=e.id) AS rsvps,
   EXISTS(SELECT 1 FROM event_rsvps WHERE event_id=e.id AND user_id=${viewer}) AS rsvped
   FROM events e JOIN users u ON u.id=e.host_user_id`;
@@ -180,7 +181,7 @@ async function discover({ q: term, category, status, tag, host, limit = 24, offs
   // Verified hosts get a ranking boost (admin setting platform.verifiedBoost), right after "live now".
   let boost = 1;
   try { boost = require('../../lib/plans').platform(await require('../../lib/plans').getSettings()).verifiedBoost; } catch (_) {}
-  if (boost) rank = rank.replace("(e.status='live') DESC", "(e.status='live') DESC, (CASE WHEN u.verified_active THEN 1 ELSE 0 END) DESC");
+  if (boost) rank = rank.replace("(e.status='live') DESC", `(e.status='live') DESC, (CASE WHEN ${verifiedSql('u')} THEN 1 ELSE 0 END) DESC`);
   params.push(Math.min(60, limit), Math.max(0, offset));
   const rows = await many(`${EVENT_SELECT('$1')} WHERE ${where.join(' AND ')} ORDER BY ${rank} LIMIT $${params.length - 1} OFFSET $${params.length}`, params);
   return rows.map(eventOut);
@@ -216,11 +217,15 @@ async function updateViewers(eventId, live, joinedDelta = 0) {
   await q(`UPDATE events SET live_viewers=$2, peak_viewers=GREATEST(peak_viewers,$2), total_joins=total_joins+$3 WHERE id=$1`, [eventId, live, joinedDelta]);
 }
 async function listSpeakers(eventId) {
-  return (await many(`SELECT es.*, u.username
+  return (await many(`SELECT es.*, u.username, u.email AS user_email, u.email_verified_at, u.verified_active
     FROM event_speakers es LEFT JOIN users u ON u.id=es.user_id
     WHERE es.event_id=$1 ORDER BY es.sort_order, es.id`, [eventId]))
     .map((r) => {
-      return { id: Number(r.id), userId: r.user_id, username: r.username || null, name: r.display_name, headline: r.headline, avatarUrl: r.avatar_url, email: r.email || null };
+      return {
+        id: Number(r.id), userId: r.user_id, username: r.username || null, name: r.display_name,
+        headline: r.headline, avatarUrl: r.avatar_url, email: r.email || null,
+        verified: r.user_id ? isVerified({ email: r.user_email, email_verified_at: r.email_verified_at, verified_active: r.verified_active }) : false,
+      };
     });
 }
 async function setSpeakers(eventId, list) {

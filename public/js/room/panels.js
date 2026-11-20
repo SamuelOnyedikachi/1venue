@@ -7,6 +7,7 @@ import { searchSounds } from './sounds.js';
 import { passageCard } from '../passage.js';
 
 const I = (n, s = 18) => h('span', { class: 'i', html: icon(n, { size: s }) });
+const vMark = (on) => on ? h('span', { class: 'verified-dot', title: 'Verified', 'aria-label': 'Verified', html: icon('check', { size: 11 }) }) : null;
 const btn = (ic, label, run, { group = '', cls = '', tip, disabled } = {}) => h('button', { class: `btn ${cls}`, 'data-group': group, 'data-tip': tip || null, disabled: !!disabled, type: 'button', onclick: run, html: icon(ic, { size: 16 }) + (label ? `<span>${esc(label)}</span>` : '') });
 const ibtn = (ic, tip, run, { group = '', cls = '', on = false } = {}) => h('button', { class: `icon-btn ${cls}${on ? ' on' : ''}`, 'data-group': group, 'data-tip': tip, 'aria-label': tip, type: 'button', onclick: run, html: icon(ic, { size: 18 }) });
 const linkify = (s) => esc(s).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>').replace(/(^|\s)@([\w.-]{2,30})/g, '$1<b class="mention">@$2</b>');
@@ -202,7 +203,7 @@ export function createPanel(R) {
     const self = p.id === R.me.id;
     const st = R.mediaState(p.id);
     return h('div', { class: `person${R.speaking.has(p.id) ? ' speaking' : ''}` }, avatar(p.name, p.avatarUrl, 'sm'),
-      h('div', { class: 'grow' }, h('div', { class: 'row gap-xs' }, h('b', { class: 'ellipsis' }, p.name + (self ? ' (you)' : '')), ric ? h('span', { class: 'role-tag', 'data-role': p.role, html: icon(ric, { size: 12 }) + rl }) : null, R.isSpeaker(p.id) && R.stage.enabled ? h('span', { class: 'role-tag', 'data-role': 'speaker', html: icon('mic', { size: 12 }) + 'Speaker' }) : null),
+      h('div', { class: 'grow' }, h('div', { class: 'row gap-xs' }, h('b', { class: 'ellipsis' }, p.name + (self ? ' (you)' : '')), vMark(p.verified), ric ? h('span', { class: 'role-tag', 'data-role': p.role, html: icon(ric, { size: 12 }) + rl }) : null, R.isSpeaker(p.id) && R.stage.enabled ? h('span', { class: 'role-tag', 'data-role': 'speaker', html: icon('mic', { size: 12 }) + 'Speaker' }) : null),
         h('div', { class: 'tiny muted row gap-xs' }, h('span', { html: icon(p.device === 'mobile' ? 'pin' : p.device === 'tablet' ? 'grid' : 'tv', { size: 12 }) }), p.device || 'desktop', p.isGuest ? ' · guest' : '', p.sharing ? ' · presenting' : '')),
       p.handRaised ? h('span', { class: 'hand-ico', 'data-tip': 'Hand raised', html: '✋' }) : null,
       h('span', { class: `mic-ico${st.mic ? ' on' : ''}`, 'data-tip': st.mic ? 'Mic on' : p.mutedByHost ? 'Muted by host' : 'Muted', html: icon(st.mic ? 'mic' : 'micOff', { size: 16 }) }),

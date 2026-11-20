@@ -6,6 +6,7 @@
 const {
   db, config, normCode, isCode, parseBody, sendJSON, getAuthUser, meetings, clients, getParticipantsList, getWaitingList, getRaisedHands, getContentState, getSecurityState, broadcast, broadcastToModerators, generateCode, generateInviteToken, createMeetingSettings, createParticipant, normalizeParticipantName, findParticipantByUserId, isBlocked, can, resolvePermissions, endMeeting, getOrRestoreMeeting, discardSnapshot, createLiveKitToken, grantsFromPermissions, signWsCredential, stage, publicErr, LIVEKIT_URL,
 } = require('./http-kit');
+const { isVerified } = require('../lib/auth');
 
 module.exports = async function handle(req, res, parsed) {
   const urlPath = parsed.pathname;
@@ -188,6 +189,7 @@ module.exports = async function handle(req, res, parsed) {
         role: 'host',
         userId: authUser ? authUser.id : null,
         username: authUser ? authUser.username : null,
+        verified: !!(authUser && isVerified(authUser)),
         device: body.device || 'desktop',
         status: 'ACTIVE',
       });
@@ -430,6 +432,7 @@ module.exports = async function handle(req, res, parsed) {
           : role,
         userId: authUser ? authUser.id : null,
         username: authUser ? authUser.username : null,
+        verified: !!(authUser && isVerified(authUser)),
         device: body.device || 'desktop',
         status,
       });
@@ -602,6 +605,7 @@ module.exports = async function handle(req, res, parsed) {
       const row = await require('../features/wallet/billing-data').claimHost(meeting.billingId, user);
       participant.userId = user.id;
       participant.username = user.username;
+      participant.verified = isVerified(user);
       meeting.hostUserId = user.id;
       await db.upsertMembership({ code, userId: user.id, participantId: participant.id, displayName: participant.name, role: 'host', status: 'ACTIVE', email: user.email || null }).catch(() => {});
       return sendJSON(res, 200, { claimed: true, freeUntilMs: row.free_until_ms });

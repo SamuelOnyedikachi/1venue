@@ -82,7 +82,7 @@ function niceDisplayName({ displayName, username, email }) {
 }
 function shapeUser(row) {
   if (!row) return null;
-  return {
+  const user = {
     id: row.id,
     username: row.username,
     email: row.email,
@@ -94,7 +94,10 @@ function shapeUser(row) {
     needsPasswordSetup: !!row.needs_password_setup,
     created_at: row.created_at,
     source: 'local',
+    verifiedActive: !!row.verified_active,
   };
+  user.verified = isVerified(user);
+  return user;
 }
 function publicUser(user) {
   if (!user) return null;
@@ -110,6 +113,7 @@ function publicUser(user) {
     plan: user.plan || 'free',
     createdAt: user.created_at,
     isAdmin: isAdmin(user),
+    verified: isVerified(user),
   };
 }
 /** Site admin: email listed in ADMIN_EMAILS and confirmed (Google sign-in counts as confirmed). */
@@ -117,6 +121,19 @@ function isAdmin(user) {
   if (!user || !user.email || !config.ADMIN_EMAILS.length) return false;
   const verified = user.emailVerified !== undefined ? !!user.emailVerified : !!user.email_verified_at;
   return verified && config.ADMIN_EMAILS.includes(String(user.email).toLowerCase());
+}
+/** Verified badge: admin-granted (users.verified_active) or an env-listed site admin. */
+function isVerified(user) {
+  if (!user) return false;
+  if (user.verifiedActive || user.verified_active) return true;
+  return isAdmin(user);
+}
+/** SQL boolean: granted badge or confirmed ADMIN_EMAILS address. Safe: emails are env-configured. */
+function verifiedSql(alias = 'u') {
+  const granted = `COALESCE(${alias}.verified_active, false)`;
+  const emails = (config.ADMIN_EMAILS || []).map((e) => String(e).replace(/'/g, "''"));
+  if (!emails.length) return granted;
+  return `(${granted} OR (${alias}.email_verified_at IS NOT NULL AND LOWER(${alias}.email) IN ('${emails.join("','")}')))`;
 }
 async function userById(id) { return (await db.q('SELECT * FROM users WHERE id = $1', [id])).rows[0] || null; }
 
@@ -280,7 +297,7 @@ async function endSession(req, res) {
 module.exports = {
   parseCookies, sha256, newSecret,
   hashPassword, verifyPassword, passwordProblem,
-  niceDisplayName, shapeUser, publicUser, isAdmin, userById,
+  niceDisplayName, shapeUser, publicUser, isAdmin, isVerified, verifiedSql, userById,
   startSession, endSession, revokeSession, revokeAllSessions, listSessions, currentSessionId, clearCookies,
   getAuthUser, forgetUser,
   ACCESS_COOKIE, REFRESH_COOKIE,

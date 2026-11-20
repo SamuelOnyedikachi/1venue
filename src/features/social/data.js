@@ -5,6 +5,7 @@
 const { USE_PG } = require('../../../db');
 const { q, tx, one, many } = require('../../core/db');
 const { normalizeProfilePatch, socialsOut } = require('./profile-fields');
+const { isVerified, verifiedSql } = require('../../lib/auth');
 
 // ---------------------------------------------------------------- prefs
 const PREF_DEFAULTS = { theme: 'system', accent: '#2563eb', accent2: null, fontScale: 1, reduceMotion: false, bibleTranslation: 'eng_kjv', captionLang: null, extra: {} };
@@ -49,6 +50,7 @@ function userCard(r) {
     avatarUrl: r.avatar_url || null, coverUrl: r.cover_url || null, bio: r.bio || null,
     location: r.location || null, website: r.website || null, socials: socialsOut(r.socials),
     createdAt: r.created_at || null,
+    verified: isVerified(r),
     followers: r.followers != null ? Number(r.followers) : undefined,
     following: r.following != null ? Number(r.following) : undefined,
     eventCount: r.events != null ? Number(r.events) : undefined,
@@ -176,7 +178,7 @@ function postOut(r) {
   return {
     id: Number(r.id), kind: r.kind, body: r.body, media: r.media || [], likeCount: r.like_count, commentCount: r.comment_count,
     liked: !!r.liked, createdAt: r.created_at,
-    author: { id: r.user_id, username: authorU, name: r.author_name, avatarUrl: r.author_avatar, handle: r.author_handle || authorU },
+    author: { id: r.user_id, username: authorU, name: r.author_name, avatarUrl: r.author_avatar, handle: r.author_handle || authorU, verified: !!r.author_verified },
     event: r.event_id ? {
       id: Number(r.event_id), slug: r.ev_slug, title: r.ev_title, status: r.ev_status, category: r.ev_category,
       startsAt: r.ev_starts_at, theme: r.ev_theme || {}, coverUrl: r.ev_cover_url || null,
@@ -185,10 +187,10 @@ function postOut(r) {
     } : null,
   };
 }
-const POST_SELECT = `SELECT p.*, COALESCE(u.display_name, split_part(u.email,'@',1), u.username) AS author_name, u.avatar_url AS author_avatar, u.handle AS author_handle, u.username AS author_username,
+const POST_SELECT = `SELECT p.*, COALESCE(u.display_name, split_part(u.email,'@',1), u.username) AS author_name, u.avatar_url AS author_avatar, u.handle AS author_handle, u.username AS author_username, ${verifiedSql('u')} AS author_verified,
   e.slug AS ev_slug, e.title AS ev_title, e.status AS ev_status, e.category AS ev_category, e.starts_at AS ev_starts_at, e.theme AS ev_theme, e.cover_url AS ev_cover_url,
   e.total_joins AS ev_total_joins, (SELECT COUNT(*) FROM event_rsvps rsvp WHERE rsvp.event_id=e.id) AS ev_rsvps,
-  COALESCE(h.display_name, split_part(h.email,'@',1), h.username) AS ev_host_name, h.avatar_url AS ev_host_avatar, h.username AS ev_host_username, h.verified_active AS ev_host_verified,
+  COALESCE(h.display_name, split_part(h.email,'@',1), h.username) AS ev_host_name, h.avatar_url AS ev_host_avatar, h.username AS ev_host_username, ${verifiedSql('h')} AS ev_host_verified,
   EXISTS(SELECT 1 FROM post_likes l WHERE l.post_id=p.id AND l.user_id=$1) AS liked
   FROM posts p JOIN users u ON u.id=p.user_id LEFT JOIN events e ON e.id=p.event_id LEFT JOIN users h ON h.id=e.host_user_id`;
 async function createPost(userId, { kind = 'post', body, eventId, media }) {
