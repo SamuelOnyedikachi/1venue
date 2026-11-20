@@ -107,7 +107,15 @@ async function setVenueSlugTier(venueId, tier) {
 }
 async function renameVenue(id, userId, name) { return venueOut(await one('UPDATE venues SET name=$3 WHERE id=$1 AND owner_user_id=$2 RETURNING *', [id, userId, name])); }
 async function deleteVenue(id, userId) { return (await q('DELETE FROM venues WHERE id=$1 AND owner_user_id=$2', [id, userId])).rowCount > 0; }
-async function markVenueOpen(code, historyId) { await q('UPDATE venues SET opened_at=now(), active_history_id=$2 WHERE lower(code)=lower($1)', [String(code || ''), historyId || null]); }
+async function markVenueOpen(code, historyId) {
+  await q('UPDATE venues SET opened_at=now(), active_history_id=$2 WHERE lower(code)=lower($1)', [String(code || ''), historyId || null]);
+  setImmediate(() => {
+    getVenueByCode(code).then((v) => v && require('../messages/notify').notifyFollowersOfVenue(v, {
+      text: `${v.name || 'A venue you follow'} just opened.`,
+      links: v.slug ? [{ label: 'Open venue', href: `/v/${v.slug}` }] : [],
+    })).catch((e) => console.warn('[venues] reach-out', e.message));
+  });
+}
 async function markVenueClosed(code) { await q('UPDATE venues SET opened_at=NULL, active_history_id=NULL WHERE lower(code)=lower($1)', [String(code || '')]); }
 async function venueMeetings(code, limit = 100) {
   return many(`SELECT id, name, host_display_name, created_at AS started_at, ended_at, max_participants FROM meeting_history WHERE code=$1 ORDER BY created_at DESC LIMIT $2`, [code, limit]);

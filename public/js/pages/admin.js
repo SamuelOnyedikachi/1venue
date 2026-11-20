@@ -97,7 +97,7 @@ export async function mount(view) {
     return;
   }
   const content = h('div', { class: 'admin-content' }, head,
-    meetingsCard(), demoCard(), plansCard(), fxCard(), userPlanCard(), promoCard(), commerceCard(), reportsCard(), ttsCard());
+    meetingsCard(), demoCard(), plansCard(), fxCard(), userPlanCard(), promoCard(), commerceCard(), reportsCard(), inviteReportsCard(), ttsCard());
   const { rail, chips, links } = navigation();
   view.append(chips, h('div', { class: 'admin-layout' }, rail, content));
 
@@ -251,7 +251,7 @@ function demoCard() {
 const PLAN_LABEL = { free: 'Free', premium: 'Premium', organisation: 'Organisation' };
 const FIELDS = [['venues', 'Venues'], ['audience', 'Stage audience'], ['meeting', 'Meeting size'], ['speakerSeats', 'Speaker seats'], ['aiDaily', 'AI points / day'], ['uploadMB', 'Uploads (MB)'], ['priceMonthKobo', 'Monthly (kobo)'], ['priceYearKobo', 'Annual (kobo)']];
 const FEATURE_FIELDS = [['branding', 'Branding'], ['recurring', 'Recurring'], ['reminders', 'Reminders'], ['whatsapp', 'WhatsApp reminders'], ['exports', 'Exports'], ['analytics', 'Analytics'], ['badge', 'Verified badge eligible'], ['selfPromo', 'Self-serve promotions'], ['ticketing', 'Tickets & donations'], ['replays', 'Cloud replays'], ['orgMembers', 'Org members (0 = no org)'], ['replayMB', 'Replay storage (MB)'], ['callVideo', '1:1 video calls'], ['groupMembers', 'Group chat members'], ['callParticipants', 'Call participants (2 = 1:1 only)'], ['historyDays', 'Message history days (0 = forever)']];
-const PLATFORM_FIELDS = [['feeBps', 'Platform fee (basis points, 500 = 5%)'], ['promoMaxDays', 'Promotion max days'], ['promoApproval', 'Approve promotions first (1/0)'], ['payoutMinKobo', 'Minimum payout (kobo)'], ['ticketMaxPerOrder', 'Tickets per order'], ['donationMinKobo', 'Minimum gift (kobo)'], ['reminderLeadA', 'First reminder (minutes before)'], ['reminderLeadB', 'Second reminder (minutes, 0 = off)'], ['whatsappEnabled', 'WhatsApp on (1/0, needs env keys)'], ['verifiedBoost', 'Verified Discover boost (1/0)'], ['replayUploadMB', 'Replay upload cap (MB)'], ['seriesMax', 'Max occurrences per series']];
+const PLATFORM_FIELDS = [['feeBps', 'Platform fee (basis points, 500 = 5%)'], ['promoMaxDays', 'Promotion max days'], ['promoApproval', 'Approve promotions first (1/0)'], ['payoutMinKobo', 'Minimum payout (kobo)'], ['ticketMaxPerOrder', 'Tickets per order'], ['donationMinKobo', 'Minimum gift (kobo)'], ['reminderLeadA', 'First reminder (minutes before)'], ['reminderLeadB', 'Second reminder (minutes, 0 = off)'], ['whatsappEnabled', 'WhatsApp on (1/0, needs env keys)'], ['verifiedBoost', 'Verified Discover boost (1/0)'], ['replayUploadMB', 'Replay upload cap (MB)'], ['seriesMax', 'Max occurrences per series'], ['aiCallSilenceMs', 'AI call silence before reply (ms, 800–4000)'], ['aiCallSilenceQuestionMs', 'Extra silence after a question (ms)']];
 const numIn = (value, name) => h('input', { class: 'input', type: 'number', min: '0', step: '1', value: String(value), name });
 function plansCard() {
   const out = h('div', { class: 'col', style: { gap: '1.1rem' } }, loading());
@@ -269,7 +269,7 @@ function plansCard() {
       grid(...[1, 2, 3].flatMap((n) => [field(`promoPricing.tier${n}Days`, `Discount ${n}: from days`, pp[`tier${n}Days`], pd[`tier${n}Days`]), field(`promoPricing.tier${n}Pct`, `Discount ${n}: % off`, pp[`tier${n}Pct`], pd[`tier${n}Pct`])])),
       h('p', { class: 'tiny muted' }, 'A rate of 0 hides that placement. Days or % of 0 turns a discount off. The best discount the days reach applies. Hosts see the processing fee on top.'));
     const features = sub('plans-features', 'Plan features (1 = on, 0 = off)', ...Object.keys(PLAN_LABEL).map((p) => h('div', { class: 'col', style: { gap: '.35rem' } }, h('strong', { class: 'small' }, PLAN_LABEL[p]), grid(...FEATURE_FIELDS.map(([k, l]) => field(`features.${p}.${k}`, l, s.features[p][k], d.features[p][k]))))));
-    const platformBlock = sub('plans-platform', 'Tickets, promotions, payouts, reminders and replays', grid(...PLATFORM_FIELDS.map(([k, l]) => field(`platform.${k}`, l, s.platform[k], d.platform[k]))));
+    const platformBlock = sub('plans-platform', 'Tickets, promotions, payouts, reminders, replays and Notification AI calls', grid(...PLATFORM_FIELDS.map(([k, l]) => field(`platform.${k}`, l, s.platform[k], d.platform[k]))), h('p', { class: 'tiny muted' }, 'AI call silence is how long Notification waits after you stop speaking before it replies (default 1500 ms). The extra value is added when it has just asked a question. Live within 30 seconds, no redeploy.'));
     const save = h('button', { class: 'btn primary', type: 'button' }, 'Save settings');
     const reset = h('button', { class: 'btn', type: 'button' }, 'Reset to env defaults');
     save.onclick = async () => {
@@ -538,6 +538,30 @@ function reportsCard() {
 
 // ---------------------------------------------------------------- read-out self-test
 const SAMPLES = [['ig', 'Igbo', 'Ndewo. Nnọọ na 1venue.'], ['ha', 'Hausa', 'Sannu. Barka da zuwa 1venue.'], ['ar', 'Arabic', 'مرحبا بكم في ون فينيو.'], ['en', 'English', 'Welcome to 1venue.']];
+
+function inviteReportsCard() {
+  let status = 'open';
+  const out = h('div', { class: 'col', style: { gap: '.6rem' } }, loading());
+  const seg = h('div', { class: 'seg' });
+  const act = (id, st) => async (e) => { e.currentTarget.disabled = true; try { await api(`/api/admin/speaker-invite-reports/${id}`, { method: 'POST', body: { status: st } }); toast('Saved', { icon: 'check' }); await load(); } catch (err) { toastErr(err); } };
+  async function load() {
+    seg.replaceChildren(...[['open', 'Open'], ['actioned', 'Actioned'], ['dismissed', 'Dismissed'], ['all', 'All']].map(([k, l]) => h('button', { type: 'button', class: status === k ? 'on' : '', onclick: () => { status = k; load(); } }, l)));
+    const r = await api(`/api/admin/speaker-invite-reports?status=${status}`);
+    if (!r.reports.length) { out.replaceChildren(emptyState('check', 'No speaker-invite reports.')); return; }
+    out.replaceChildren(...r.reports.map((x) => h('div', { class: 'col admin-line', style: { gap: '.3rem' } },
+      h('span', { class: 'small' }, h('strong', null, x.reporter || 'User'), ` reported an invite${x.inviter ? ` from ${x.inviter}` : ''} · ${x.eventTitle || ''} · ${new Date(x.createdAt).toLocaleString()} · ${x.status}`),
+      x.reason ? h('span', { class: 'small' }, x.reason) : null,
+      x.comment ? h('span', { class: 'small muted' }, x.comment) : null,
+      h('div', { class: 'row wrap', style: { gap: '.5rem' } },
+        x.eventSlug ? h('a', { class: 'btn sm', href: `/e/${x.eventSlug}`, 'data-link': '' }, 'Event') : null,
+        x.status !== 'actioned' ? h('button', { class: 'btn sm primary', type: 'button', onclick: act(x.id, 'actioned') }, 'Mark actioned') : null,
+        x.status !== 'dismissed' ? h('button', { class: 'btn sm', type: 'button', onclick: act(x.id, 'dismissed') }, 'Dismiss') : null,
+        x.status !== 'open' ? h('button', { class: 'btn sm ghost', type: 'button', onclick: act(x.id, 'open') }, 'Reopen') : null))));
+  }
+  load().catch((e) => out.replaceChildren(h('p', { class: 'small' }, e.message || 'Could not load')));
+  return section('invite-reports', 'alert', 'Speaker invite reports', 'When someone reports who invited them to speak at an event.', seg, out);
+}
+
 function ttsCard() {
   const out = h('div', { class: 'col', style: { gap: '.4rem' } }, h('p', { class: 'tiny muted' }, 'Checking…'));
   (async () => {

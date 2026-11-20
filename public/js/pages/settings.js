@@ -1,5 +1,5 @@
 import { icon } from '../icons.js';
-import { h, esc, toast } from '../ui.js';
+import { h, esc, toast, toastErr, api } from '../ui.js';
 import { state, setPrefs, ACCENTS, FONT_SIZES, loginUrl } from '../app.js';
 import { promptInstall, canInstall } from '../pwa.js';
 import { translationSelect } from './bible.js';
@@ -80,6 +80,7 @@ export async function mount(view) {
   if (state.user) {
     const { autoTopupCard, billingProfileCard } = await import('./settings-billing.js');
     view.querySelector('.set-grid').append(autoTopupCard(card, row), billingProfileCard(card, row));
+    await notificationsCard(card, row, toggle).then((sec) => { if (sec) view.querySelector('.set-grid').append(sec); }).catch(() => {});
     await accountCard(card, row).then((sec) => view.querySelector('.set-grid').append(sec)).catch(() => {});
     await deleteAccountCard(card).then((sec) => { if (sec) view.querySelector('.set-grid').append(sec); }).catch(() => {});
   }
@@ -89,4 +90,37 @@ export async function mount(view) {
 export function unmount() {
   if (onPrefsChange) window.removeEventListener('prefs', onPrefsChange);
   onPrefsChange = null;
+}
+
+async function notificationsCard(card, row, toggle) {
+  let d;
+  try { d = await api('/api/account/notifications'); } catch { return null; }
+  const save = async (patch) => {
+    try { d = await api('/api/account/notifications', { method: 'PUT', body: patch }); toast('Notification settings saved', { icon: 'bell', group: 'settings' }); paint(); }
+    catch (e) { toastErr(e); }
+  };
+  const emailToggle = (k, title, hint) => row('mail', 'content', title, hint, toggle(() => !!(d.email && d.email[k] !== false), (v) => save({ email: { ...d.email, [k]: v } })));
+  const body = h('div', { class: 'col', style: { gap: '.6rem' } });
+  const paint = () => {
+    const calls = d.calls || {};
+    body.replaceChildren(
+      emailToggle('speakerInvites', 'Speaker invite emails', 'When a host invites you to speak at an event'),
+      emailToggle('rsvp', 'RSVP confirmations', 'A confirmation when you say you’re going'),
+      emailToggle('reminders', 'Event reminders', 'Email before events you’re going to, speaking at, or hosting'),
+      row('users', 'people', 'New speaker invites', 'Pending stays off the event page until you accept. Active lists you until you decline.',
+        (() => { const s = h('select', { class: 'input sm' }, h('option', { value: 'pending', selected: d.speakerInvites !== 'active' }, 'Pending until I accept'), h('option', { value: 'active', selected: d.speakerInvites === 'active' }, 'List me until I decline')); s.onchange = () => save({ speakerInvites: s.value }); return s; })(), 'notifications'),
+      row('phone', 'ai', 'Notification calls', d.callsAvailable ? 'Notification can ring you in the app for urgent invites, soon reminders, or when you ask it to call.' : 'Server has AI_CALLS_ENABLED off. You can still opt in so you’re ready when it’s turned on.',
+        toggle(() => !!calls.enabled && !calls.optOut, (v) => save({ calls: { ...calls, enabled: v, optOut: !v } })), 'notifications'),
+      row('moon', 'ai', 'Quiet hours', 'Uses Africa/Lagos. Notification won’t call during this window unless you asked it to.',
+        (() => {
+          const a = h('input', { class: 'input sm', type: 'time', value: calls.quietStart || '22:00' });
+          const b = h('input', { class: 'input sm', type: 'time', value: calls.quietEnd || '07:00' });
+          const go = () => save({ calls: { ...calls, quietStart: a.value || '22:00', quietEnd: b.value || '07:00' } });
+          a.onchange = go; b.onchange = go;
+          return h('div', { class: 'row', style: { gap: '.4rem' } }, a, h('span', { class: 'tiny muted' }, 'to'), b);
+        })(), 'email'),
+    );
+  };
+  paint();
+  return card('Notifications', 'bell', body);
 }

@@ -44,7 +44,11 @@ async function deliver(r, msg, counts) {
   if (!(await claim(r))) { counts.skipped++; return; }
   try {
     if (r.channel === 'email') {
-      const out = await require('../mail/mailer').send('reminder', r.recipient, { title: msg.title, intro: msg.intro, button: msg.button, link: msg.link });
+      const mail = require('../mail/prefs');
+      if (r.userId && !(await mail.canSend(r.userId, 'reminders'))) { await done(r, 'sent', 'opted-out'); counts.sent++; return; }
+      const data = { title: msg.title, intro: msg.intro, button: msg.button, link: msg.link };
+      if (r.userId) data.unsubUrl = mail.unsubUrl(r.userId, 'reminders');
+      const out = await require('../mail/mailer').send('reminder', r.recipient, data);
       await done(r, out.sent || out.reason === 'not-configured' ? 'sent' : 'failed', out.sent ? null : out.reason);
     } else {
       await whatsapp.send({ to: r.recipient, params: [msg.name, msg.when, msg.link] });

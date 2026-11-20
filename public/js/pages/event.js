@@ -159,7 +159,13 @@ export async function mount(view, { slug }) {
       h('p', { class: 'small', style: { margin: 0 } }, `${ev.meetingEntryPriceCredits} credits · ${ev.meetingDurationMin} minutes advertised. Sign in and ask to join; credits are charged only when the host accepts you.`))
     : null;
   const speakersBlock = speakers.length ? h('div', null, sectionHead('Speakers', 'stage'), h('div', { class: 'speaker-cards' }, speakers.map((sp) => h(sp.userId ? 'a' : 'div', { class: 'card speaker-card', href: sp.userId ? profilePath({ username: sp.username, id: sp.userId }) : null, 'data-link': sp.userId ? '' : null, style: { '--c1': c1, '--c2': c2 } },
-    h('div', { class: 'band' }), avatar(sp.name, sp.avatarUrl, 'xl ring'), h('strong', { class: 'row', style: { alignItems: 'center', justifyContent: 'center', gap: '.25rem' } }, sp.name, verifiedDot(sp)), h('span', { class: 'muted small' }, sp.headline || 'Speaker'))))) : null;
+    h('div', { class: 'band' }), avatar(sp.name, sp.avatarUrl, 'xl ring'), h('strong', { class: 'row', style: { alignItems: 'center', justifyContent: 'center', gap: '.25rem' } }, sp.name, verifiedDot(sp), sp.status && sp.status !== 'active' ? h('span', { class: 'chip sm' }, sp.status) : null), h('span', { class: 'muted small' }, sp.headline || 'Speaker'))))) : null;
+  const mineInvite = (ev.speakers || []).find((s) => s.status === 'pending' && state.user && Number(s.userId) === Number(state.user.id));
+  const inviteBanner = mineInvite ? h('div', { class: 'card pad ev-card', style: { display: 'flex', gap: '.8rem', flexWrap: 'wrap', alignItems: 'center' } },
+    h('div', { class: 'grow' }, h('strong', null, 'You’re invited to speak at this event.'), h('div', { class: 'tiny muted' }, 'Accept to be listed on the page, or decline with a short comment.')),
+    h('button', { class: 'btn sm primary', type: 'button', onclick: async () => { try { await api(`/api/events/invites/${mineInvite.id}/accept`, { method: 'POST' }); toast('You’re confirmed as a speaker', { icon: 'check' }); navigate(location.pathname, { replace: true }); } catch (e) { toastErr(e); } } }, 'Accept'),
+    h('button', { class: 'btn sm', type: 'button', onclick: async () => { const comment = prompt('Please add a short comment to decline'); if (comment == null) return; try { await api(`/api/events/invites/${mineInvite.id}/decline`, { method: 'POST', body: { comment } }); toast('Invite declined', { icon: 'check' }); navigate(location.pathname, { replace: true }); } catch (e) { toastErr(e); } } }, 'Decline'),
+    h('button', { class: 'btn sm ghost', type: 'button', onclick: async () => { const reason = prompt('Why are you reporting this invite?'); if (!reason) return; try { await api(`/api/events/invites/${mineInvite.id}/report`, { method: 'POST', body: { reason } }); toast('Report sent', { icon: 'check' }); } catch (e) { toastErr(e); } } }, 'Report')) : null;
 
   const panel = (...nodes) => h('section', { class: 'ev-panel' }, ...nodes.filter(Boolean));
   const liveSlot = h('div');
@@ -179,7 +185,7 @@ export async function mount(view, { slug }) {
     ticketSlot,
     replaySlot,
     about,
-    speakersBlock ? panel(speakersBlock) : null,
+    inviteBanner, speakersBlock ? panel(speakersBlock) : null,
     agendaSection ? panel(agendaSection) : null,
     matsSlot,
     panel(comments));
@@ -312,7 +318,8 @@ function editSpeakers(ev, done) {
       h('div', { class: 'grow col', style: { gap: '.35rem', minWidth: '140px' } },
         h('input', { class: 'input sm', placeholder: 'Name', value: r.name || '', oninput: (e) => { r.name = e.target.value; } }),
         h('input', { class: 'input sm', placeholder: 'Headline', value: r.headline || '', oninput: (e) => { r.headline = e.target.value; } }),
-        r.email ? h('div', { class: 'tiny muted' }, r.email) : null),
+        r.email ? h('div', { class: 'tiny muted' }, r.email) : null,
+        r.status && r.status !== 'active' ? h('div', { class: 'tiny muted' }, r.status === 'declined' ? `Declined${r.declineComment ? `: ${r.declineComment}` : ''}` : 'Invite pending') : null),
       h('button', { class: 'btn sm', type: 'button', html: icon('image', { size: 14 }), onclick: () => {
         const inp = h('input', { type: 'file', accept: 'image/*', class: 'hidden' });
         document.body.append(inp);

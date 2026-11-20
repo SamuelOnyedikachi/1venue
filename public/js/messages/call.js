@@ -22,7 +22,9 @@ export function incoming(call) {
   const from = call.from || {};
   const el = h('div', { class: 'call-ring', role: 'alertdialog', 'aria-label': `Incoming call from ${call.title || from.name}` },
     avatar(from.name || call.title, from.avatarUrl, 'lg'),
-    h('div', { class: 'call-ring-txt' }, h('b', null, call.title || from.name || 'Call'), h('span', null, `Incoming ${call.kind === 'video' ? 'video' : 'audio'} call${call.group && from.name ? ` · ${from.name}` : ''}`)),
+    h('div', { class: 'call-ring-txt' }, h('b', null, call.title || from.name || 'Call'), h('span', null, call.ai || call.reason
+      ? (call.reason ? `Notification is calling · ${String(call.reason).slice(0, 140)}` : 'Notification is calling you')
+      : `Incoming ${call.kind === 'video' ? 'video' : 'audio'} call${call.group && from.name ? ` · ${from.name}` : ''}`)),
     h('div', { class: 'call-ring-act' },
       h('button', { class: 'call-btn decline', type: 'button', 'aria-label': 'Decline', html: icon('phoneOff', { size: 22 }), onclick: () => decline(call) }),
       h('button', { class: 'call-btn accept', type: 'button', 'aria-label': 'Accept', html: icon(call.kind === 'video' ? 'video' : 'phone', { size: 22 }), onclick: () => accept(call) })));
@@ -46,7 +48,7 @@ if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
 async function decline(call) { dismissRing(); await api(`/api/messages/calls/${call.id}/decline`, { method: 'POST' }).catch(() => {}); }
 async function accept(call) {
   dismissRing();
-  try { const r = await api(`/api/messages/calls/${call.id}/accept`, { method: 'POST' }); await join(r, call.title || call.from?.name); }
+  try { const r = await api(`/api/messages/calls/${call.id}/accept`, { method: 'POST' }); await join(r, call.title || call.from?.name, { ai: r.ai || r.call }); }
   catch (e) { toastErr(e); }
 }
 
@@ -54,7 +56,7 @@ async function accept(call) {
 export async function startCall(conversationId, kind, title) {
   if (cur) return toast('You are already in a call', { icon: 'phone' });
   const r = await api(`/api/messages/conversations/${conversationId}/calls`, { method: 'POST', body: { kind } });
-  await join(r, title, { outgoing: true });
+  await join(r, title, { outgoing: true, ai: r.ai || r.call });
 }
 
 async function connect(r, video) {
@@ -91,20 +93,23 @@ function paint() {
   const v = cur.el.querySelector('[data-k="cam"]'); v && v.replaceWith(ib(cur.camOn ? 'video' : 'videoOff', cur.camOn ? 'Turn camera off' : 'Turn camera on', toggleCam, cur.camOn ? '' : 'on'));
   cur.el.querySelectorAll('.call-ctl .icon-btn').forEach((b, i) => { b.dataset.k = ['mute', 'cam', 'meet', 'hang'][i]; });
 }
-async function join(r, title, { outgoing = false } = {}) {
+async function join(r, title, { outgoing = false, ai = null } = {}) {
   const video = r.call.kind === 'video';
+  const isAi = !!(ai && (ai.ai || ai.greeting || r.call?.ai));
   const el = h('div', { class: 'call-bar', role: 'region', 'aria-label': 'Call' },
     h('div', { class: 'call-media' }),
-    h('div', { class: 'call-head' }, h('span', { class: 'call-dot' }), h('b', { class: 'ellipsis' }, title || 'Call'), h('span', { class: 'call-state' }, '')),
+    h('div', { class: 'call-head' }, h('span', { class: 'call-dot' }), h('b', { class: 'ellipsis' }, title || (isAi ? 'Notification' : 'Call')), h('span', { class: 'call-state' }, '')),
     h('div', { class: 'call-ctl' },
-      h('span', { 'data-k': 'mute' }), h('span', { 'data-k': 'cam' }),
-      ib('users', 'Make it a meeting (screen share, more people)', toMeeting),
+      h('span', { 'data-k': 'mute' }), isAi ? null : h('span', { 'data-k': 'cam' }),
+      isAi ? null : ib('users', 'Make it a meeting (screen share, more people)', toMeeting),
       h('button', { class: 'call-btn decline sm', type: 'button', 'aria-label': 'Hang up', 'data-tip': 'Hang up', html: icon('phoneOff', { size: 20 }), onclick: hangUp })));
   document.body.append(el);
-  cur = { call: r.call, el, title, outgoing, muted: false, camOn: video, t0: 0, timer: null, room: null };
+  cur = { call: r.call, el, title, outgoing, muted: false, camOn: video, t0: 0, timer: null, room: null, ai: isAi ? (r.ai || ai) : null };
   paint();
-  try { cur.room = await connect(r, video); }
-  catch (e) { await api(`/api/messages/calls/${r.call.id}/leave`, { method: 'POST' }).catch(() => {}); teardown(); toastErr(e); }
+  try {
+    cur.room = await connect(r, video && !isAi);
+    if (isAi) await startAiAgent(r.ai || ai, r.call);
+  } catch (e) { await api(`/api/messages/calls/${r.call.id}/leave`, { method: 'POST' }).catch(() => {}); teardown(); toastErr(e); }
 }
 async function toggleMute() { if (!cur) return; cur.muted = !cur.muted; await cur.room?.localParticipant.setMicrophoneEnabled(!cur.muted).catch(() => {}); paint(); }
 async function toggleCam() {
@@ -145,6 +150,7 @@ function teardown(msg) {
   if (!cur) return;
   const c = cur; cur = null;
   clearInterval(c.timer);
+  try { c.stopAi && c.stopAi(); } catch { /* ignore */ }
   try { c.room && c.room.disconnect(); } catch { /* ignore */ }
   c.el.remove();
   if (msg) toast(msg, { icon: 'phoneOff' });
@@ -160,3 +166,114 @@ export async function onEvent(m) {
   else if (m.type === 'call-upgraded') { cur.camOn = true; reconnectWithVideo(m.call); }
   else if (m.type === 'call-ended') teardown(m.reason === 'declined' ? 'Call declined' : m.reason === 'missed' ? 'No answer' : 'Call ended');
 }
+
+
+async function playUrl(url, text) {
+  if (!cur) return;
+  cur.player && cur.player.pause();
+  if (url) {
+    const a = new Audio(url);
+    cur.player = a;
+    try { await a.play(); await new Promise((res) => { a.onended = res; a.onerror = res; }); } catch { /* blocked */ }
+    return;
+  }
+  if (text && window.speechSynthesis) {
+    await new Promise((res) => {
+      const u = new SpeechSynthesisUtterance(text);
+      u.onend = res; u.onerror = res;
+      cur.player = { pause() { try { speechSynthesis.cancel(); } catch { /* */ } res(); } };
+      speechSynthesis.speak(u);
+    });
+  }
+}
+
+async function startAiAgent(ai, call) {
+  if (!cur) return;
+  connected();
+  const settings = ai && (ai.silenceMs || ai.silenceQuestionMs) ? ai : await api('/api/messages/ai-calls/settings').catch(() => ({ silenceMs: 1500, silenceQuestionMs: 800 }));
+  let silenceMs = Math.min(4000, Math.max(800, Number(settings.silenceMs) || 1500));
+  const extraQ = Math.max(0, Number(settings.silenceQuestionMs) || 0);
+  const callId = call.id;
+  const aiId = (ai && ai.aiCallId) || callId;
+  if (ai && (ai.audioUrl || ai.greeting)) {
+    const asked = /\?\s*$/.test(ai.greeting || '');
+    if (asked) silenceMs = Math.min(4000, silenceMs + extraQ);
+    await playUrl(ai.audioUrl, ai.greeting);
+  }
+  let stream, ctx, rec, speaking = false, lastVoice = 0, chunks = [], sending = false, stopped = false;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  } catch {
+    toast('Microphone is needed so Notification can hear you. You can also type in the chat.', { icon: 'micOff' });
+    return;
+  }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  ctx = new AC();
+  const src = ctx.createMediaStreamSource(stream);
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 2048;
+  src.connect(analyser);
+  const data = new Uint8Array(analyser.fftSize);
+  const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+  const startRec = () => {
+    chunks = [];
+    rec = new MediaRecorder(stream, { mimeType: mime });
+    rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    rec.start(200);
+  };
+  startRec();
+  const rms = () => {
+    analyser.getByteTimeDomainData(data);
+    let s = 0;
+    for (let i = 0; i < data.length; i++) { const v = (data[i] - 128) / 128; s += v * v; }
+    return Math.sqrt(s / data.length);
+  };
+  const flush = async () => {
+    if (sending || stopped || !cur || cur.call.id !== callId) return;
+    sending = true;
+    try {
+      const recRef = rec;
+      if (recRef && recRef.state === 'recording') recRef.stop();
+      const blob = await new Promise((res) => {
+        const t = setTimeout(() => res(new Blob(chunks, { type: mime })), 800);
+        recRef.onstop = () => { clearTimeout(t); res(new Blob(chunks, { type: mime })); };
+      });
+      startRec();
+      if (blob.size < 800) return;
+      const buf = await blob.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let bin = '';
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      const b64 = btoa(bin);
+      const r = await api(`/api/messages/ai-calls/${aiId}/turn`, { method: 'POST', body: { audio: b64, mime, pendingQuestion: /\?\s*$/.test((ai && ai.greeting) || '') } });
+      if (!r || r.wait || !cur || cur.call.id !== callId) return;
+      if (r.silenceMs) silenceMs = Math.min(4000, Math.max(800, Number(r.silenceMs) || silenceMs));
+      if (r.audioUrl || r.text) await playUrl(r.audioUrl, r.text);
+    } catch (e) { console.warn('ai-call turn', e); }
+    finally { sending = false; speaking = false; }
+  };
+  const tick = () => {
+    if (stopped || !cur || cur.call.id !== callId) return;
+    const lvl = rms();
+    const voice = lvl > 0.045;
+    if (voice) {
+      lastVoice = Date.now();
+      if (cur.player) { try { cur.player.pause(); } catch { /* */ } cur.player = null; } // barge-in
+      speaking = true;
+    } else if (speaking && Date.now() - lastVoice >= silenceMs) {
+      speaking = false;
+      flush();
+    }
+    cur.aiTick = requestAnimationFrame(tick);
+  };
+  cur.aiTick = requestAnimationFrame(tick);
+  cur.stopAi = () => {
+    stopped = true;
+    if (cur.aiTick) cancelAnimationFrame(cur.aiTick);
+    try { rec && rec.state !== 'inactive' && rec.stop(); } catch { /* */ }
+    try { stream && stream.getTracks().forEach((t) => t.stop()); } catch { /* */ }
+    try { ctx && ctx.close(); } catch { /* */ }
+    try { cur.player && cur.player.pause(); } catch { /* */ }
+  };
+}
+

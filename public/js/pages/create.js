@@ -32,7 +32,7 @@ export async function mount(view, params) {
     } catch { /* */ }
     try {
       const sp = await api(`/api/events/${editing.id}`);
-      if (Array.isArray(sp.speakers)) speakers = sp.speakers.map((s) => ({ userId: s.userId, name: s.name, headline: s.headline || '', avatarUrl: s.avatarUrl || null, email: s.email || '' }));
+      if (Array.isArray(sp.speakers)) speakers = sp.speakers.map((s) => ({ userId: s.userId, name: s.name, headline: s.headline || '', avatarUrl: s.avatarUrl || null, email: s.email || '', status: s.status || 'active', id: s.id }));
     } catch { /* */ }
   }
 
@@ -99,7 +99,7 @@ export async function mount(view, params) {
   const paintSpeakers = () => {
     speakerChips.replaceChildren(...speakers.map((s, i) => h('span', { class: 'chip-mat' },
       s.avatarUrl || s.userId ? avatar(s.name, s.avatarUrl, 'xs') : null,
-      s.name + (s.email && !s.userId ? ` · ${s.email}` : ''),
+      s.name + (s.email && !s.userId ? ` · ${s.email}` : '') + (s.status && s.status !== 'active' ? ` · ${s.status}` : ''),
       h('button', { class: 'rm', type: 'button', 'aria-label': 'Remove', onclick: () => { speakers.splice(i, 1); paintSpeakers(); } }, '−'))));
   };
   paintSpeakers();

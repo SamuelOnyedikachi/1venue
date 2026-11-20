@@ -238,6 +238,20 @@ const METRICS = {
   logIntervalMs: int('METRICS_LOG_INTERVAL_MS', 60_000),
 };
 
+// Notification inbox, transactional mail, and AI voice calls (see PLAN-notifications).
+const NOTIFY = {
+  emailEnabled: bool('NOTIFY_EMAIL_ENABLED', true),
+  aiEnabled: bool('NOTIFY_AI_ENABLED', true),
+  aiModel: env('NOTIFY_AI_MODEL', '') || env('REPLICATE_MODEL', 'meta/meta-llama-3-70b-instruct'),
+  aiDaily: int('NOTIFY_AI_DAILY_LIMIT', 40),
+  username: env('NOTIFY_USERNAME', 'notification'),
+  callsEnabled: bool('AI_CALLS_ENABLED', false),
+  callsMaxMin: Math.max(2, int('AI_CALLS_MAX_MINUTES', 10)),
+  callsPerHour: int('AI_CALLS_PER_HOUR', 1),
+  callsPerDay: int('AI_CALLS_PER_DAY', 3),
+  urgentWindowMin: int('AI_CALLS_URGENT_WINDOW_MIN', 120),
+};
+
 const RATE_LIMIT_PER_MIN = int('RATE_LIMIT_PER_MIN', 240);
 const TRUST_PROXY = bool('TRUST_PROXY', true);
 
@@ -270,5 +284,5 @@ module.exports = {
   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
   AUTH, ALLOW_LOCAL_SIGNUP, ADMIN_EMAILS, CANONICAL_HOST,
   MEETING_INACTIVITY_MS, MEETING_CLEANUP_INTERVAL_MS, MAX_PARTICIPANTS, MAX_AUDIENCE, DEFAULT_SPEAKER_SEATS,
-  MEDIA, AI, STT, COVERS, WHITEBOARD_AI, MATERIALS, MESSAGES, STORAGE, UPLOADS, BIBLE, MEMORY, RESTART, RATE_LIMIT_PER_MIN, TRUST_PROXY, MIME,
+  MEDIA, AI, STT, COVERS, WHITEBOARD_AI, MATERIALS, MESSAGES, NOTIFY, STORAGE, UPLOADS, BIBLE, MEMORY, RESTART, RATE_LIMIT_PER_MIN, TRUST_PROXY, MIME,
 };

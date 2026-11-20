@@ -51,6 +51,8 @@ const PLATFORM_KEYS = {
   verifiedBoost: [1, 1], // 1 = verified hosts rank higher in Discover
   replayUploadMB: [500, 20480], // manual replay upload size cap
   seriesMax: [52, 200], // occurrences one recurring series may create
+  aiCallSilenceMs: [1500, 4000], // end-of-turn silence before the Notification AI responds (ms)
+  aiCallSilenceQuestionMs: [800, 2000], // extra silence after the AI asks a question (ms)
 };
 
 // Self-serve promotion pricing: a per-day rate for each placement, times days, less a duration discount.

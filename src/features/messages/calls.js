@@ -27,8 +27,10 @@ async function token(user, call) {
   const sources = TrackSource ? [TrackSource.MICROPHONE, ...(call.kind === 'video' ? [TrackSource.CAMERA] : [])] : undefined;
   return createLiveKitToken(`u:${user.id}`, nameOf(user), call.livekit_room, { ttl: '2h', canPublishData: false, canPublishSources: sources });
 }
+const aiMeta = new Map();
 function callOut(c, extra = {}) {
-  return { id: c.id, conversationId: Number(c.conversation_id), kind: c.kind, state: c.state, startedBy: c.started_by == null ? null : Number(c.started_by), startedAt: c.started_at, answeredAt: c.answered_at || null, ...extra };
+  const ai = aiMeta.get(c.id) || {};
+  return { id: c.id, conversationId: Number(c.conversation_id), kind: c.kind, state: c.state, startedBy: c.started_by == null ? null : Number(c.started_by), startedAt: c.started_at, answeredAt: c.answered_at || null, ...ai, ...extra };
 }
 async function getCall(id) { return one('SELECT * FROM calls WHERE id=$1', [String(id || '')]); }
 async function participant(callId, userId) { return one('SELECT * FROM call_participants WHERE call_id=$1 AND user_id=$2', [callId, userId]); }
@@ -36,6 +38,8 @@ async function notifyMembers(convId, payload, exceptId = null) {
   for (const uid of await service.memberIds(convId)) if (uid !== Number(exceptId)) socket.sendToUser(uid, payload);
 }
 async function busy(userId, exceptCallId = '') {
+  const u = await one('SELECT is_system FROM users WHERE id=$1', [userId]).catch(() => null);
+  if (u && (u.is_system || u.isSystem)) return false;
   return !!(await one(`SELECT 1 AS x FROM call_participants p JOIN calls c ON c.id=p.call_id
     WHERE p.user_id=$1 AND c.state <> 'ended' AND p.state = 'joined' AND c.id <> $2 LIMIT 1`, [userId, exceptCallId]));
 }
@@ -45,8 +49,19 @@ async function capFor(c, starterId) {
   return Math.max(2, Number((await service.ent(starterId)).features.callParticipants) || 2);
 }
 
-async function start(user, convId, kind = 'audio') {
+async function start(user, convId, kind = 'audio', extra = {}) {
   kind = kind === 'video' ? 'video' : 'audio';
+  const notify = require('./notify');
+  if (!extra.ai && !notify.isSystemUser(user)) {
+    const peek = await service.convRow(user.id, convId);
+    if (peek.type === 'dm') {
+      const bot = await notify.systemUser().catch(() => null);
+      const peer = peek.user_a_id != null ? (Number(peek.user_a_id) === Number(user.id) ? Number(peek.user_b_id) : Number(peek.user_a_id)) : null;
+      if (bot && peer && Number(peer) === Number(bot.id)) {
+        extra = { ...extra, ai: true, inbound: true, reason: extra.reason || 'You called Notification.', requested: true };
+      }
+    }
+  }
   const c = await service.convRow(user.id, convId);
   if (c.type === 'meeting' || c.group_id) throw fail(400, 'This chat belongs to a meeting. Join the meeting instead.');
   const st = await service.sendState(c, user.id);
@@ -66,17 +81,28 @@ async function start(user, convId, kind = 'audio') {
   const call = await one(`INSERT INTO calls (id, conversation_id, kind, livekit_room, started_by, state) VALUES ($1,$2,$3,$4,$5,'ringing') RETURNING *`, [id, c.id, kind, `call-${id}`, user.id]);
   await q("INSERT INTO call_participants (call_id, user_id, state, joined_at) VALUES ($1,$2,'joined',NOW())", [id, user.id]);
   for (const uid of members) await q("INSERT INTO call_participants (call_id, user_id, state) VALUES ($1,$2,'invited') ON CONFLICT DO NOTHING", [id, uid]);
-  const from = { id: Number(user.id), name: nameOf(user), avatarUrl: user.avatarUrl || user.avatar_url || null };
-  const title = c.type === 'dm' ? from.name : `${from.name} · ${c.title || 'Group'}`;
+  if (extra && extra.ai) aiMeta.set(id, { ai: true, reason: extra.reason || '', silenceMs: extra.silenceMs, silenceQuestionMs: extra.silenceQuestionMs });
+  const from = { id: Number(user.id), name: nameOf(user), avatarUrl: user.avatarUrl || user.avatar_url || null, verified: true && extra.ai, system: !!extra.ai };
+  const title = extra.ai ? (extra.reason ? `Notification · ${String(extra.reason).slice(0, 80)}` : 'Notification') : (c.type === 'dm' ? from.name : `${from.name} · ${c.title || 'Group'}`);
   for (const uid of members) {
-    socket.sendToUser(uid, { type: 'call-ring', call: callOut(call, { from, title: c.type === 'dm' ? from.name : c.title || 'Group call', group: c.type !== 'dm' }) });
+    socket.sendToUser(uid, { type: 'call-ring', call: callOut(call, { from, title: extra.ai ? title : (c.type === 'dm' ? from.name : c.title || 'Group call'), group: c.type !== 'dm', reason: extra.reason || undefined }) });
     // Always (not only when offline): a background tab can't show anything itself, and the service worker
     // skips it when a 1venue tab is in view. Same tag as the in-page notification, so never two.
     push.notify(uid, { kind: 'call', title: `Incoming ${kind} call`, body: `${title} is calling you on 1venue`, url: `/messages/${c.id}?call=${id}`, tag: `call-${id}`, callId: id, conversationId: c.id, icon: from.avatarUrl || undefined }).catch(() => {});
   }
   socket.sendToUser(user.id, { type: 'call-started', call: callOut(call) });
   timers.set(id, setTimeout(() => { ringTimeout(id).catch((err) => console.warn('[calls] ring timeout', err.message)); }, ringMs()).unref());
-  return { call: callOut(call), token: await token(user, call), url: config.LIVEKIT_URL };
+  let ai = extra.ai ? { ai: true, reason: extra.reason, silenceMs: extra.silenceMs, silenceQuestionMs: extra.silenceQuestionMs } : null;
+  if (extra.inbound) {
+    const bot = await require('./notify').systemUser();
+    const callsAi = require('./ai-calls');
+    await q(`INSERT INTO ai_calls (user_id, conversation_id, call_id, reason, state, requested, owner_id)
+      VALUES ($1,$2,$3,$4,'active',$5,$6)`, [user.id, c.id, id, extra.reason || 'You called Notification.', true, require('os').hostname() + ':' + process.pid]);
+    await accept(bot, id).catch((e) => console.warn('[calls] ai inbound accept', e.message));
+    try { ai = await callsAi.onAccepted(user, await getCall(id)); } catch (e) { console.warn('[calls] ai inbound greet', e.message); }
+    if (ai) aiMeta.set(id, { ...(aiMeta.get(id) || {}), ...ai, ai: true });
+  }
+  return { call: callOut(call), token: await token(user, call), url: config.LIVEKIT_URL, ai };
 }
 async function ringTimeout(id) {
   const call = await getCall(id);
@@ -100,8 +126,11 @@ async function accept(user, callId) {
   await q("UPDATE call_participants SET state='joined', joined_at=COALESCE(joined_at, NOW()), left_at=NULL WHERE call_id=$1 AND user_id=$2", [call.id, user.id]);
   if (call.state === 'ringing') await q("UPDATE calls SET state='active', answered_at=NOW() WHERE id=$1", [call.id]);
   const fresh = await getCall(call.id);
+  let ai = null;
+  try { ai = await require('./ai-calls').onAccepted(user, fresh); } catch (e) { console.warn('[calls] ai accept', e.message); }
+  if (ai) aiMeta.set(fresh.id, { ...(aiMeta.get(fresh.id) || {}), ...ai, ai: true });
   await notifyMembers(fresh.conversation_id, { type: 'call-accepted', call: callOut(fresh), userId: Number(user.id), name: nameOf(user) });
-  return { call: callOut(fresh), token: await token(user, fresh), url: config.LIVEKIT_URL };
+  return { call: callOut(fresh), token: await token(user, fresh), url: config.LIVEKIT_URL, ai };
 }
 async function decline(user, callId) {
   const call = await getCall(callId);
@@ -160,6 +189,8 @@ async function end(call, reason = 'completed') {
   const r = await q("UPDATE calls SET state='ended', end_reason=$2, ended_at=NOW() WHERE id=$1 AND state <> 'ended'", [call.id, reason]);
   clearTimeout(timers.get(call.id)); timers.delete(call.id);
   if (!r.rowCount) return false; // someone else ended it
+  try { await require('./ai-calls').onEnded({ ...call, state: 'ended' }, reason); } catch (e) { console.warn('[calls] ai end', e.message); }
+  aiMeta.delete(call.id);
   const unanswered = await many("SELECT user_id FROM call_participants WHERE call_id=$1 AND state='invited'", [call.id]).then((x) => x.map((y) => Number(y.user_id))).catch(() => []);
   await q("UPDATE call_participants SET state=CASE WHEN state='joined' THEN 'left' ELSE state END, left_at=COALESCE(left_at, NOW()) WHERE call_id=$1", [call.id]);
   try {

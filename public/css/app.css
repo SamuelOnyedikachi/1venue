@@ -10110,6 +10110,10 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
   .page-messages .msg-foot > .wa { padding-bottom: calc(.55rem + var(--safe-b)); }
 }
 .page-messages .msg-foot textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Notification cards and AI-call caption */
+.page-messages .msg-card .input.sm { margin-top: .25rem; }
+.call-ring-txt span { display: block; max-width: 22rem; }
 /* --- src/20-pages/plans.css --- */
 /* Plans and pricing (/upgrade). Every button is the one theme-accent .btn.primary, so it follows the
    user's accent and light / dark theme. */

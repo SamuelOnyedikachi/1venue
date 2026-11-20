@@ -123,6 +123,19 @@ module.exports = function routes(route, { requireUser, httpError, int, db }) {
   route('POST', '/api/messages/quick-replies', async (ctx) => { const u = await me(ctx); return { $status: 201, $body: await P.addQuick(u.id, await ctx.body(8 * 1024)) }; });
   route('DELETE', '/api/messages/quick-replies/(\\d+)', async (ctx, [qid]) => P.delQuick((await me(ctx)).id, int(qid)));
 
+  const aiCalls = require('./ai-calls');
+  route('GET', '/api/messages/ai-calls/settings', async () => aiCalls.publicSettings());
+  route('POST', '/api/messages/ai-calls/([0-9a-f-]{36}|\\d+)/turn', async (ctx, [id]) => {
+    const u = await me(ctx);
+    const b = await ctx.body(6 * 1024 * 1024);
+    return aiCalls.turn(u, id, { audio: b.audio, mime: b.mime, text: b.text, pendingQuestion: b.pendingQuestion });
+  });
+  route('POST', '/api/messages/ai-calls/request', async (ctx) => {
+    const u = await me(ctx);
+    const b = await ctx.body().catch(() => ({}));
+    return aiCalls.requestCall(u.id, { reason: b.reason || 'You asked Notification to call you.', requested: true });
+  });
+
   const admin = async (ctx) => { const u = await me(ctx); if (!u.isAdmin) throw httpError(403, 'Admins only'); return u; };
   route('GET', '/api/admin/message-reports', async (ctx) => { await admin(ctx); return { reports: await svc.listReports(ctx.url.searchParams.get('status') || 'open') }; });
   route('POST', '/api/admin/message-reports/(\\d+)', async (ctx, [id]) => { const u = await admin(ctx); return svc.reviewReport(u.id, int(id), await ctx.body()); });

@@ -243,11 +243,40 @@ export async function mount(view, params) {
   }
   function cardEl(p) {
     if (!p) return null;
-    const ic = { meeting: 'video', schedule: 'calendar', venue: 'door' }[p.type] || 'link';
-    const when = p.type === 'schedule' ? `${fmtDate(p.startsAt)} · ${p.durationMin} min${p.pattern ? ` · repeats ${p.pattern === 'biweekly' ? 'every 2 weeks' : p.pattern}` : ''}` : p.type === 'meeting' ? 'Live meeting' : 'Venue';
+    if (p.type === 'speaker_invite') {
+      const comment = h('input', { class: 'input sm', placeholder: 'Comment to decline (required)', hidden: true });
+      const act = async (action) => {
+        try {
+          if (action === 'decline' && !comment.value.trim()) { comment.hidden = false; comment.focus(); return toast('Add a short comment to decline', { icon: 'info' }); }
+          await api(`/api/events/invites/${p.inviteId}/${action}`, { method: 'POST', body: action === 'decline' ? { comment: comment.value } : {} });
+          toast(action === 'accept' ? 'Invite accepted' : action === 'report' ? 'Report sent' : 'Invite declined', { icon: 'check' });
+        } catch (e) { toastErr(e); }
+      };
+      return h('div', { class: 'msg-card' }, h('span', { class: 'msg-card-ic', html: icon('stage', { size: 20 }) }),
+        h('div', { class: 'msg-card-main' }, h('b', null, p.title || 'Speaker invite'), h('span', { class: 'tiny muted' }, [p.inviter, p.when && fmtDate(p.when)].filter(Boolean).join(' · ') || 'You’re invited to speak')),
+        h('div', { class: 'col', style: { gap: '.35rem' } },
+          p.slug ? h('a', { class: 'btn sm', href: `/e/${p.slug}`, 'data-link': '' }, 'Event') : null,
+          h('div', { class: 'row wrap', style: { gap: '.35rem' } },
+            h('button', { class: 'btn sm primary', type: 'button', onclick: () => act('accept') }, 'Accept'),
+            h('button', { class: 'btn sm', type: 'button', onclick: () => act('decline') }, 'Decline'),
+            h('button', { class: 'btn sm ghost', type: 'button', onclick: () => act('report') }, 'Report')),
+          comment));
+    }
+    if (p.type === 'confirm') {
+      const comment = h('input', { class: 'input sm', placeholder: 'Comment (required to decline)', hidden: !(p.action && p.action.action === 'decline_invite') });
+      return h('div', { class: 'msg-card' }, h('span', { class: 'msg-card-ic', html: icon('check', { size: 20 }) }),
+        h('div', { class: 'msg-card-main' }, h('b', null, p.title || 'Confirm'), h('span', { class: 'tiny muted' }, 'Notification wants your go-ahead')),
+        h('div', { class: 'row wrap', style: { gap: '.35rem' } },
+          h('button', { class: 'btn sm primary', type: 'button', onclick: async () => { try { await api('/api/notify/actions', { method: 'POST', body: { action: p.action, confirmed: true, comment: comment.value } }); toast('Done', { icon: 'check' }); } catch (e) { toastErr(e); } } }, 'Confirm'),
+          h('button', { class: 'btn sm', type: 'button', onclick: () => toast('Okay, I won’t do that', { icon: 'info' }) }, 'Not now')),
+        comment);
+    }
+    const ic = { meeting: 'video', schedule: 'calendar', venue: 'door', event: 'calendar', event_live: 'radio' }[p.type] || 'link';
+    const when = p.type === 'schedule' ? `${fmtDate(p.startsAt)} · ${p.durationMin} min${p.pattern ? ` · repeats ${p.pattern === 'biweekly' ? 'every 2 weeks' : p.pattern}` : ''}` : p.type === 'meeting' ? 'Live meeting' : p.type === 'event_live' ? 'Live now' : p.type === 'event' ? (p.when ? fmtDate(p.when) : 'Event') : p.type === 'venue' ? 'Venue' : '';
+    const href = p.link || (p.slug ? `/e/${p.slug}` : '');
     return h('div', { class: 'msg-card' }, h('span', { class: 'msg-card-ic', html: icon(ic, { size: 20 }) }),
       h('div', { class: 'msg-card-main' }, h('b', null, p.title || 'Meeting'), h('span', { class: 'tiny muted' }, when), p.type === 'schedule' && p.reminders ? h('span', { class: 'tiny muted' }, 'Email reminders are on') : null),
-      p.link ? h('a', { class: 'btn sm primary', href: p.link, 'data-link': '' }, p.type === 'schedule' ? 'Open' : 'Join') : null);
+      href ? h('a', { class: 'btn sm primary', href, 'data-link': '' }, p.type === 'schedule' || p.type === 'event' ? 'Open' : 'Join') : null);
   }
   function msgEl(m, prev) {
     const c = S.conv;

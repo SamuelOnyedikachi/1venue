@@ -57,7 +57,12 @@ async function send(kind, to, data = {}) {
     return { sent: false, reason: 'not-configured' };
   }
   try {
-    const info = await t.sendMail({ from: s.from, to, replyTo: s.replyTo || undefined, subject: msg.subject, text: msg.text, html: msg.html });
+    const headers = {};
+    if (data.unsubUrl) {
+      headers['List-Unsubscribe'] = `<${data.unsubUrl}>`;
+      headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
+    }
+    const info = await t.sendMail({ from: s.from, to, replyTo: s.replyTo || undefined, subject: msg.subject, text: msg.text, html: msg.html, headers });
     return { sent: true, id: info && info.messageId };
   } catch (e) {
     console.error('[mail] send failed:', kind, e.code || '', e.message); // never logs credentials or links

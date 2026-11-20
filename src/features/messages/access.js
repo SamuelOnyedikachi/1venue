@@ -47,7 +47,11 @@ async function blockedByMe(userId) {
 }
 async function block(userId, otherId) {
   if (!otherId || Number(otherId) === Number(userId)) throw fail(400, 'Choose someone else');
-  if (!(await one('SELECT id FROM users WHERE id=$1', [otherId]))) throw fail(404, 'User not found');
+  const other = await one('SELECT id, is_system, username FROM users WHERE id=$1', [otherId]);
+  if (!other) throw fail(404, 'User not found');
+  if (other.is_system || other.username === (require('../../config').NOTIFY.username || 'notification')) {
+    throw fail(400, 'You can’t block Notification');
+  }
   await q('INSERT INTO user_blocks (blocker_id, blocked_id) VALUES ($1,$2) ON CONFLICT (blocker_id, blocked_id) DO NOTHING', [userId, otherId]);
   return { ok: true };
 }

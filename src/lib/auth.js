@@ -95,6 +95,7 @@ function shapeUser(row) {
     created_at: row.created_at,
     source: 'local',
     verifiedActive: !!row.verified_active,
+    isSystem: !!(row.is_system),
   };
   user.verified = isVerified(user);
   return user;
@@ -114,6 +115,7 @@ function publicUser(user) {
     createdAt: user.created_at,
     isAdmin: isAdmin(user),
     verified: isVerified(user),
+    isSystem: !!(user.isSystem || user.is_system),
   };
 }
 /** Site admin: email listed in ADMIN_EMAILS and confirmed (Google sign-in counts as confirmed). */
@@ -125,6 +127,7 @@ function isAdmin(user) {
 /** Verified badge: admin-granted (users.verified_active) or an env-listed site admin. */
 function isVerified(user) {
   if (!user) return false;
+  if (user.isSystem || user.is_system) return true;
   if (user.verifiedActive || user.verified_active) return true;
   return isAdmin(user);
 }

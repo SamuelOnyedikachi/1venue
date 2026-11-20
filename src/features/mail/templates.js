@@ -158,7 +158,7 @@ ${rows.join('\n')}
 <tr><td class="px" style="padding:20px 40px 30px">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="foot"><tr>
     <td valign="middle" class="t3" style="font-family:${FONT};font-size:13px;line-height:20px;color:${FAINT}">${esc(app)} &middot; <a class="lnk" href="${esc(S)}" target="_blank" style="color:${BLUE};text-decoration:underline">${esc(host)}</a></td>
-    <td valign="middle" align="right" class="t3" style="font-family:${FONT};font-size:13px;line-height:20px;color:${FAINT};white-space:nowrap"><a class="lnk" href="${esc(S)}/privacy" target="_blank" style="color:${BLUE};text-decoration:none">Privacy Policy</a> &middot; <a class="lnk" href="${esc(S)}/terms" target="_blank" style="color:${BLUE};text-decoration:none">Terms of Service</a></td>
+    <td valign="middle" align="right" class="t3" style="font-family:${FONT};font-size:13px;line-height:20px;color:${FAINT};white-space:nowrap">${d.unsubUrl ? `<a class="lnk" href="${esc(d.unsubUrl)}" target="_blank" style="color:${BLUE};text-decoration:none">Email settings</a> &middot; ` : ''}<a class="lnk" href="${esc(S)}/privacy" target="_blank" style="color:${BLUE};text-decoration:none">Privacy Policy</a> &middot; <a class="lnk" href="${esc(S)}/terms" target="_blank" style="color:${BLUE};text-decoration:none">Terms of Service</a></td>
   </tr></table>
 </td></tr>
 
@@ -173,7 +173,7 @@ ${rows.join('\n')}
     ...(button && link ? ['', `${button}: ${link}`] : []),
     ...(expiryNote ? ['', expiryNote] : []),
     ...(note ? ['', note.text] : []),
-    '', '-', `${app} · ${host}`, `Privacy Policy: ${S}/privacy`, `Terms of Service: ${S}/terms`,
+    '', '-', `${app} · ${host}`, ...(d.unsubUrl ? [`Email settings: ${d.unsubUrl}`] : []), `Privacy Policy: ${S}/privacy`, `Terms of Service: ${S}/terms`,
   ].join('\n');
   return { subject: title, text, html };
 }
@@ -203,6 +203,10 @@ const T = {
     note: { icon: 'i-lock', text: "If you didn't ask to delete your account, change your password now. Your account stays as it is until the code is entered." } }),
   accountDeleted: (d) => layout({ ...d, title: `Your ${d.app} account was deleted`, heading: 'Your account was deleted', intro: `Hi ${d.name || 'there'}, your ${d.app} account and its data have been deleted, as you asked. Thank you for being part of ${d.app}.`, button: `Visit ${d.app}`, link: d.link,
     note: { icon: 'i-shield', text: "If you didn't do this, contact legal@1venue.live right away. You're welcome back any time with a new account." } }),
+  speakerInvite: (d) => layout({ ...d, title: `${d.inviter || 'Someone'} invited you to speak at ${d.event}`, intro: `Hi ${d.name || 'there'}, ${d.inviter || 'a host'} would like you to speak at ${d.event}${d.when ? ` on ${d.when}` : ''}. You can accept or decline from your inbox.`, button: 'Review invite', link: d.link,
+    expiryNote: 'If this was unexpected, decline from the invite and optionally report the host.' }),
+  speakerInviteReminder: (d) => layout({ ...d, title: d.title || `Reminder: speak at ${d.event}`, intro: d.intro || `This is a reminder that ${d.inviter || 'a host'} invited you to speak at ${d.event}${d.when ? ` on ${d.when}` : ''}. The invite is still waiting for your response.`, button: 'Review invite', link: d.link }),
+  rsvpConfirm: (d) => layout({ ...d, title: `You’re going to ${d.event}`, intro: `Hi ${d.name || 'there'}, you’re down to attend ${d.event}${d.when ? ` on ${d.when}` : ''}. We’ll remind you as it gets closer.`, button: 'Open event', link: d.link }),
 };
 
 function render(kind, data) {

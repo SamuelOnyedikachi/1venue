@@ -22,7 +22,7 @@ module.exports = function routes(route, kit) {
     const u = await requireUser(ctx.req, ctx.res);
     const b = await ctx.body();
     const ev = await data.createEvent(u, b);
-    if (Array.isArray(b.speakers)) ev.speakers = await data.setSpeakers(ev.id, b.speakers);
+    if (Array.isArray(b.speakers)) ev.speakers = await data.setSpeakers(ev.id, b.speakers, { actor: u });
     return ev;
   });
   route('GET', '/api/events/([\\w-]+)', async (ctx, [slug]) => {
@@ -33,14 +33,14 @@ module.exports = function routes(route, kit) {
       if (new URL(ctx.req.url, 'http://x').searchParams.get('optional') === '1') return null;
       throw httpError(404, 'Event not found');
     }
-    return { ...ev, speakers: await data.listSpeakers(ev.id), live: liveInfo(ev), isHost: !!(u && u.id === ev.host.id) };
+    return { ...ev, speakers: await data.listSpeakers(ev.id, { viewerId: u && u.id, isHost: !!(u && u.id === ev.host.id) }), live: liveInfo(ev), isHost: !!(u && u.id === ev.host.id) };
   });
   route('PATCH', '/api/events/(\\d+)', async (ctx, [id]) => {
     const u = await requireUser(ctx.req, ctx.res);
     const b = await ctx.body();
     const ev = await data.updateEvent(int(id), u.id, b);
     if (!ev) throw httpError(404, 'Event not found or not yours');
-    if (Array.isArray(b.speakers)) ev.speakers = await data.setSpeakers(ev.id, b.speakers);
+    if (Array.isArray(b.speakers)) ev.speakers = await data.setSpeakers(ev.id, b.speakers, { actor: u });
     return ev;
   });
   route('DELETE', '/api/events/(\\d+)', async (ctx, [id]) => {
@@ -53,7 +53,7 @@ module.exports = function routes(route, kit) {
     const u = await requireUser(ctx.req, ctx.res);
     const ev = await data.getEventById(int(id), u.id);
     if (!ev || ev.host.id !== u.id) throw httpError(403, 'Only the host can edit speakers');
-    return { speakers: await data.setSpeakers(ev.id, (await ctx.body()).speakers) };
+    return { speakers: await data.setSpeakers(ev.id, (await ctx.body()).speakers, { actor: u }) };
   });
   route('GET', '/api/events/([\\w-]+)/qr\\.svg', async (ctx, [slug]) => {
     const ev = await data.getEventBySlug(slug);
@@ -63,6 +63,23 @@ module.exports = function routes(route, kit) {
     const svg = qr().svg(`${ctx.origin}/e/${ev.slug}`, { accent: ev.theme.accent, accent2: ev.theme.accent2, title: ev.title, category: ev.category, when, subtitle: `by ${ev.host.name}`, seed: ev.slug, dark: s.get('dark') === '1', frame: s.get('frame') !== '0' });
     return { raw: svg, type: 'image/svg+xml; charset=utf-8', headers: { 'Cache-Control': 'public, max-age=300', ...(s.get('download') ? attach(`${ev.slug}-qr.svg`) : {}) } };
   });
+  route('POST', '/api/events/invites/(\\d+)/(accept|decline|report)', async (ctx, [id, action]) => {
+    const u = await requireUser(ctx.req, ctx.res);
+    const invites = require('./invites');
+    const b = await ctx.body().catch(() => ({}));
+    if (action === 'accept') return invites.accept(u, int(id));
+    if (action === 'decline') return invites.decline(u, int(id), b.comment || b.reason);
+    return invites.report(u, int(id), b);
+  });
+  route('POST', '/api/notify/actions', async (ctx) => {
+    const u = await requireUser(ctx.req, ctx.res);
+    const b = await ctx.body();
+    return require('../messages/notify').runAction(u, b.action || b, { confirmed: !!b.confirmed, comment: b.comment || '' });
+  });
+  const admin = async (ctx) => { const u = await requireUser(ctx.req, ctx.res); if (!u.isAdmin) throw httpError(403, 'Admins only'); return u; };
+  route('GET', '/api/admin/speaker-invite-reports', async (ctx) => { await admin(ctx); return { reports: await require('./invites').listReports(ctx.url.searchParams.get('status') || 'open') }; });
+  route('POST', '/api/admin/speaker-invite-reports/(\\d+)', async (ctx, [id]) => { const u = await admin(ctx); return require('./invites').reviewReport(u.id, int(id), await ctx.body()); });
+
   route('GET', '/api/qr\\.svg', async (ctx) => {
     const s = ctx.url.searchParams;
     const text = String(s.get('text') || '').slice(0, 600);

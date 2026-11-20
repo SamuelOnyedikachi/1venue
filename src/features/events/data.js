@@ -201,7 +201,28 @@ async function toggleRsvp(eventId, userId) {
   const del = await q('DELETE FROM event_rsvps WHERE event_id=$1 AND user_id=$2', [eventId, userId]);
   if (del.rowCount) return false;
   await q('INSERT INTO event_rsvps (event_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [eventId, userId]);
+  setImmediate(() => { confirmRsvp(eventId, userId).catch((e) => console.warn('[events] rsvp mail', e.message)); });
   return true;
+}
+async function confirmRsvp(eventId, userId) {
+  const ev = await getEventById(eventId, userId);
+  if (!ev) return;
+  const user = await one('SELECT id, email, display_name, username FROM users WHERE id=$1', [userId]);
+  const when = require('./invites').when(ev.startsAt);
+  const link = require('./invites').eventUrl(ev);
+  if (user && user.email && !String(user.email).endsWith('.invalid')) {
+    await require('../mail/prefs').sendOpt('rsvpConfirm', user.email, {
+      name: user.display_name || user.username, event: ev.title, when, link,
+    }, { userId });
+  }
+  if (user) {
+    await require('../messages/notify').send(userId, {
+      style: 'compact',
+      text: `You’re going to ${ev.title}${when ? ` on ${when}` : ''}.`,
+      links: ev.slug ? [{ label: 'Open event', href: `/e/${ev.slug}` }] : [],
+      card: ev.slug ? { type: 'event', title: ev.title, link: `/e/${ev.slug}`, eventId: ev.id, when: ev.startsAt } : null,
+    });
+  }
 }
 async function markEventLive(eventId, { code, historyId }) {
   const ev = await one(`UPDATE events SET status='live', started_at=NOW(), ended_at=NULL, meeting_history_id=$2, updated_at=NOW()
@@ -216,29 +237,58 @@ async function markEventEnded(eventId) {
 async function updateViewers(eventId, live, joinedDelta = 0) {
   await q(`UPDATE events SET live_viewers=$2, peak_viewers=GREATEST(peak_viewers,$2), total_joins=total_joins+$3 WHERE id=$1`, [eventId, live, joinedDelta]);
 }
-async function listSpeakers(eventId) {
-  return (await many(`SELECT es.*, u.username, u.email AS user_email, u.email_verified_at, u.verified_active
+async function listSpeakers(eventId, viewerIdOrOpts) {
+  const opts = viewerIdOrOpts && typeof viewerIdOrOpts === 'object' ? viewerIdOrOpts : { viewerId: viewerIdOrOpts };
+  const viewerId = opts.viewerId || 0;
+  const params = [eventId];
+  let where = 'es.event_id=$1';
+  if (opts.isHost || opts.includeAll) {
+    /* host editor sees every status */
+  } else if (viewerId) {
+    params.push(viewerId);
+    where += ` AND (es.status='active' OR es.status IS NULL OR (es.user_id=$${params.length} AND es.status IN ('pending','active')))`;
+  } else {
+    where += " AND (es.status='active' OR es.status IS NULL)";
+  }
+  return (await many(`SELECT es.*, u.username, u.email AS user_email, u.email_verified_at, u.verified_active, u.is_system
     FROM event_speakers es LEFT JOIN users u ON u.id=es.user_id
-    WHERE es.event_id=$1 ORDER BY es.sort_order, es.id`, [eventId]))
+    WHERE ${where} ORDER BY es.sort_order, es.id`, params))
     .map((r) => {
       return {
         id: Number(r.id), userId: r.user_id, username: r.username || null, name: r.display_name,
         headline: r.headline, avatarUrl: r.avatar_url, email: r.email || null,
-        verified: r.user_id ? isVerified({ email: r.user_email, email_verified_at: r.email_verified_at, verified_active: r.verified_active }) : false,
+        verified: r.user_id ? isVerified({ email: r.user_email, email_verified_at: r.email_verified_at, verified_active: r.verified_active, is_system: r.is_system }) : false,
+        status: r.status || 'active',
+        inviteMode: r.invite_mode || null,
+        declineComment: (opts.isHost || opts.includeAll) ? (r.decline_comment || null) : undefined,
       };
     });
 }
-async function setSpeakers(eventId, list) {
-  return tx(async (c) => {
+async function setSpeakers(eventId, list, { actor } = {}) {
+  const ev = await getEventById(eventId, actor && actor.id);
+  const invites = require('./invites');
+  const prepared = [];
+  for (const s of (list || []).slice(0, 20)) {
+    const row = await invites.applyInvite(eventId, s, { actor, ev });
+    if (row) prepared.push(row);
+  }
+  await tx(async (c) => {
     await c.query('DELETE FROM event_speakers WHERE event_id=$1', [eventId]);
     let i = 0;
-    for (const s of (list || []).slice(0, 20)) {
-      const name = String(s.name || '').trim().slice(0, 80);
-      if (!name) continue;
-      await c.query('INSERT INTO event_speakers (event_id, user_id, display_name, headline, avatar_url, email, sort_order) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-        [eventId, s.userId || null, name, s.headline ? String(s.headline).slice(0, 140) : null, s.avatarUrl || null, s.email ? String(s.email).toLowerCase().slice(0, 200) : null, i++]);
+    for (const s of prepared) {
+      const p = s.preserve || {};
+      const status = p.status || s.status || 'active';
+      const invitedBy = p.invited_by || s.invited_by || (actor && actor.id) || (ev && ev.host && ev.host.id) || null;
+      const invitedAt = p.invited_at || null;
+      const newInvite = s.isNew && !p.status && s.userId && status !== 'declined';
+      await c.query(`INSERT INTO event_speakers (event_id, user_id, display_name, headline, avatar_url, email, sort_order, status, invited_by, invited_at, responded_at, decline_comment, invite_mode)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,${invitedAt ? '$10' : (newInvite ? 'NOW()' : 'NULL')},$${invitedAt ? 11 : 10},$${invitedAt ? 12 : 11},$${invitedAt ? 13 : 12})`,
+        [eventId, s.userId || null, s.name, s.headline ? String(s.headline).slice(0, 140) : null, s.avatarUrl || null, s.email ? String(s.email).toLowerCase().slice(0, 200) : null, i++, status, invitedBy,
+          ...(invitedAt ? [invitedAt] : []), p.responded_at || null, p.decline_comment || null, p.invite_mode || s.invite_mode || null]);
     }
-  }).then(() => listSpeakers(eventId));
+  });
+  await invites.afterSave(eventId, prepared, { actor, ev }).catch((e) => console.warn('[events] invite notify', e.message));
+  return listSpeakers(eventId, { viewerId: actor && actor.id, isHost: true });
 }
 
 async function syncSpeakerInvites(userId, email) {
@@ -248,6 +298,9 @@ async function syncSpeakerInvites(userId, email) {
      WHERE user_id IS NULL AND lower(email)=lower($2)`,
     [userId, String(email).trim()]
   );
+  if (r.rowCount) {
+    try { await require('./invites').onSignupLink(userId, email); } catch (e) { console.warn('[events] signup invites', e.message); }
+  }
   return r.rowCount || 0;
 }
 
