@@ -73,15 +73,20 @@ class Room {
     const audience = stageEvent && !creating && !(ev && ev.isHost);
     let mic = audience ? false : prefs.mic, cam = audience ? false : prefs.cam, stream = null, reports = { audioinput: [], videoinput: [] };
     let devKind = 'audioinput';
+    let probeDone = !!audience, checking = !audience, skipMissing = false, picked = {};
     const video = h('video', { autoplay: true, playsinline: true, muted: true, class: 'pj-video mirror' });
-    const name = h('input', { class: 'au-pill', placeholder: 'Display name', maxlength: 40, value: state.user?.displayName || state.user?.name || this.prefill?.name || lsGet('venue.name', ''), autocomplete: 'name', 'aria-label': 'Display name' });
+    const name = h('input', { class: 'au-pill pj-field', placeholder: 'Display name', maxlength: 40, value: state.user?.displayName || state.user?.name || this.prefill?.name || lsGet('venue.name', ''), autocomplete: 'name', 'aria-label': 'Display name' });
     const meter = h('div', { class: 'pj-meter' }, h('i'));
     const status = h('div', { class: 'pj-status tiny muted' });
-    const devSel = h('select', { class: 'au-pill pj-dev-sel', 'aria-label': 'Device' });
+    const devSel = h('select', { class: 'au-pill pj-field pj-dev-sel', 'aria-label': 'Device' });
+    const warnMsg = h('div', { class: 'pj-warn-msg' });
+    const warnAgain = h('button', { class: 'btn sm', type: 'button' }, 'Try again');
+    const warnGo = h('button', { class: 'btn sm primary', type: 'button' }, 'Continue without mic/camera');
+    const warn = h('div', { class: 'pj-warn', hidden: true }, warnMsg, h('div', { class: 'row wrap gap-s' }, warnAgain, warnGo));
     let ac, raf, lists = {};
     const stopPrev = () => { cancelAnimationFrame(raf); ac && ac.close().catch(() => {}); ac = null; stream && stream.getTracks().forEach((t) => t.stop()); stream = null; video.srcObject = null; };
-    const fillSel = (sel, kind, items, picked) => {
-      const cur = picked || (kind === 'audiooutput' ? lsGet('venue.speaker', '') : devicePrefs()[kind]);
+    const fillSel = (sel, kind, items, pickedId) => {
+      const cur = pickedId || (kind === 'audiooutput' ? lsGet('venue.speaker', '') : devicePrefs()[kind]);
       const reps = reports[kind] || [];
       sel.replaceChildren(...(items || []).map((d, i) => h('option', { value: d.deviceId, selected: d.deviceId === cur }, optionLabel(d, reps.find((r) => r.deviceId === d.deviceId)) || d.label || `${kind} ${i + 1}`)));
     };
@@ -92,6 +97,28 @@ class Room {
       tryB.dataset.tip = 'Try next ' + (labels[devKind] || 'device').toLowerCase();
     };
     const refreshSels = async () => { lists = await listDevices().catch(() => ({})); showDev(); };
+    const hasWorking = (kind) => !!(picked[kind] || (reports[kind] || []).some((r) => r.ok === true));
+    const missingList = () => {
+      const out = [];
+      if (mic && !hasWorking('audioinput')) out.push('mic');
+      if (cam && !hasWorking('videoinput')) out.push('camera');
+      return out;
+    };
+    const joinLabel = creating ? 'Start now' : ev && ev.isHost && !ev.live ? 'Go live' : audience ? 'Join the audience' : 'Join now';
+    const paintJoin = () => {
+      const miss = missingList();
+      const blocked = !audience && (!probeDone || checking || (miss.length && !skipMissing));
+      joinB.classList.toggle('loading', checking && !audience);
+      joinB.innerHTML = icon(creating ? 'zap' : 'login', { size: 18 }) + `<span>${checking && !audience ? 'Checking devices…' : joinLabel}</span>`;
+      joinB.disabled = blocked;
+      if (!miss.length || skipMissing || checking || audience) { warn.hidden = true; return; }
+      warn.hidden = false;
+      const lines = [];
+      if (miss.includes('mic')) lines.push('No working microphone found.');
+      if (miss.includes('camera')) lines.push('No working camera found.');
+      warnMsg.replaceChildren(...lines.map((t) => h('p', null, t)));
+      warnGo.textContent = miss.includes('mic') && miss.includes('camera') ? 'Continue without mic/camera' : miss.includes('mic') ? 'Continue without mic' : 'Continue without camera';
+    };
     const preview = async () => {
       stopPrev();
       if (!mic && !cam) { pv.classList.remove('has-video'); return; }
@@ -101,33 +128,65 @@ class Room {
         video.srcObject = stream; pv.classList.toggle('has-video', cam);
         if (mic) { ac = new AudioContext(); await ac.resume().catch(() => {}); const an = ac.createAnalyser(); an.fftSize = 256; ac.createMediaStreamSource(stream).connect(an); const b = new Uint8Array(an.fftSize);
           const loop = () => { an.getByteTimeDomainData(b); let p = 0; for (const v of b) p = Math.max(p, Math.abs(v - 128)); meter.firstChild.style.width = Math.min(100, p * 1.6) + '%'; raf = requestAnimationFrame(loop); }; loop(); }
-      } catch (e) { toast('Camera/mic blocked - you can still join and turn them on later', { icon: 'alert', ms: 4500 }); mic = cam = false; paint(); }
+      } catch (e) {
+        toast('Camera/mic blocked - you can still continue without them', { icon: 'alert', ms: 4500 });
+        if (mic) picked.audioinput = null;
+        if (cam) picked.videoinput = null;
+        paintJoin();
+      }
     };
     devSel.onchange = async (e) => {
       const id = e.target.value;
       if (devKind === 'audiooutput') { lsSet('venue.speaker', id); saveDevicePref('audiooutput', id); return playTestSound(id); }
       saveDevicePref(devKind, id);
+      if (devKind === 'audioinput') picked.audioinput = id;
+      if (devKind === 'videoinput') picked.videoinput = id;
+      skipMissing = false;
+      paintJoin();
       await preview();
     };
     const tryKind = async (kind = devKind) => {
       status.textContent = 'Trying the next device…';
+      tryB.classList.add('busy');
       stopPrev();
       const cur = kind === 'audiooutput' ? (devSel.value || lsGet('venue.speaker', '')) : (devSel.value || devicePrefs()[kind]);
       const next = await tryNext(kind, cur);
       status.textContent = '';
+      tryB.classList.remove('busy');
       if (!next) return toast('No other working ' + (kind === 'audioinput' ? 'microphone' : kind === 'videoinput' ? 'camera' : 'speaker') + ' found', { icon: 'alert' });
       if (kind === 'audiooutput') { lsSet('venue.speaker', next.deviceId); showDev(); return playTestSound(next.deviceId); }
+      picked[kind] = next.deviceId;
+      skipMissing = false;
       showDev();
+      paintJoin();
       await preview();
     };
     const pickKind = (kind) => {
       if (audience && kind !== 'audiooutput') return toast('You’ll join as audience - request to speak once inside', { icon: 'stage' });
-      if (kind === 'audioinput') { if (devKind === 'audioinput') mic = !mic; else if (!mic) mic = true; }
-      else if (kind === 'videoinput') { if (devKind === 'videoinput') cam = !cam; else if (!cam) cam = true; }
+      if (kind === 'audioinput') { if (devKind === 'audioinput') mic = !mic; else if (!mic) mic = true; if (mic) skipMissing = false; }
+      else if (kind === 'videoinput') { if (devKind === 'videoinput') cam = !cam; else if (!cam) cam = true; if (cam) skipMissing = false; }
       else if (kind === 'audiooutput' && devKind === 'audiooutput') playTestSound(devSel.value || lsGet('venue.speaker', ''));
       devKind = kind;
-      paint(); showDev();
+      paint(); showDev(); paintJoin();
       if (kind !== 'audiooutput') preview();
+    };
+    const runProbe = async () => {
+      if (audience) { probeDone = true; checking = false; paintJoin(); return; }
+      checking = true; probeDone = false; skipMissing = false;
+      tryB.classList.add('busy');
+      paintJoin();
+      status.textContent = 'Finding a working mic and camera…';
+      try {
+        const r = await pickWorking({ wantAudio: true, wantVideo: true });
+        reports = r.reports || reports;
+        picked = { audioinput: r.audioinput || null, videoinput: r.videoinput || null };
+      } catch { /* keep last-known prefs */ }
+      status.textContent = '';
+      tryB.classList.remove('busy');
+      checking = false; probeDone = true;
+      await refreshSels();
+      await preview();
+      paintJoin();
     };
     const micB = h('button', { class: 'pj-circ', type: 'button', 'data-group': 'media', 'aria-label': 'Microphone', onclick: () => pickKind('audioinput') });
     const camB = h('button', { class: 'pj-circ', type: 'button', 'data-group': 'media', 'aria-label': 'Camera', onclick: () => pickKind('videoinput') });
@@ -144,23 +203,34 @@ class Room {
     const rawCode = fmtCode(this.code || this.intent?.code || ev?.code || '');
     const codeTxt = rawCode.length === 6 ? rawCode.slice(0, 3) + '-' + rawCode.slice(3) : rawCode;
     const title = creating ? (this.intent.name || 'New room') : ev ? ev.title : (this.roomName || (rawCode ? rawCode : 'Meeting'));
-    const joinB = h('button', { class: 'btn primary lg block pulse-btn pj-join', type: 'submit', html: icon(creating ? 'zap' : 'login', { size: 18 }) + `<span>${creating ? 'Start now' : ev && ev.isHost && !ev.live ? 'Go live' : audience ? 'Join the audience' : 'Join now'}</span>` });
+    const joinB = h('button', { class: 'btn primary lg block pulse-btn pj-join', type: 'submit', disabled: !audience, html: icon(creating ? 'zap' : 'login', { size: 18 }) + `<span>${audience ? joinLabel : 'Checking devices…'}</span>` });
+    warnAgain.onclick = () => { skipMissing = false; runProbe(); };
+    warnGo.onclick = () => {
+      const miss = missingList();
+      if (miss.includes('mic')) mic = false;
+      if (miss.includes('camera')) cam = false;
+      skipMissing = true;
+      paint(); paintJoin(); preview();
+    };
     const form = h('form', { class: 'pj-form', onsubmit: async (e) => {
       e.preventDefault();
       const n = name.value.trim(); if (n.length < 1) { name.focus(); return toast('Enter your name', { icon: 'user' }); }
+      if (!audience && !probeDone) return toast('Still checking devices…', { icon: 'headphones' });
+      if (!audience && missingList().length && !skipMissing) { paintJoin(); return; }
       lsSet('venue.name', n); if (!audience) lsSet('venue.prejoin', { mic, cam });
       saveWorkingPair({ ...devicePrefs(), audiooutput: devKind === 'audiooutput' ? devSel.value : (lsGet('venue.speaker', '') || undefined) });
       joinB.disabled = true; joinB.classList.add('loading');
       stopPrev();
       try { await this.join({ name: n, mic, cam, creating }); }
-      catch (err) { if (err.status === 401) requireLogin(); joinB.disabled = false; joinB.classList.remove('loading'); toastErr(err); preview(); }
+      catch (err) { if (err.status === 401) requireLogin(); paintJoin(); toastErr(err); preview(); }
     } },
       h('div', { class: 'eyebrow' }, 'Joining'),
       h('h1', { class: 'pj-title' }, title),
       codeTxt ? h('div', { class: 'pj-code' }, codeTxt) : null,
       h('label', { class: 'pj-name' }, h('span', { class: 'sr-only' }, 'Display name'), name),
-      h('div', { class: 'pj-icons' }, micB, camB, outB),
-      h('div', { class: 'pj-dev-row' }, devSel, tryB),
+      h('div', { class: 'pj-icons' }, micB, camB, outB, tryB),
+      h('div', { class: 'pj-dev-row' }, devSel),
+      warn,
       ev && ev.host ? h('div', { class: 'row gap-s muted small' }, avatar(ev.host.name, ev.host.avatarUrl, 'xs'), `Hosted by ${ev.host.name}`) : null,
       !state.user ? h('p', { class: 'tiny muted' }, 'Joining as a guest. ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); requireLogin('Sign in to keep your history'); } }, 'Sign in'), ' to save transcripts and history.') : null,
       (creating && this.intent?.meetingAccessMode === 'paid_entry') || (this.meetingInfo?.paidEntry?.enabled) || (ev?.meetingAccessMode === 'paid_entry')
@@ -171,19 +241,9 @@ class Room {
     this.view.replaceChildren(h('div', { class: 'prejoin' }, h('div', { class: 'pj-art', 'aria-hidden': 'true' }), pv, form));
     this.cleanupPrejoin = stopPrev;
     paint();
-    (async () => {
-      if (!audience) {
-        status.textContent = 'Finding a working mic and camera…';
-        try {
-          const r = await pickWorking({ wantAudio: true, wantVideo: true });
-          reports = r.reports || reports;
-        } catch { /* keep last-known prefs */ }
-        status.textContent = '';
-      }
-      await refreshSels();
-      await preview();
-    })();
-    setTimeout(() => name.value ? joinB.focus() : name.focus(), 60);
+    paintJoin();
+    runProbe();
+    setTimeout(() => name.focus(), 60);
   }
   /* ------------------------------------------------------------------ join */
   async join({ name, mic, cam, creating }) {

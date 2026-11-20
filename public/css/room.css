@@ -181,9 +181,20 @@ body.in-room .cmdbar {
 .pj-name {
   display: block;
 }
+.pj-form .pj-field {
+  border: 1px solid var(--line-2, var(--line));
+  background: var(--s1);
+}
+.pj-form .pj-field:focus,
+.pj-form .pj-field:focus-visible {
+  border-color: var(--accent, var(--brand));
+  background: var(--s1);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent, var(--brand)) 16%, transparent);
+  outline: none;
+}
 .pj-icons {
   display: flex;
-  gap: 0.7rem;
+  gap: 1.2rem;
   align-items: center;
 }
 .pj-circ {
@@ -224,14 +235,60 @@ body.in-room .cmdbar {
 .pj-dev-sel {
   flex: 1;
   min-width: 0;
+  width: 100%;
   height: 48px;
   padding-inline: 1.15rem;
 }
 .pj-try {
   flex: none;
+  margin-left: auto;
+}
+.pj-try svg {
+  display: block;
+  transform-origin: 50% 50%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pj-try:not(.busy) svg {
+    animation: pj-try-idle 5.5s ease-in-out infinite;
+  }
+  .pj-try.busy svg {
+    animation: pj-spin 0.75s linear infinite;
+  }
+}
+@keyframes pj-try-idle {
+  0%,
+  78% {
+    transform: rotate(0deg);
+  }
+  92%,
+  100% {
+    transform: rotate(360deg);
+  }
+}
+@keyframes pj-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.pj-warn {
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, #e11d48 30%, var(--line));
+  background: color-mix(in srgb, #e11d48 8%, var(--s1));
+}
+.pj-warn-msg p {
+  margin: 0 0 0.4rem;
+  font-weight: 600;
+}
+.pj-warn-msg p:last-child {
+  margin-bottom: 0.65rem;
 }
 .pj-join {
   margin-top: 0.1rem;
+}
+.pj-join:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 .eyebrow {
   font-size: 0.75rem;

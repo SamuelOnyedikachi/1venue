@@ -17,7 +17,7 @@ describe('out9 ui and search contracts', () => {
 
   it('prejoin uses two columns, login pill, circular icons, and a dynamic device dropdown', () => {
     const room = read('public/js/room/room.js');
-    assert.match(room, /class: 'au-pill'/);
+    assert.match(room, /au-pill pj-field/);
     assert.match(room, /class: 'pj-code'/);
     assert.match(room, /'Joining'/);
     assert.match(room, /icon\('headphones'/);
