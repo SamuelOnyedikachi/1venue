@@ -110,6 +110,10 @@ export class Media {
     if (this.room) { const p = this.room.localParticipant.getTrackPublication(this.LK.Track.Source.Microphone); return p && p.track && p.track.mediaStreamTrack; }
     return this.localStream && this.localStream.getAudioTracks()[0];
   }
+  camTrack() {
+    if (this.room) { const p = this.room.localParticipant.getTrackPublication(this.LK.Track.Source.Camera); return p && p.track && p.track.mediaStreamTrack; }
+    return this.localStream && this.localStream.getVideoTracks()[0];
+  }
   remoteAudioTracks() {
     if (!this.room) return [];
     const out = [];

@@ -134,6 +134,31 @@ body.in-room .cmdbar {
   background: linear-gradient(90deg, #22c55e, #84cc16);
   transition: width 0.08s;
 }
+.pj-status {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 2;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.pj-devs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.pj-dev-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+.pj-dev-row .field,
+.pj-dev-row .grow {
+  flex: 1;
+  min-width: 0;
+}
 .pj-form {
   display: flex;
   flex-direction: column;
