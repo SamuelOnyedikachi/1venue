@@ -1,7 +1,7 @@
 // Auto-pick a mic and camera that actually produce content. Virtual add-ons
 // (OBS, Snap, ManyCam, VB-Cable, Voicemeeter, NDI, "Virtual", …) go last.
 import { AUDIO_CONSTRAINTS, devicePrefs, saveDevicePref, listDevices } from './media.js';
-import { toast, toastErr } from '../ui.js';
+import { h, toast, toastErr } from '../ui.js';
 
 export const VIRTUAL_RE = /\b(obs(?:[\s_-]*virtual)?|snap\s*camera|manycam|xsplit|e2esoft|\bvcam\b|cyberlink|vb-?audio|vb-?cable|voicemeeter|krisp|virtual|steam streaming|iriun|droidcam|ndi|newtek)\b/i;
 const PER_MS = 1500;
@@ -304,5 +304,101 @@ export function startWatchdog(room) {
     navigator.mediaDevices?.removeEventListener('devicechange', onChange);
     unsub.forEach((f) => f());
     closeMeter();
+  };
+}
+
+
+const CARET = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path d="M4.2 6.2a.75.75 0 0 1 1.06 0L8 8.94l2.74-2.74a.75.75 0 1 1 1.06 1.06l-3.27 3.27a.75.75 0 0 1-1.06 0L4.2 7.26a.75.75 0 0 1 0-1.06z" fill="currentColor"/></svg>';
+
+export function deviceChoice(d, report) {
+  const label = (d && d.label) || 'Device';
+  const tags = [];
+  if (classifyDevice(d).virtual) tags.push('Virtual');
+  if (report && report.ok === false) tags.push('Not responding');
+  return { id: d.deviceId, label, tags };
+}
+
+export function bindDevicePicker(select, { getItems, onPick } = {}) {
+  const wrap = select.parentElement;
+  wrap.classList.add('pj-picker');
+  select.classList.add('pj-dev-native');
+  select.tabIndex = -1;
+  select.setAttribute('aria-hidden', 'true');
+  const val = h('span', { class: 'pj-dev-val' });
+  const btn = h('button', { class: 'au-pill pj-field pj-dev-btn', type: 'button', 'aria-haspopup': 'listbox', 'aria-expanded': 'false' }, val, h('span', { class: 'pj-caret', html: CARET }));
+  const menu = h('div', { class: 'pj-dev-menu', role: 'listbox', hidden: true });
+  const lab = select.getAttribute('aria-label') || 'Device';
+  btn.setAttribute('aria-label', lab);
+  wrap.append(btn, menu);
+  let items = [], iOpen = -1, open = false;
+
+  const paintBtn = () => {
+    const cur = items.find((x) => x.selected) || items[0];
+    val.textContent = cur ? cur.label : 'Select a device';
+    btn.setAttribute('aria-label', select.getAttribute('aria-label') || lab);
+  };
+  const paintMenu = () => {
+    menu.replaceChildren(...items.map((it, i) => {
+      const row = h('button', { class: 'pj-dev-opt' + (it.selected ? ' on' : ''), type: 'button', role: 'option', 'aria-selected': String(!!it.selected), 'data-id': it.id },
+        h('span', { class: 'pj-dev-name' }, it.label),
+        ...(it.tags || []).map((t) => h('span', { class: 'pj-pill' + (t === 'Not responding' ? ' dim' : '') }, t)));
+      row.onmousedown = (e) => e.preventDefault();
+      row.onclick = () => pick(it.id);
+      if (i === iOpen) row.classList.add('focus');
+      return row;
+    }));
+  };
+  const close = () => {
+    if (!open) return;
+    open = false;
+    menu.hidden = true;
+    btn.setAttribute('aria-expanded', 'false');
+    iOpen = -1;
+    paintMenu();
+  };
+  const show = () => {
+    refresh();
+    if (!items.length) return;
+    open = true;
+    menu.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    iOpen = Math.max(0, items.findIndex((x) => x.selected));
+    paintMenu();
+    const row = menu.children[iOpen];
+    row && row.scrollIntoView({ block: 'nearest' });
+  };
+  const pick = (id) => {
+    close();
+    if (id && select.value !== id) {
+      select.value = id;
+      onPick ? onPick(id) : select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    btn.focus();
+  };
+  const move = (dir) => {
+    if (!items.length) return;
+    iOpen = (iOpen + dir + items.length) % items.length;
+    paintMenu();
+    const row = menu.children[iOpen];
+    row && row.scrollIntoView({ block: 'nearest' });
+  };
+  const refresh = () => {
+    items = (getItems && getItems()) || [...select.options].map((o) => ({ id: o.value, label: o.textContent, tags: [], selected: o.selected }));
+    paintBtn();
+    if (open) paintMenu();
+  };
+  btn.onclick = () => { open ? close() : show(); };
+  btn.onkeydown = (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); if (!open) show(); else move(e.key === 'ArrowDown' ? 1 : -1); }
+    else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (open && iOpen >= 0) pick(items[iOpen].id); else show(); }
+    else if (e.key === 'Escape' && open) { e.preventDefault(); e.stopPropagation(); close(); }
+    else if (e.key === 'Home' && open) { e.preventDefault(); iOpen = 0; paintMenu(); }
+    else if (e.key === 'End' && open) { e.preventDefault(); iOpen = items.length - 1; paintMenu(); }
+  };
+  const onDoc = (e) => { if (open && !wrap.contains(e.target)) close(); };
+  document.addEventListener('pointerdown', onDoc);
+  return {
+    refresh,
+    destroy() { close(); document.removeEventListener('pointerdown', onDoc); btn.remove(); menu.remove(); select.classList.remove('pj-dev-native'); },
   };
 }

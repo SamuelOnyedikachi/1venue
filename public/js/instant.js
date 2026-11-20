@@ -1,11 +1,9 @@
 // Instant meeting setup as an overlay over the current (blurred) page - same shell as the log-in overlay
-// (.au-scrim / .au-modal) and the same floating-label pill inputs as the sign-in page (field() from login.js).
-// Opens from anywhere: hero / dashboard links to /create?instant=1 are intercepted in app.js, and the
-// command bar calls openInstant() directly. A deep link to /create?instant=1 opens it over the home page.
+// (.au-scrim / .au-modal). Opens from anywhere: hero / dashboard links to /create?instant=1 are
+// intercepted in app.js, and the command bar calls openInstant() directly.
 import { icon } from './icons.js';
-import { h } from './ui.js';
+import { h, toast } from './ui.js';
 import { state, navigate, requireLogin } from './app.js';
-import { field } from './pages/login.js';
 
 let open = null;
 
@@ -13,45 +11,60 @@ export function openInstant({ onClose } = {}) {
   if (open) { open.focus(); return open; }
   const prevFocus = document.activeElement;
   const defName = state.user ? `${(state.user.displayName || state.user.username || 'My').split(' ')[0]}’s meeting` : 'Quick meeting';
-  const nameIn = h('input', { type: 'text', maxlength: 120, autocomplete: 'off', value: defName, enterkeyhint: 'go', 'data-voice': 'off' });
-  const name = field(nameIn, 'Meeting name');
+  const nameIn = h('input', { class: 'au-pill pj-field', type: 'text', maxlength: 120, autocomplete: 'off', placeholder: 'Meeting name', value: defName, enterkeyhint: 'go', 'data-voice': 'off', 'aria-label': 'Meeting name' });
   const opts = { stage: false, waitingRoom: false, accessMode: 'host_funded' };
-  const opt = (key, ic, label, hint) => {
-    const cb = h('input', { type: 'checkbox', role: 'switch', 'aria-describedby': `im-h-${key}` });
-    cb.onchange = () => { opts[key] = cb.checked; row.classList.toggle('on', cb.checked); };
-    const row = h('label', { class: 'im-opt' },
-      h('span', { class: 'im-ic', html: icon(ic, { size: 18 }) }),
-      h('span', { class: 'im-txt' }, h('b', null, label), h('small', { id: `im-h-${key}` }, hint)),
-      h('span', { class: 'switch' }, cb, h('span')));
-    return row;
-  };
-  const start = h('button', { class: 'au-btn au-primary', type: 'submit', html: icon('zap', { size: 18 }) + '<span>Start now</span>' });
-  const accessMode = h('select', { class: 'input' },
-    h('option', { value: 'host_funded' }, 'Host-funded'),
-    h('option', { value: 'paid_entry' }, 'Paid entry'));
+
   const duration = h('input', { class: 'input', type: 'number', min: 1, max: 720, step: 1, value: '60', inputmode: 'numeric' });
   const entryPrice = h('input', { class: 'input', type: 'number', min: 1, step: 1, value: '30', inputmode: 'numeric' });
-  const paidEntry = h('div', { class: 'col', hidden: true },
+  const paidEntry = h('div', { class: 'col im-paid', hidden: true },
     h('div', { class: 'grid2' },
       h('label', { class: 'field' }, h('span', { class: 'field-lab' }, 'Advertised duration (minutes)'), duration),
       h('label', { class: 'field' }, h('span', { class: 'field-lab' }, 'Entry price (credits)'), entryPrice)),
     h('p', { class: 'tiny muted' }, 'Attendees sign in and pay when you accept them. You receive 80% of entry credits after refunds are settled.'));
-  accessMode.onchange = () => {
-    opts.accessMode = accessMode.value;
-    paidEntry.hidden = opts.accessMode !== 'paid_entry';
+
+  const fundIc = h('span', { class: 'im-tog-ic' });
+  const fundLab = h('span', { class: 'im-tog-lab' }, 'Host funded');
+  const fundBtn = h('button', { class: 'im-tog on', type: 'button', 'aria-label': 'Host funded' }, fundIc);
+  const paintFund = () => {
+    const paid = opts.accessMode === 'paid_entry';
+    fundIc.innerHTML = icon(paid ? 'users' : 'user', { size: 22 });
+    fundLab.textContent = paid ? 'Participant funded' : 'Host funded';
+    fundBtn.setAttribute('aria-label', fundLab.textContent);
+    paidEntry.hidden = !paid;
   };
+  fundBtn.onclick = () => {
+    opts.accessMode = opts.accessMode === 'host_funded' ? 'paid_entry' : 'host_funded';
+    paintFund();
+  };
+  paintFund();
+  const fund = h('div', { class: 'im-tog-wrap im-tog-fund' }, fundBtn, fundLab);
+
+  const flag = (key, ic, label) => {
+    const badge = h('span', { class: 'im-tog-badge', html: icon('xCircle', { size: 14 }) });
+    const btn = h('button', { class: 'im-tog', type: 'button', 'aria-pressed': 'false', 'aria-label': label }, badge, h('span', { class: 'im-tog-ic', html: icon(ic, { size: 22 }) }));
+    const wrap = h('div', { class: 'im-tog-wrap' }, btn, h('span', { class: 'im-tog-lab' }, label));
+    const paint = () => {
+      const on = !!opts[key];
+      wrap.classList.toggle('on', on);
+      btn.classList.toggle('on', on);
+      btn.setAttribute('aria-pressed', String(on));
+      badge.innerHTML = icon(on ? 'checkCircle' : 'xCircle', { size: 14 });
+    };
+    btn.onclick = () => { opts[key] = !opts[key]; paint(); };
+    paint();
+    return wrap;
+  };
+
+  const start = h('button', { class: 'au-btn au-primary', type: 'submit', html: icon('zap', { size: 18 }) + '<span>Start now</span>' });
   const form = h('form', { class: 'au-form', novalidate: true },
-    name.el,
-    h('label', { class: 'field' }, h('span', { class: 'field-lab' }, 'Who pays for this meeting?'), accessMode),
+    nameIn,
+    h('div', { class: 'im-togs' }, fund, flag('stage', 'stage', 'Stage mode'), flag('waitingRoom', 'door', 'Waiting room')),
     paidEntry,
-    h('div', { class: 'im-opts' },
-      opt('stage', 'stage', 'Stage mode', 'Audience watches; limited speaker seats'),
-      opt('waitingRoom', 'door', 'Waiting room', 'Admit people one by one')),
     start);
   form.onsubmit = (e) => {
     e.preventDefault();
     const n = nameIn.value.trim();
-    if (!n) { name.setError('Give your meeting a name.'); nameIn.focus(); return; }
+    if (!n) { nameIn.focus(); return toast('Give your meeting a name.', { icon: 'alert' }); }
     if (opts.accessMode === 'paid_entry' && !requireLogin('Sign in to host a paid-entry meeting')) return;
     if (opts.accessMode === 'paid_entry' && (!Number.isInteger(Number(duration.value)) || Number(duration.value) < 1 || Number(duration.value) > 720 || !Number.isSafeInteger(Number(entryPrice.value)) || Number(entryPrice.value) < 1)) return toast('Enter a duration from 1 to 720 minutes and a positive whole-credit entry price.', { icon: 'alert' });
     sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, name: n, stage: opts.stage, waitingRoom: opts.waitingRoom, meetingAccessMode: opts.accessMode, meetingDurationMin: Number(duration.value), meetingEntryPriceCredits: Number(entryPrice.value) }));
@@ -61,12 +74,11 @@ export function openInstant({ onClose } = {}) {
 
   const scrim = h('div', { class: 'au-scrim im-scrim' });
   const closeBtn = h('button', { class: 'icon-btn au-x', type: 'button', 'aria-label': 'Close', html: icon('x', { size: 20 }) });
-  const modal = h('div', { class: 'au-modal im-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'im-title', 'aria-describedby': 'im-sub' },
+  const modal = h('div', { class: 'au-modal im-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'im-title' },
     closeBtn,
     h('div', { class: 'au-body' },
       h('div', { class: 'im-badge', html: icon('zap', { size: 26 }) }),
       h('h2', { class: 'au-title', id: 'im-title' }, 'Instant meeting'),
-      h('p', { class: 'au-sub', id: 'im-sub' }, 'Start a room right now and share the link. No scheduling needed.'),
       form));
 
   function close({ starting = false } = {}) {
@@ -83,7 +95,7 @@ export function openInstant({ onClose } = {}) {
   const onPop = () => close({ starting: true });
   const onKey = (e) => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); return; }
-    if (e.key === 'Tab') { // focus trap
+    if (e.key === 'Tab') {
       const f = [...modal.querySelectorAll('a[href],button:not([disabled]),input:not([type=hidden]),select,textarea')].filter((x) => x.offsetParent || x.closest('.switch'));
       if (!f.length) return;
       const i = f.indexOf(document.activeElement);

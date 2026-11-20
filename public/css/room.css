@@ -121,7 +121,7 @@ body.in-room .cmdbar {
   position: absolute;
   left: 18px;
   right: 18px;
-  bottom: 4px;
+  bottom: 76px;
   height: 3px;
   border-radius: 2px;
   overflow: hidden;
@@ -237,7 +237,116 @@ body.in-room .cmdbar {
   min-width: 0;
   width: 100%;
   height: 48px;
-  padding-inline: 1.15rem;
+  padding: 0 1.15rem;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.pj-picker {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+.pj-picker .pj-dev-native {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.pj-dev-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  height: 48px;
+  padding: 0 1.15rem;
+  text-align: left;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  font: inherit;
+  color: var(--text);
+}
+.pj-dev-val {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pj-caret {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.pj-dev-btn[aria-expanded="true"] .pj-caret {
+  transform: rotate(180deg);
+}
+.pj-dev-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 8;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 16px;
+  border: 1px solid var(--line-2);
+  background: var(--s1);
+  box-shadow: var(--shadow-3, 0 16px 40px -12px rgba(0, 0, 0, 0.28));
+}
+.pj-dev-opt {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pj-dev-opt:hover,
+.pj-dev-opt.focus {
+  background: color-mix(in srgb, var(--accent) 10%, var(--s2));
+}
+.pj-dev-opt.on {
+  background: color-mix(in srgb, var(--accent) 14%, var(--s1));
+  color: var(--accent);
+}
+.pj-dev-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pj-pill {
+  flex: none;
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--s2));
+  color: var(--accent);
+}
+.pj-pill.dim {
+  background: var(--s2);
+  color: var(--muted);
 }
 .pj-try {
   flex: none;

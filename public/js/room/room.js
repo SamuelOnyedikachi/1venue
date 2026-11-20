@@ -7,7 +7,7 @@ import { registerCommands, unregisterCommands, setBarContext, refreshBar, focusB
 import { QUICK, emojiName, emojiPopover, pushRecent, searchEmoji } from '../emoji.js';
 import { searchSounds } from './sounds.js';
 import { Media, listDevices, devicePrefs, AUDIO_CONSTRAINTS, saveDevicePref } from './media.js';
-import { pickWorking, tryNext, optionLabel, playTestSound, startWatchdog, saveWorkingPair } from './devices.js';
+import { pickWorking, tryNext, optionLabel, playTestSound, startWatchdog, saveWorkingPair, bindDevicePicker, deviceChoice } from './devices.js';
 import { createPanel } from './panels.js';
 import { buildTools } from './tools.js';
 import { createStage } from './stage.js';
@@ -68,10 +68,10 @@ class Room {
     this.prejoin({ creating, ev });
   }
   prejoin({ creating, ev }) {
-    const prefs = lsGet('venue.prejoin', { mic: true, cam: false });
+    const prefs = lsGet('venue.prejoin', { mic: true, cam: false, spk: true });
     const stageEvent = (ev && ev.category && ev.category !== 'meeting') || (this.intent && this.intent.stage);
     const audience = stageEvent && !creating && !(ev && ev.isHost);
-    let mic = audience ? false : prefs.mic, cam = audience ? false : prefs.cam, stream = null, reports = { audioinput: [], videoinput: [] };
+    let mic = audience ? false : prefs.mic !== false, cam = audience ? false : !!prefs.cam, spk = prefs.spk !== false, stream = null, reports = { audioinput: [], videoinput: [] };
     let devKind = 'audioinput';
     let probeDone = !!audience, checking = !audience, skipMissing = false, picked = {};
     const video = h('video', { autoplay: true, playsinline: true, muted: true, class: 'pj-video mirror' });
@@ -95,6 +95,7 @@ class Room {
       const labels = { audioinput: 'Microphone', videoinput: 'Camera', audiooutput: 'Speaker' };
       devSel.setAttribute('aria-label', labels[devKind] || 'Device');
       tryB.dataset.tip = 'Try next ' + (labels[devKind] || 'device').toLowerCase();
+      devPicker && devPicker.refresh();
     };
     const refreshSels = async () => { lists = await listDevices().catch(() => ({})); showDev(); };
     const hasWorking = (kind) => !!(picked[kind] || (reports[kind] || []).some((r) => r.ok === true));
@@ -137,7 +138,7 @@ class Room {
     };
     devSel.onchange = async (e) => {
       const id = e.target.value;
-      if (devKind === 'audiooutput') { lsSet('venue.speaker', id); saveDevicePref('audiooutput', id); return playTestSound(id); }
+      if (devKind === 'audiooutput') { lsSet('venue.speaker', id); saveDevicePref('audiooutput', id); return spk ? playTestSound(id) : undefined; }
       saveDevicePref(devKind, id);
       if (devKind === 'audioinput') picked.audioinput = id;
       if (devKind === 'videoinput') picked.videoinput = id;
@@ -154,20 +155,23 @@ class Room {
       status.textContent = '';
       tryB.classList.remove('busy');
       if (!next) return toast('No other working ' + (kind === 'audioinput' ? 'microphone' : kind === 'videoinput' ? 'camera' : 'speaker') + ' found', { icon: 'alert' });
-      if (kind === 'audiooutput') { lsSet('venue.speaker', next.deviceId); showDev(); return playTestSound(next.deviceId); }
+      if (kind === 'audiooutput') { lsSet('venue.speaker', next.deviceId); showDev(); return spk ? playTestSound(next.deviceId) : undefined; }
       picked[kind] = next.deviceId;
       skipMissing = false;
       showDev();
       paintJoin();
       await preview();
     };
-    const pickKind = (kind) => {
-      if (audience && kind !== 'audiooutput') return toast('You’ll join as audience - request to speak once inside', { icon: 'stage' });
-      if (kind === 'audioinput') { if (devKind === 'audioinput') mic = !mic; else if (!mic) mic = true; if (mic) skipMissing = false; }
-      else if (kind === 'videoinput') { if (devKind === 'videoinput') cam = !cam; else if (!cam) cam = true; if (cam) skipMissing = false; }
-      else if (kind === 'audiooutput' && devKind === 'audiooutput') playTestSound(devSel.value || lsGet('venue.speaker', ''));
+    const selectKind = (kind) => {
       devKind = kind;
-      paint(); showDev(); paintJoin();
+      paint(); showDev();
+    };
+    const toggleMedia = (kind) => {
+      if (audience && kind !== 'audiooutput') return toast('You’ll join as audience - request to speak once inside', { icon: 'stage' });
+      if (kind === 'audioinput') { mic = !mic; if (mic) skipMissing = false; }
+      else if (kind === 'videoinput') { cam = !cam; if (cam) skipMissing = false; }
+      else { spk = !spk; }
+      paint(); paintJoin();
       if (kind !== 'audiooutput') preview();
     };
     const runProbe = async () => {
@@ -188,17 +192,28 @@ class Room {
       await preview();
       paintJoin();
     };
-    const micB = h('button', { class: 'pj-circ', type: 'button', 'data-group': 'media', 'aria-label': 'Microphone', onclick: () => pickKind('audioinput') });
-    const camB = h('button', { class: 'pj-circ', type: 'button', 'data-group': 'media', 'aria-label': 'Camera', onclick: () => pickKind('videoinput') });
-    const outB = h('button', { class: 'pj-circ', type: 'button', 'data-group': 'media', 'aria-label': 'Speakers', 'data-tip': 'Speakers', onclick: () => pickKind('audiooutput') });
+    const micB = h('button', { class: 'pj-circ', type: 'button', 'data-group': 'media', 'aria-label': 'Choose microphone', onclick: () => selectKind('audioinput') });
+    const camB = h('button', { class: 'pj-circ', type: 'button', 'data-group': 'media', 'aria-label': 'Choose camera', onclick: () => selectKind('videoinput') });
+    const outB = h('button', { class: 'pj-circ', type: 'button', 'data-group': 'media', 'aria-label': 'Choose speakers', 'data-tip': 'Choose speakers', onclick: () => selectKind('audiooutput') });
+    const muteB = h('button', { class: 'pj-btn', type: 'button', 'data-group': 'media', onclick: () => toggleMedia('audioinput') });
+    const camTB = h('button', { class: 'pj-btn', type: 'button', 'data-group': 'media', onclick: () => toggleMedia('videoinput') });
+    const spkB = h('button', { class: 'pj-btn', type: 'button', 'data-group': 'media', onclick: () => toggleMedia('audiooutput') });
     const tryB = h('button', { class: 'pj-circ pj-try', type: 'button', 'data-tip': 'Try next', 'aria-label': 'Try next device', onclick: () => tryKind(), html: icon('refresh', { size: 18 }) });
+    const devRow = h('div', { class: 'pj-dev-row' }, devSel);
+    const devPicker = bindDevicePicker(devSel, {
+      getItems: () => (lists[devKind] || []).map((d) => ({ ...deviceChoice(d, (reports[devKind] || []).find((r) => r.deviceId === d.deviceId)), selected: d.deviceId === devSel.value })),
+      onPick: (id) => { devSel.value = id; devSel.dispatchEvent(new Event('change')); },
+    });
     const paint = () => {
-      micB.innerHTML = icon(mic ? 'mic' : 'micOff'); micB.classList.toggle('off', !mic); micB.classList.toggle('on', devKind === 'audioinput'); micB.dataset.tip = mic ? 'Mic on' : 'Mic off';
-      camB.innerHTML = icon(cam ? 'video' : 'videoOff'); camB.classList.toggle('off', !cam); camB.classList.toggle('on', devKind === 'videoinput'); camB.dataset.tip = cam ? 'Camera on' : 'Camera off';
-      outB.innerHTML = icon('headphones'); outB.classList.toggle('on', devKind === 'audiooutput');
+      micB.innerHTML = icon('mic'); micB.classList.toggle('on', devKind === 'audioinput'); micB.dataset.tip = 'Choose microphone';
+      camB.innerHTML = icon('video'); camB.classList.toggle('on', devKind === 'videoinput'); camB.dataset.tip = 'Choose camera';
+      outB.innerHTML = icon('headphones'); outB.classList.toggle('on', devKind === 'audiooutput'); outB.dataset.tip = 'Choose speakers';
+      muteB.innerHTML = icon(mic ? 'mic' : 'micOff'); muteB.classList.toggle('off', !mic); muteB.dataset.tip = mic ? 'Mute mic' : 'Unmute mic'; muteB.setAttribute('aria-label', muteB.dataset.tip);
+      camTB.innerHTML = icon(cam ? 'video' : 'videoOff'); camTB.classList.toggle('off', !cam); camTB.dataset.tip = cam ? 'Turn camera off' : 'Turn camera on'; camTB.setAttribute('aria-label', camTB.dataset.tip);
+      spkB.innerHTML = icon(spk ? 'volume' : 'volumeOff'); spkB.classList.toggle('off', !spk); spkB.dataset.tip = spk ? 'Mute speaker' : 'Unmute speaker'; spkB.setAttribute('aria-label', spkB.dataset.tip);
       meter.hidden = !mic;
     };
-    const pv = h('div', { class: 'pj-preview' }, status, h('div', { class: 'pj-av' }, avatar(name.value || 'You', state.user?.avatarUrl, 'xl')), video, meter);
+    const pv = h('div', { class: 'pj-preview' }, status, h('div', { class: 'pj-av' }, avatar(name.value || 'You', state.user?.avatarUrl, 'xl')), video, h('div', { class: 'pj-ctl' }, muteB, camTB, spkB), meter);
     name.addEventListener('input', () => pv.querySelector('.pj-av').replaceChildren(avatar(name.value || 'You', state.user?.avatarUrl, 'xl')));
     const rawCode = fmtCode(this.code || this.intent?.code || ev?.code || '');
     const codeTxt = rawCode.length === 6 ? rawCode.slice(0, 3) + '-' + rawCode.slice(3) : rawCode;
@@ -217,11 +232,11 @@ class Room {
       const n = name.value.trim(); if (n.length < 1) { name.focus(); return toast('Enter your name', { icon: 'user' }); }
       if (!audience && !probeDone) return toast('Still checking devices…', { icon: 'headphones' });
       if (!audience && missingList().length && !skipMissing) { paintJoin(); return; }
-      lsSet('venue.name', n); if (!audience) lsSet('venue.prejoin', { mic, cam });
+      lsSet('venue.name', n); if (!audience) lsSet('venue.prejoin', { mic, cam, spk });
       saveWorkingPair({ ...devicePrefs(), audiooutput: devKind === 'audiooutput' ? devSel.value : (lsGet('venue.speaker', '') || undefined) });
       joinB.disabled = true; joinB.classList.add('loading');
       stopPrev();
-      try { await this.join({ name: n, mic, cam, creating }); }
+      try { await this.join({ name: n, mic, cam, spk, creating }); }
       catch (err) { if (err.status === 401) requireLogin(); paintJoin(); toastErr(err); preview(); }
     } },
       h('div', { class: 'eyebrow' }, 'Joining'),
@@ -229,7 +244,7 @@ class Room {
       codeTxt ? h('div', { class: 'pj-code' }, codeTxt) : null,
       h('label', { class: 'pj-name' }, h('span', { class: 'sr-only' }, 'Display name'), name),
       h('div', { class: 'pj-icons' }, micB, camB, outB, tryB),
-      h('div', { class: 'pj-dev-row' }, devSel),
+      devRow,
       warn,
       ev && ev.host ? h('div', { class: 'row gap-s muted small' }, avatar(ev.host.name, ev.host.avatarUrl, 'xs'), `Hosted by ${ev.host.name}`) : null,
       !state.user ? h('p', { class: 'tiny muted' }, 'Joining as a guest. ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); requireLogin('Sign in to keep your history'); } }, 'Sign in'), ' to save transcripts and history.') : null,
@@ -239,14 +254,14 @@ class Room {
       joinB,
       h('div', { class: 'row gap-s tiny muted center' }, h('span', { html: icon('lock', { size: 12 }) }), 'Recordings stay on your device. Captions are processed privately.'));
     this.view.replaceChildren(h('div', { class: 'prejoin' }, h('div', { class: 'pj-art', 'aria-hidden': 'true' }), pv, form));
-    this.cleanupPrejoin = stopPrev;
+    this.cleanupPrejoin = () => { devPicker.destroy(); stopPrev(); };
     paint();
     paintJoin();
     runProbe();
     setTimeout(() => name.focus(), 60);
   }
   /* ------------------------------------------------------------------ join */
-  async join({ name, mic, cam, creating }) {
+  async join({ name, mic, cam, spk = true, creating }) {
     const saved = this.code ? roomsStore()[this.code] : null;
     const pid = saved?.participantId || undefined;
     let r;
@@ -285,7 +300,7 @@ class Room {
     this.me = { id: r.participantId, name, role: r.role || 'participant' };
     this.wsCredential = r.wsCredential;
     saveRoom(this.code, { participantId: r.participantId, wsCredential: r.wsCredential, name });
-    this.want = { mic, cam };
+    this.want = { mic, cam, spk };
     if (r.status === 'WAITING') return this.waitingScreen(r);
     this.enter(r);
   }
@@ -553,7 +568,7 @@ Object.assign(Room.prototype, {
       if (id === this.me.id) return;
       this.audioEls ||= new Map();
       let a = this.audioEls.get(id + source); if (!a) { a = h('audio', { autoplay: true, hidden: true }); this.root.append(a); this.audioEls.set(id + source, a); }
-      track.attach(a); const out = lsGet('venue.speaker', null); if (out && a.setSinkId) a.setSinkId(out).catch(() => {});
+      track.attach(a); const out = lsGet('venue.speaker', null); if (out && a.setSinkId) a.setSinkId(out).catch(() => {}); if (this.want && this.want.spk === false) a.muted = true;
       this.stageR.paintAll(); return;
     }
     this.stageR.setTrack(id, track, source); this.stageR.render();

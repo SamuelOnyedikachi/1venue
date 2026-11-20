@@ -304,91 +304,106 @@
   color: #fff;
 }
 
-/* Instant meeting overlay (shares .au-scrim / .au-modal / .au-float with log in) */
+/* Instant meeting overlay (shares .au-scrim / .au-modal with log in) */
 .im-badge {
-  width: 52px;
-  height: 52px;
-  margin: 0 auto 0.1rem;
-  display: grid;
-  place-items: center;
-  border-radius: 16px;
-  color: var(--accent-ink);
-  background: linear-gradient(
-    135deg,
-    var(--accent),
-    color-mix(in srgb, var(--accent) 55%, var(--accent-2))
-  );
-  box-shadow: 0 10px 24px -10px
-    color-mix(in srgb, var(--accent) 70%, transparent);
-}
-.im-opts {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-.im-opt {
-  display: flex;
-  align-items: center;
-  gap: 0.8rem;
-  min-height: 60px;
-  padding: 0.55rem 0.7rem 0.55rem 0.6rem;
-  border-radius: 22px;
-  border: 1px solid var(--line-2);
-  background: var(--s1);
-  cursor: pointer;
-  transition:
-    border-color 0.15s,
-    background 0.15s,
-    box-shadow 0.15s;
-}
-.im-opt:hover {
-  background: var(--s2);
-}
-.im-opt:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
-}
-.im-opt.on {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--line-2));
-  background: color-mix(in srgb, var(--accent) 6%, var(--s1));
-}
-.im-ic {
-  width: 38px;
-  height: 38px;
-  flex: none;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 0.15rem;
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: var(--s2);
-  color: var(--muted);
-}
-.im-opt.on .im-ic {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
   color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--s2));
 }
-.im-txt {
+.im-modal .pj-field,
+.im-modal .au-pill {
+  border: 1px solid var(--line-2, var(--line));
+  background: var(--s1);
+  width: 100%;
+}
+.im-modal .pj-field:focus,
+.im-modal .pj-field:focus-visible {
+  border-color: var(--accent);
+  background: var(--s1);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
+  outline: none;
+}
+.im-togs {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+.im-tog-wrap {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  align-items: center;
+  gap: 0.45rem;
 }
-.im-txt b {
-  font-weight: 600;
-  font-size: 0.97rem;
-}
-.im-txt small {
+.im-tog {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--s2);
   color: var(--muted);
-  font-size: 0.8rem;
-  line-height: 1.35;
+  cursor: pointer;
+  transition:
+    background 0.18s,
+    color 0.18s,
+    transform 0.18s;
 }
-.im-opt .switch input:checked + span {
-  background: var(--accent);
+.im-tog:hover {
+  transform: translateY(-1px);
+}
+.im-tog-fund .im-tog,
+.im-tog-wrap.on .im-tog,
+.im-tog.on {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--s2));
+}
+.im-tog-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--s1);
+  color: var(--muted);
+  box-shadow: 0 0 0 2px var(--s1);
+}
+.im-tog-badge svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+.im-tog-wrap.on .im-tog-badge {
+  color: var(--accent);
+}
+.im-tog-lab {
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  font-variant-caps: all-small-caps;
+  text-align: center;
+  line-height: 1.2;
+  color: var(--muted);
+}
+.im-tog-fund .im-tog-lab,
+.im-tog-wrap.on .im-tog-lab {
+  color: var(--text);
 }
 .im-modal .au-btn svg {
   flex: none;
 }
-/* Start now + focused name field follow the theme accent, not the fixed brand blue. */
 .im-modal .au-primary {
   background: var(--accent-action, var(--accent));
   color: #fff;
@@ -400,17 +415,6 @@
 .im-modal .au-primary:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent);
   outline-offset: 2px;
-}
-.im-modal .au-float .au-in:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
-}
-.im-modal .au-float .au-in:focus + span,
-.im-modal .au-float .au-in:not(:placeholder-shown) + span {
-  color: var(--accent);
-}
-.im-modal .au-float .au-in:not(:focus):not(:placeholder-shown) + span {
-  color: var(--muted);
 }
 
 @media (min-width: 821px) {

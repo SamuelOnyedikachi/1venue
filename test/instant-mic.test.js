@@ -13,7 +13,13 @@ test('instant meeting opens as an overlay from anywhere, with the log-in look', 
   const inst = read('public/js/instant.js');
   assert.match(inst, /class: 'au-scrim im-scrim'/, 'same blurred scrim as log in');
   assert.match(inst, /class: 'au-modal im-modal', role: 'dialog', 'aria-modal': 'true'/);
-  assert.match(inst, /import \{ field \} from '\.\/pages\/login\.js'/, 'reuses the sign-in floating-label field');
+  assert.match(inst, /class: 'au-pill pj-field'/);
+  assert.match(inst, /placeholder: 'Meeting name'/);
+  assert.doesNotMatch(inst, /Start a room right now/);
+  assert.match(inst, /Host funded/);
+  assert.match(inst, /Participant funded/);
+  assert.match(inst, /paid_entry/);
+  assert.match(inst, /checkCircle/);
   assert.match(inst, /e\.key === 'Escape'/); assert.match(inst, /e\.key === 'Tab'/, 'focus trap');
   assert.match(inst, /venue\.intent/); assert.match(inst, /navigate\('\/new'\)/);
 
@@ -27,14 +33,14 @@ test('instant meeting opens as an overlay from anywhere, with the log-in look', 
 
   const css = read('public/css/app.css');
   assert.match(css, /\.au-scrim \{[^}]*backdrop-filter:[^;]*blur/);
-  assert.match(css, /\.im-opt \{/);
+  assert.match(css, /\.im-togs \{/);
 
   const src = read('public/css/src/10-components/modals.css');
   const im = src.slice(src.indexOf('/* Instant meeting overlay'), src.indexOf('@media (min-width: 821px)'));
-  assert.match(im, /\.im-badge \{[\s\S]*color: var\(--accent-ink\)/);
-  assert.match(im, /background: linear-gradient\([\s\S]*var\(--accent\)/);
-  assert.match(im, /var\(--accent-2\)/);
-  assert.match(im, /\.im-opt\.on \{[\s\S]*var\(--accent\)/);
+  assert.match(im, /\.im-badge \{[\s\S]*color: var\(--accent\)/);
+  assert.match(im, /color-mix\(in srgb, var\(--accent\)/);
+  assert.match(im, /\.im-tog-fund \.im-tog/);
+  assert.match(im, /im-tog-badge/);
   assert.match(im, /\.im-modal \.au-primary \{[\s\S]*background: var\(--accent-action, var\(--accent\)\)/);
   assert.match(im, /color: #fff/);
   assert.doesNotMatch(im, /var\(--brand\)|#7c3aed/);
