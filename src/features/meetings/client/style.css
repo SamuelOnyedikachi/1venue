@@ -1,0 +1,24 @@
+.end-warn-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem 0.9rem;
+  margin: 0.4rem 0.75rem 0;
+  padding: 0.7rem 0.9rem;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--danger, #c2410c) 16%, var(--card, #fff));
+  border: 1px solid color-mix(in srgb, var(--danger, #c2410c) 40%, var(--line));
+  color: var(--text);
+  z-index: 5;
+}
+.end-warn-banner[hidden] { display: none; }
+.end-warn-msg {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+.end-warn-clock {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}

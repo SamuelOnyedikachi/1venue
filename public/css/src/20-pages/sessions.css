@@ -102,3 +102,35 @@ body[data-page="session"] .main {
 .sess-name .tiny {
   font-weight: 500;
 }
+
+.sess-head-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem 1rem;
+}
+.sess-head-row h1 {
+  margin: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+/* Icon-only Rejoin / End meeting, tooltips via data-tip (hover, focus, long-press). */
+.sess-live-actions.ev-actionbar .ev-act-lbl {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.sess-live-actions.ev-actionbar .btn {
+  position: relative;
+  width: 2.6rem;
+  min-width: 2.6rem;
+  height: 2.6rem;
+  padding: 0;
+}

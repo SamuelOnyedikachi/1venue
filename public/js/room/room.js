@@ -15,10 +15,10 @@ import { LocalRecorder } from './recorder.js';
 import { handle, chime } from './wsHandlers.js';
 import { maybeShowBanner } from '../pwa.js';
 import { setRoomBridge, roomMicChanged } from '../voice.js';
+import { fmtCode, wantsCreate } from './intent.js';
 import { surahCommands, loadSurahs, looksLikeQuran } from '../quran-cmd.js';
 
 export const isRoom = true;
-const fmtCode = (c) => String(c || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const roomsStore = () => { try { return JSON.parse(localStorage.getItem('venue.rooms')) || {}; } catch { return {}; } };
 const saveRoom = (code, v) => { const s = roomsStore(); s[code] = { ...v, at: Date.now() }; for (const k of Object.keys(s)) if (Date.now() - s[k].at > 864e5 * 2) delete s[k]; localStorage.setItem('venue.rooms', JSON.stringify(s)); };
 const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } };
@@ -46,7 +46,11 @@ class Room {
     setBarContext({ placeholders: ['Search meeting controls…'], pinned: () => [] });
     if (!this.code && !(this.intent && this.intent.create)) this.intent = { create: true, name: 'Instant meeting' };
     const intent = this.intent;
-    const creating = !!(intent && intent.create && (!this.code || !intent.code || intent.code === this.code));
+    const creating = wantsCreate(intent, this.code, this.params);
+    if (this.code && intent && intent.create && !creating) {
+      try { sessionStorage.removeItem('venue.intent'); } catch {}
+      this.intent = null;
+    }
     // quick rejoin if we already joined this room (e.g. refresh)
     const saved = this.code && roomsStore()[this.code];
     if (!creating && saved && saved.wsCredential && Date.now() - saved.at < 6 * 3600e3 && this.params.fresh == null) {

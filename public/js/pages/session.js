@@ -1,8 +1,24 @@
 import { icon } from '../icons.js';
-import { h, api, toast, toastErr, md, timeAgo, fmtDate, fmtDur, copy, hue, debounce } from '../ui.js';
+import { h, api, toast, toastErr, md, timeAgo, fmtDate, fmtDur, copy, hue, debounce, confirmDlg } from '../ui.js';
 import { requireLogin, navigate } from '../app.js';
 import { panel, table, iconBtn, empty, pill } from '../host-kit.js';
 import { registerCommands, unregisterCommands } from '../commands.js';
+
+
+function liveActions(s, view) {
+  const endBtn = h('button', { type: 'button', class: 'btn ev-act', 'data-group': 'session', 'data-tip': 'End meeting', 'aria-label': 'End meeting', html: icon('phoneOff', { size: 18 }) + '<span class="ev-act-lbl">End meeting</span>' });
+  endBtn.onclick = async () => {
+    if (!await confirmDlg('End this meeting for everyone? Billing will close and the room will stop.', { ok: 'End meeting', danger: true })) return;
+    try {
+      await api(`/api/meeting/${s.code}/end`, { method: 'POST' });
+      toast('Meeting ended', { icon: 'phoneOff' });
+      navigate(`/session/${s.id}`, { replace: true });
+    } catch (e) { toastErr(e); }
+  };
+  return h('div', { class: 'ev-actionbar sess-live-actions', 'data-group': 'session' },
+    h('a', { class: 'btn ev-act', href: `/${String(s.code).toLowerCase()}?rejoin=1`, 'data-link': '', 'data-tip': 'Rejoin', 'aria-label': 'Rejoin', html: icon('login', { size: 18 }) + '<span class="ev-act-lbl">Rejoin</span>' }),
+    endBtn);
+}
 
 export async function mount(view, params) {
   document.body.dataset.page = params.list ? 'sessions' : 'session';
@@ -45,7 +61,9 @@ export async function mount(view, params) {
   const duration = s.endedAt ? fmtDur((new Date(s.endedAt) - start) / 1000) : 'in progress';
   view.append(
     h('div', { class: 'page-head ht-head sess-head' },
-      h('h1', { html: icon('history', { size: 26 }) + (s.name || 'Session') }),
+      h('div', { class: 'sess-head-row' },
+        h('h1', { html: icon('history', { size: 26 }) + (s.name || 'Session') }),
+        (s.live && s.isHost) ? liveActions(s, view) : null),
       h('p', { class: 'muted small sess-meta' }, [String(s.code).toLowerCase(), fmtDate(s.startedAt), duration, `${lines.length} transcript line${lines.length === 1 ? '' : 's'}`].join(' · '))),
     h('div', { class: 'sess-toolbar' },
       h('a', { class: 'btn sm', href: `/api/sessions/${s.id}/transcript.txt`, download: '', html: icon('download', { size: 15 }) + 'Transcript .txt' }),

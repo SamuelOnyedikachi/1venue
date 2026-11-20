@@ -85,8 +85,8 @@ test('profile page source: About in main, rail stacks under 1024px, edit has soc
   const admin = read('public/js/pages/admin.js');
   assert.match(admin, /\['profile',\s*'Profile rail \(kobo\/day\)'\]/);
   assert.match(admin, /\['profile',\s*'Profile'\]/);
-  assert.match(read('public/index.html'), /app\.css\?v=38/);
-  assert.match(read('public/sw.js'), /VERSION = 'v49-2026-11-19'/);
+  assert.match(read('public/index.html'), /app\.css\?v=39/);
+  assert.match(read('public/sw.js'), /VERSION = 'v50-2026-11-20'/);
 });
 
 

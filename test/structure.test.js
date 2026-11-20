@@ -20,7 +20,7 @@ test('features are discovered from src/features, _template is skipped, ids are u
 
 test('WebSocket plugins load in the same order as before the restructure', () => {
   const order = features.list().filter((f) => f.ws).map((f) => require(f.ws).id);
-  assert.deepEqual(order, ['chat', 'reactions', 'mute', 'deviceIcons', 'content', 'moderation', 'activity', 'recording', 'screenTimeline', 'privateChat', 'groupChat', 'breakout', 'whiteboard', 'sounds', 'stage', 'polls', 'qa', 'comments', 'scripture', 'captions', 'wbShare']);
+  assert.deepEqual(order, ['chat', 'reactions', 'mute', 'deviceIcons', 'content', 'moderation', 'activity', 'recording', 'screenTimeline', 'privateChat', 'groupChat', 'breakout', 'whiteboard', 'sounds', 'stage', 'polls', 'qa', 'comments', 'scripture', 'captions', 'wbShare', 'meetings']);
 });
 
 test('FEATURE_<NAME> env names', () => {

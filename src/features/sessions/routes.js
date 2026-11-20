@@ -18,9 +18,10 @@ module.exports = function routes(route, kit) {
 
   // ------------------------------------------------------------ transcripts & summaries
   route('GET', '/api/sessions/(\\d+)', async (ctx, [id]) => {
-    const { h } = await historyAccess(ctx.req, ctx.res, int(id));
+    const { h, userId } = await historyAccess(ctx.req, ctx.res, int(id));
     const [segments, summaries] = await Promise.all([data.getTranscript(h.id, { limit: 3000 }), data.latestSummaries(h.id)]);
-    return { id: h.id, code: h.code, name: h.name, startedAt: h.created_at, endedAt: h.ended_at, segments, summaries };
+    const isHost = !!(userId && h.host_user_id != null && Number(h.host_user_id) === Number(userId));
+    return { id: h.id, code: h.code, name: h.name, startedAt: h.created_at, endedAt: h.ended_at, live: !h.ended_at, isHost, segments, summaries };
   });
   route('GET', '/api/sessions/(\\d+)/transcript\\.txt', async (ctx, [id]) => {
     const { h } = await historyAccess(ctx.req, ctx.res, int(id));

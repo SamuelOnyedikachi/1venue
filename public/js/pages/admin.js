@@ -2,11 +2,12 @@
 // (the feed page's rail and filter styles; chips on phones) and the section cards. Deep links via #section,
 // the nav follows the scroll (scrollspy). Demo data, plans, FX, user plans, promotions, payouts, reports, read-out.
 import { icon } from '../icons.js';
-import { h, api, toast, toastErr, avatar, confirmDlg } from '../ui.js';
+import { h, api, toast, toastErr, avatar, confirmDlg, fmtDur, fmtDate } from '../ui.js';
 import { state, requireLogin } from '../app.js';
 
 // ---------------------------------------------------------------- navigation model (every section and subsection)
 const SECTIONS = [
+  { id: 'meetings', label: 'Open meetings', icon: 'radio' },
   { id: 'demo', label: 'Demo data', icon: 'users' },
   { id: 'plans', label: 'Plans & limits', icon: 'crown', children: [['plans-free', 'Free'], ['plans-premium', 'Premium'], ['plans-organisation', 'Organisation'], ['plans-ai', 'AI cost per use'], ['plans-addons', 'Short links & billing'], ['plans-promo', 'Promotion pricing'], ['plans-features', 'Plan features'], ['plans-platform', 'Tickets, promos & payouts']] },
   { id: 'fx', label: 'Currency & FX rates', icon: 'globe' },
@@ -96,7 +97,7 @@ export async function mount(view) {
     return;
   }
   const content = h('div', { class: 'admin-content' }, head,
-    demoCard(), plansCard(), fxCard(), userPlanCard(), promoCard(), commerceCard(), reportsCard(), ttsCard());
+    meetingsCard(), demoCard(), plansCard(), fxCard(), userPlanCard(), promoCard(), commerceCard(), reportsCard(), ttsCard());
   const { rail, chips, links } = navigation();
   view.append(chips, h('div', { class: 'admin-layout' }, rail, content));
 
@@ -168,6 +169,58 @@ function navigation() {
 }
 
 // ---------------------------------------------------------------- demo data
+
+function fmtClock(ms) {
+  const s = Math.max(0, Math.ceil(Number(ms || 0) / 1000));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+function meetingsCard() {
+  const out = h('div', { class: 'admin-meetings', style: { gap: '.6rem' } }, loading());
+  async function load() {
+    try {
+      const r = await api('/api/admin/meetings');
+      const list = r.meetings || [];
+      if (!list.length) { out.replaceChildren(emptyState('radio', 'No open meetings.')); return; }
+      out.replaceChildren(h('div', { class: 'admin-meetings-table-wrap' },
+        h('table', { class: 'admin-meetings-table' },
+          h('caption', { class: 'sr-only' }, 'Open meetings'),
+          h('thead', null, h('tr', null, ...['Code', 'Host', 'Participants', 'Started', 'Duration', 'Link', ''].map((l) => h('th', { scope: 'col' }, l)))),
+          h('tbody', null, ...list.map((m) => {
+            const warn = m.warning;
+            const people = m.onServer ? String(m.participantCount) : '0 · not on server';
+            const endBtn = h('button', { type: 'button', class: 'btn sm' }, 'End in 2 min');
+            endBtn.onclick = async () => {
+              if (!await confirmDlg(`Start a 2-minute end countdown for ${String(m.code).toLowerCase()}? People in the room can tap We are still here to keep it live.`, { ok: 'Start countdown' })) return;
+              try { await api(`/api/admin/meetings/${m.code}/end-in`, { method: 'POST' }); toast('Countdown started', { icon: 'alert' }); await load(); } catch (e) { toastErr(e); }
+            };
+            const cancelBtn = warn && warn.status === 'pending' ? h('button', { type: 'button', class: 'btn sm ghost' }, 'Cancel countdown') : null;
+            if (cancelBtn) cancelBtn.onclick = async () => {
+              try { await api(`/api/admin/meetings/${m.code}/cancel-end`, { method: 'POST' }); toast('Countdown cancelled', { icon: 'check' }); await load(); } catch (e) { toastErr(e); }
+            };
+            const kept = warn && warn.status === 'kept' ? h('span', { class: 'admin-meetings-kept' }, 'Kept') : null;
+            const pending = warn && warn.status === 'pending' ? h('span', { class: 'tiny muted' }, 'Ends in ' + fmtClock(warn.remainingMs)) : null;
+            return h('tr', null,
+              h('td', null, h('code', null, String(m.code).toLowerCase())),
+              h('td', null, m.host || '—'),
+              h('td', null, people),
+              h('td', null, fmtDate(m.startedAt)),
+              h('td', null, fmtDur((m.durationMs || 0) / 1000)),
+              h('td', null, h('a', { href: m.link, 'data-link': '', class: 'small' }, 'Open')),
+              h('td', { class: 'admin-meetings-actions' }, pending, kept, (warn && warn.status === 'pending') ? cancelBtn : endBtn));
+          })))));
+    } catch (e) {
+      out.replaceChildren(h('p', { class: 'small' }, e.message || 'Could not load meetings'));
+    }
+  }
+  load();
+  const poll = setInterval(load, 4000);
+  out.addEventListener('DOMNodeRemovedFromDocument', () => clearInterval(poll));
+  const obs = new MutationObserver(() => { if (!out.isConnected) { clearInterval(poll); obs.disconnect(); } });
+  queueMicrotask(() => { if (out.ownerDocument) obs.observe(document.body, { childList: true, subtree: true }); });
+  return section('meetings', 'radio', 'Open meetings', 'Live rooms and leftover open meetings that are no longer on this server. End in 2 min warns everyone in the room; they can keep it live.', out);
+}
+
 function demoCard() {
   const body = h('div', { class: 'col', style: { gap: '.8rem' } }, loading());
   const load = h('button', { class: 'btn primary', type: 'button', html: icon('plus', { size: 16 }) + '<span>Load demo data</span>' });
