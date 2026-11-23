@@ -47,7 +47,7 @@
         width: min(560px, calc(100% - 24px));
       }
     </style>
-    <link rel="stylesheet" href="/css/app.css?v=55" />
+    <link rel="stylesheet" href="/css/app.css?v=56" />
     <link rel="stylesheet" href="/css/room.css?v=21" />
     <link rel="stylesheet" href="/features/features.css" />
     <script>
@@ -65,7 +65,10 @@
         if (p.fontScale) r.style.setProperty("--font-scale", p.fontScale);
       } catch (e) {}
     </script>
-    <script type="module" src="/js/app.js?v=55"></script>
+    <script type="importmap">
+      { "imports": { "/js/app.js": "/js/app.js?v=56" } }
+    </script>
+    <script type="module" src="/js/app.js?v=56"></script>
   </head>
   <body>
     <div id="app">
