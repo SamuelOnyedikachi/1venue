@@ -199,12 +199,6 @@ export async function popOut() {
           canCall && c.type === 'dm' ? h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Start a video call', 'data-tip': 'Start a video call', onclick: () => startCallFor(c, 'video'), html: icon('video', { size: 18 }) }) : null,
           canMeet ? h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Start a meeting', 'data-tip': 'Start a meeting', onclick: () => startMeetingFor(c), html: icon('calendarPlus', { size: 18 }) }) : null,
         );
-        const acts = (canCall || canMeet)
-          ? h('div', { class: 'app-pip-acts' },
-            canCall ? h('button', { class: 'btn sm', type: 'button', onclick: () => startCallFor(c, 'audio') }, 'Call') : null,
-            canCall && c.type === 'dm' ? h('button', { class: 'btn sm', type: 'button', onclick: () => startCallFor(c, 'video') }, 'Video') : null,
-            canMeet ? h('button', { class: 'btn sm primary', type: 'button', onclick: () => startMeetingFor(c) }, 'Meeting') : null)
-          : null;
         const list = h('div', { class: 'app-pip-msgs' },
           messages.length
             ? messages.map((m) => h('div', { class: 'app-pip-msg' + (m.mine ? ' mine' : '') },
@@ -231,7 +225,7 @@ export async function popOut() {
         } else if (c.reason) {
           foot = h('p', { class: 'tiny muted', style: { padding: '.6rem .8rem' } }, c.reason);
         }
-        wrap.replaceChildren(head, acts || '', list, foot || '');
+        wrap.replaceChildren(head, list, foot || '');
         list.scrollTop = list.scrollHeight;
       } catch (e) {
         wrap.replaceChildren(
@@ -297,6 +291,9 @@ export async function popOut() {
       body.replaceChildren(view);
     }
     await paint();
+    const syncCall = () => import('./messages/call.js').then((cm) => cm.placeAllCallUi && cm.placeAllCallUi()).catch(() => {});
+    syncCall();
+    win.addEventListener('pagehide', () => syncCall());
   } catch (e) {
     toast(e.message || 'Could not pop out 1venue', { icon: 'alert' });
   }

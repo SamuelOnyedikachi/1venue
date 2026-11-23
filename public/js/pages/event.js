@@ -244,7 +244,7 @@ export async function mount(view, { slug }) {
       h('div', { class: 'gift-amount' },
         h('span', { class: 'gift-cur gift-cur-prefix', 'aria-hidden': 'true' }, giftSym),
         gift,
-        h('span', { class: 'gift-cur gift-cur-suffix' }, giftCode));
+        h('span', { class: 'gift-cur gift-cur-suffix' }, giftCode)));
     const giftKobo = () => {
       const base = majorToBaseMinor(Number(gift.value), moneyConfig().currency);
       return Math.max(t.donationMinKobo, Math.round(base || 0));

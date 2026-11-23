@@ -29,7 +29,6 @@
 .app-pip-people { margin: 0; padding-left: 1.1rem; }
 .app-pip-thread, .app-pip-compose { flex: 1; min-height: 0; }
 .app-pip-thread-head { display: flex; align-items: center; gap: .25rem; padding: .3rem .4rem; border-bottom: 1px solid var(--line); background: var(--s1); }
-.app-pip-acts { display: flex; gap: .4rem; flex-wrap: wrap; padding: .5rem .8rem; border-bottom: 1px solid var(--line); }
 .app-pip-msgs { flex: 1; overflow: auto; padding: .6rem .8rem; display: flex; flex-direction: column; gap: .45rem; }
 .app-pip-msg { max-width: 92%; align-self: flex-start; }
 .app-pip-msg.mine { align-self: flex-end; }

@@ -12,6 +12,52 @@ const ib = (ic, label, run, cls = '') => h('button', { class: `icon-btn ${cls}`,
 const me = () => import('../app.js').then((a) => a.state.user);
 export const inCall = () => !!cur;
 
+/** The Document PiP window, if the app-wide pop-out is open. */
+function pipWin() {
+  try {
+    const w = window.documentPictureInPicture && window.documentPictureInPicture.window;
+    return w && !w.closed ? w : null;
+  } catch { return null; }
+}
+function callHost() {
+  const w = pipWin();
+  return (w && w.document && w.document.body) || document.body;
+}
+/** After moving a bar between documents, resume media so video/audio keep playing. */
+function resumeMedia(root) {
+  if (!root || !root.querySelectorAll) return;
+  root.querySelectorAll('video, audio').forEach((m) => {
+    if (m.paused && !m.ended) m.play().catch(() => {});
+  });
+}
+/** Move (do not clone) the call/ring UI into the PiP window when it is open, else back to the page. */
+export function placeCallUi(el = (cur && cur.el) || (ringing && ringing.el)) {
+  if (!el) return;
+  const host = callHost();
+  const inPip = !!(host && host.ownerDocument !== document);
+  el.classList.toggle('in-pip', inPip);
+  if (el.parentNode !== host) {
+    host.append(el);
+    resumeMedia(el);
+  }
+}
+export function placeAllCallUi() {
+  if (cur && cur.el) placeCallUi(cur.el);
+  if (ringing && ringing.el) placeCallUi(ringing.el);
+}
+function watchPip() {
+  if (typeof window === 'undefined' || !('documentPictureInPicture' in window) || watchPip.done) return;
+  watchPip.done = true;
+  window.documentPictureInPicture.addEventListener('enter', (e) => {
+    placeAllCallUi();
+    const w = e.window;
+    if (!w) return;
+    const leave = () => { w.removeEventListener('pagehide', leave); placeAllCallUi(); };
+    w.addEventListener('pagehide', leave);
+  });
+}
+watchPip();
+
 const ringtone = () => startRingtone();
 function dismissRing() { if (!ringing) return; ringing.stop(); ringing.el.remove(); stopCallAlert(ringing.call.id); ringing = null; }
 
@@ -28,7 +74,7 @@ export function incoming(call) {
     h('div', { class: 'call-ring-act' },
       h('button', { class: 'call-btn decline', type: 'button', 'aria-label': 'Decline', html: icon('phoneOff', { size: 22 }), onclick: () => decline(call) }),
       h('button', { class: 'call-btn accept', type: 'button', 'aria-label': 'Accept', html: icon(call.kind === 'video' ? 'video' : 'phone', { size: 22 }), onclick: () => accept(call) })));
-  document.body.append(el);
+  placeCallUi(el);
   ringing = { call, el, stop: ringtone() };
   startCallAlert(call, { onAnswer: () => accept(call), onDecline: () => decline(call) }); // background tab: notification, title, PiP
 }
@@ -106,7 +152,7 @@ async function join(r, title, { outgoing = false, ai = null } = {}) {
       h('span', { 'data-k': 'mute' }), isAi ? null : h('span', { 'data-k': 'cam' }),
       isAi ? null : ib('users', 'Make it a meeting (screen share, more people)', toMeeting),
       h('button', { class: 'call-btn decline sm', type: 'button', 'aria-label': 'Hang up', 'data-tip': 'Hang up', html: icon('phoneOff', { size: 20 }), onclick: hangUp })));
-  document.body.append(el);
+  placeCallUi(el);
   cur = { call: r.call, el, title, outgoing, muted: false, camOn: video, t0: 0, timer: null, room: null, ai: isAi ? (r.ai || ai) : null };
   paint();
   try {

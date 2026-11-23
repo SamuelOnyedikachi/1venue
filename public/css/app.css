@@ -1025,6 +1025,23 @@ p {
 .call-bar[data-ai-state="listening"] .call-dot { background: #16a34a; }
 .call-bar[data-ai-state="thinking"] .call-dot { background: #d97706; animation: none; }
 .call-bar[data-ai-state="speaking"] .call-dot { background: #2563eb; }
+
+/* Docked in the app-wide Document PiP window so the call stays on top with it. */
+.call-bar.in-pip {
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  width: auto;
+  z-index: 200;
+}
+.call-ring.in-pip {
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  width: auto;
+  transform: none;
+  z-index: 200;
+}
 /* --- src/10-components/cards.css --- */
 /* cards */
 .card {
@@ -3898,7 +3915,6 @@ html.menu-lock body {
 .app-pip-people { margin: 0; padding-left: 1.1rem; }
 .app-pip-thread, .app-pip-compose { flex: 1; min-height: 0; }
 .app-pip-thread-head { display: flex; align-items: center; gap: .25rem; padding: .3rem .4rem; border-bottom: 1px solid var(--line); background: var(--s1); }
-.app-pip-acts { display: flex; gap: .4rem; flex-wrap: wrap; padding: .5rem .8rem; border-bottom: 1px solid var(--line); }
 .app-pip-msgs { flex: 1; overflow: auto; padding: .6rem .8rem; display: flex; flex-direction: column; gap: .45rem; }
 .app-pip-msg { max-width: 92%; align-self: flex-start; }
 .app-pip-msg.mine { align-self: flex-end; }
