@@ -142,14 +142,13 @@ async function runNotifyModel(messages) {
   const token = config.STT.replicate.token;
   const model = config.NOTIFY.aiModel;
   if (token && !AI_MOCK && config.NOTIFY.aiEnabled) {
-    const { run } = require('../../lib/replicate');
+    const { run, llmInput, llmText, resolveLlm } = require('../../lib/replicate');
     const system = messages[0] && messages[0].role === 'system' ? messages[0].content : '';
     const rest = messages.filter((m) => m.role !== 'system');
     const prompt = rest.map((m) => `${m.role === 'assistant' ? 'Assistant' : 'User'}: ${m.content}`).join('\n') + '\nAssistant:';
-    const input = { prompt, system_prompt: system, max_tokens: 400, temperature: 0.4 };
-    const out = await run({ token, apiBase: config.STT.replicate.apiBase, model, input, timeoutMs: 20000, tag: 'notify', wait: 20 });
-    const text = Array.isArray(out.output) ? out.output.join('') : (typeof out.output === 'string' ? out.output : JSON.stringify(out.output || ''));
-    return { text: String(text || '').trim(), provider: 'replicate', model };
+    const resolved = resolveLlm(model);
+    const out = await run({ token, apiBase: config.STT.replicate.apiBase, model: resolved, input: llmInput({ prompt, system, maxTokens: 400, temperature: 0.4 }), timeoutMs: 20000, tag: 'notify', wait: 10 });
+    return { text: llmText(out.output).trim(), provider: 'replicate', model: resolved };
   }
   if (AI_MOCK || (config.AI && (config.AI.primary && config.AI.primary.apiKey))) {
     const ai = require('../../venue/ai');

@@ -6,6 +6,30 @@ export const $ = (s, r = document) => r.querySelector(s);
 export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+const URL_RE = /\b((?:https?:\/\/|www\.)[^\s<]+)/gi;
+const URL_TRAIL = /[),.;:!?\]\}'"]+$/;
+
+/** Turn bare URLs (and www.) into links. Opens in a new tab. Mentions and site-relative paths are optional. */
+export function linkify(s, { mentions = false, siteBase = '' } = {}) {
+  let t = String(s || '');
+  if (siteBase) {
+    const base = String(siteBase).replace(/\/$/, '');
+    t = t.replace(/(^|[\s:(])(\/(?:e|v|u|a|messages|settings|discover|wallet|dashboard|host|books|cert)[^\s<]*)/g, (_, pre, path) => pre + base + path);
+  }
+  let html = esc(t).replace(URL_RE, (raw) => {
+    const m = URL_TRAIL.exec(raw);
+    const trail = m ? m[0] : '';
+    const url = trail ? raw.slice(0, -trail.length) : raw;
+    if (!url) return raw;
+    const href = /^www\./i.test(url) ? 'https://' + url : url;
+    if (!/^https?:\/\//i.test(href)) return raw;
+    return `<a class="msg-link" href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>${trail}`;
+  });
+  if (mentions) html = html.replace(/(^|\s)@([\w.-]{2,30})/g, '$1<b class="mention">@$2</b>');
+  return html;
+}
+
+
 /** Canonical profile path: username → handle → id. */
 export function profilePath(u) {
   if (u == null) return '/me';
@@ -35,14 +59,21 @@ export function h(tag, props, ...kids) {
 export const frag = (html) => document.createRange().createContextualFragment(html);
 export const I = (name, size, cls) => frag(icon(name, { size, cls }));
 
-export async function api(path, { method = 'GET', body, headers = {}, raw = false } = {}) {
+export async function api(path, { method = 'GET', body, headers = {}, raw = false, signal, timeoutMs } = {}) {
   const opts = { method, credentials: 'include', headers: { ...headers } };
   if (body !== undefined) {
     if (body instanceof Blob || body instanceof ArrayBuffer) opts.body = body;
     else { opts.body = JSON.stringify(body); opts.headers['Content-Type'] = 'application/json'; }
   }
   let res;
-  try { res = await fetch(path, opts); } catch (e) { const err = new Error(navigator.onLine === false ? 'You are offline - check your connection and try again' : 'Could not reach 1venue - check your connection and try again'); err.status = 0; err.cause = e; throw err; }
+  const ctrl = timeoutMs ? new AbortController() : null;
+  const timer = timeoutMs ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+  if (signal || ctrl) {
+    if (signal && ctrl) signal.addEventListener('abort', () => ctrl.abort(), { once: true });
+    opts.signal = ctrl ? ctrl.signal : signal;
+  }
+  try { res = await fetch(path, opts); } catch (e) { const err = new Error(e.name === 'AbortError' ? 'That took too long, try again' : (navigator.onLine === false ? 'You are offline - check your connection and try again' : 'Could not reach 1venue - check your connection and try again')); err.status = 0; err.cause = e; throw err; }
+  finally { if (timer) clearTimeout(timer); }
   if (raw) return res;
   let data = null;
   try { data = await res.json(); } catch { /* empty */ }

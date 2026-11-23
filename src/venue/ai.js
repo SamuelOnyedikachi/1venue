@@ -51,17 +51,18 @@ async function callReplicate(messages, opts = {}) {
   const token = config.STT.replicate.token;
   const model = config.NOTIFY.aiModel;
   if (!token || !model) throw new Error('Replicate is not configured');
-  const { run } = require('../lib/replicate');
+  const { run, llmInput, llmText, resolveLlm } = require('../lib/replicate');
   const system = messages[0] && messages[0].role === 'system' ? messages[0].content : '';
   const rest = messages.filter((m) => m.role !== 'system');
   let prompt = rest.map((m) => `${m.role === 'assistant' ? 'Assistant' : 'User'}: ${m.content}`).join('\n') + '\nAssistant:';
   if (opts.json) prompt += '\nReply with a single JSON object only.';
+  const resolved = resolveLlm(model);
   const out = await run({
-    token, apiBase: config.STT.replicate.apiBase, model,
-    input: { prompt, system_prompt: system, max_tokens: opts.maxTokens || config.AI.maxTokens, temperature: opts.temperature ?? 0.3 },
-    timeoutMs: Math.min(config.AI.timeoutMs || 45_000, 25_000), tag: 'ai', wait: 20,
+    token, apiBase: config.STT.replicate.apiBase, model: resolved,
+    input: llmInput({ prompt, system, maxTokens: opts.maxTokens || config.AI.maxTokens, temperature: opts.temperature ?? 0.3 }),
+    timeoutMs: Math.min(config.AI.timeoutMs || 45_000, 25_000), tag: 'ai', wait: 10,
   });
-  const text = Array.isArray(out.output) ? out.output.join('') : (typeof out.output === 'string' ? out.output : '');
+  const text = llmText(out.output);
   if (!String(text).trim()) throw new Error('Replicate returned no content');
   return String(text).trim();
 }

@@ -43,9 +43,9 @@ test('out17 create layout, gift currency, and versions', () => {
   assert.match(money, /export function currencyParts/);
   assert.match(money, /export function majorToBaseMinor/);
 
-  assert.match(read('public/sw.js'), /VERSION = 'v68-2026-11-23'/);
-  assert.match(read('public/index.html'), /app\.css\?v=54/);
-  assert.match(read('public/index.html'), /app\.js\?v=54/);
+  assert.match(read('public/sw.js'), /VERSION = 'v69-2026-11-23'/);
+  assert.match(read('public/index.html'), /app\.css\?v=55/);
+  assert.match(read('public/index.html'), /app\.js\?v=55/);
   assert.match(read('src/config.js'), /NOTIFY_RETURN_AFTER_DAYS/);
 });
 

@@ -101,7 +101,9 @@ module.exports = function routes(route, { requireUser, httpError, int, db }) {
   route('POST', `${C}/schedule`, async (ctx, [id]) => { const u = await me(ctx); return { $status: 201, $body: await meet.schedule(u, int(id), await ctx.body(16 * 1024)) }; });
 
   // ---------------------------------------------------------------- power features (power.js)
-  const P = require('./power');
+  let P = null;
+  try { P = require('./power'); } catch (e) { console.warn('[messages] power features unavailable:', e.message); }
+  if (P) {
   route('POST', '/api/messages/new', async (ctx) => { const u = await me(ctx); return { conversation: await P.openByHandle(u, (await ctx.body(4 * 1024)).handle) }; });
   route('GET', '/api/messages/search', async (ctx) => {
     const u = await me(ctx); const s = ctx.url.searchParams;
@@ -123,7 +125,11 @@ module.exports = function routes(route, { requireUser, httpError, int, db }) {
   route('POST', '/api/messages/quick-replies', async (ctx) => { const u = await me(ctx); return { $status: 201, $body: await P.addQuick(u.id, await ctx.body(8 * 1024)) }; });
   route('DELETE', '/api/messages/quick-replies/(\\d+)', async (ctx, [qid]) => P.delQuick((await me(ctx)).id, int(qid)));
 
-  const aiCalls = require('./ai-calls');
+  }
+
+  let aiCalls = null;
+  try { aiCalls = require('./ai-calls'); } catch (e) { console.warn('[messages] ai-calls unavailable:', e.message); }
+  if (aiCalls) {
   route('GET', '/api/messages/ai-calls/settings', async () => aiCalls.publicSettings());
   route('POST', '/api/messages/ai-calls/([0-9a-f-]{36}|\\d+)/turn', async (ctx, [id]) => {
     const u = await me(ctx);
@@ -135,6 +141,8 @@ module.exports = function routes(route, { requireUser, httpError, int, db }) {
     const b = await ctx.body().catch(() => ({}));
     return aiCalls.requestCall(u.id, { reason: b.reason || 'You asked Notification to call you.', requested: true });
   });
+
+  }
 
   const admin = async (ctx) => { const u = await me(ctx); if (!u.isAdmin) throw httpError(403, 'Admins only'); return u; };
   route('GET', '/api/admin/message-reports', async (ctx) => { await admin(ctx); return { reports: await svc.listReports(ctx.url.searchParams.get('status') || 'open') }; });

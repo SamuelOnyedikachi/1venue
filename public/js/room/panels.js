@@ -1,6 +1,6 @@
 // Room side panel: Chat (everyone / direct / groups), People (stage, waiting, hands, roster + moderation),
 // Engage (polls, Q&A, comments) and Tools (Bible, Qur’an, captions, AI, boards, content, breakouts, …).
-import { h, esc, api, toast, toastErr, avatar, timeAgo, menu, confirmDlg, promptDlg, readFileAsDataUrl, copy, debounce, md, uploadFile, sheet, profilePath } from '../ui.js';
+import { h, esc, api, toast, toastErr, avatar, timeAgo, menu, confirmDlg, promptDlg, readFileAsDataUrl, copy, debounce, md, uploadFile, sheet, profilePath, linkify as linkifyText } from '../ui.js';
 import { icon } from '../icons.js';
 import { pillComposer } from '../composer.js';
 import { searchSounds } from './sounds.js';
@@ -11,7 +11,7 @@ const I = (n, s = 18) => h('span', { class: 'i', html: icon(n, { size: s }) });
 const vMark = (on) => on ? h('span', { class: 'verified-dot', title: 'Verified', 'aria-label': 'Verified', html: icon('check', { size: 11 }) }) : null;
 const btn = (ic, label, run, { group = '', cls = '', tip, disabled } = {}) => h('button', { class: `btn ${cls}`, 'data-group': group, 'data-tip': tip || null, disabled: !!disabled, type: 'button', onclick: run, html: icon(ic, { size: 16 }) + (label ? `<span>${esc(label)}</span>` : '') });
 const ibtn = (ic, tip, run, { group = '', cls = '', on = false } = {}) => h('button', { class: `icon-btn ${cls}${on ? ' on' : ''}`, 'data-group': group, 'data-tip': tip, 'aria-label': tip, type: 'button', onclick: run, html: icon(ic, { size: 18 }) });
-const linkify = (s) => esc(s).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>').replace(/(^|\s)@([\w.-]{2,30})/g, '$1<b class="mention">@$2</b>');
+const linkify = (s) => linkifyText(s, { mentions: true });
 const fmtTime = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const ROLE = { host: ['Host', 'crown'], cohost: ['Co-host', 'shield'], participant: ['', ''], guest: ['Guest', ''] };
 const ticketTag = (p) => (p && p.ticket && p.ticket.perks && p.ticket.perks.badge) ? h('span', { class: 'ticket-tag', 'data-vip': /vip|premium|gold|platinum/i.test(p.ticket.name) ? '' : null }, p.ticket.name) : null;

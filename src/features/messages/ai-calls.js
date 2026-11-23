@@ -8,6 +8,7 @@
  * we leave a pinned Notification message instead.
  */
 const os = require('os');
+const crypto = require('crypto');
 const { q, one } = require('../../core/db');
 const config = require('../../config');
 const { fail } = require('./access');
@@ -171,6 +172,50 @@ async function onEnded(call, reason) {
   await require('./notify').send(row.user_id, { text, style: 'detailed' }).catch(() => {});
 }
 
+
+const TURN_BUDGET_MS = 25_000;
+const MAX_TURN_AUDIO = 4 * 1048576;
+const turnCache = new Map(); // `${aiCallId}:${hash}` -> { said, replyText, audioOut, at }
+
+function sweepTurnCache() {
+  const now = Date.now();
+  for (const [k, v] of turnCache) if (now - v.at > 30 * 60_000) turnCache.delete(k);
+  while (turnCache.size > 200) turnCache.delete(turnCache.keys().next().value);
+}
+
+function decodeTurnAudio(audio, mime) {
+  if (audio == null || audio === '') return null;
+  let buf;
+  let kind = mime || 'audio/webm';
+  if (Buffer.isBuffer(audio)) buf = audio;
+  else {
+    const raw = String(audio);
+    if (!raw.trim()) return null;
+    if (raw.startsWith('data:')) {
+      const m = raw.match(/^data:([^;]+);base64,([\s\S]*)$/);
+      if (!m) { const e = fail(400, 'The audio clip was not readable'); throw e; }
+      kind = mime || m[1] || kind;
+      buf = Buffer.from(m[2], 'base64');
+    } else {
+      buf = Buffer.from(raw, 'base64');
+    }
+  }
+  if (!buf.length) { const e = fail(400, 'The audio clip was empty'); throw e; }
+  if (buf.length > MAX_TURN_AUDIO) { const e = fail(413, 'The audio clip is too large'); throw e; }
+  return { buf, mime: kind };
+}
+
+function cacheGet(key) {
+  const row = turnCache.get(key);
+  return row || { said: '', replyText: '', audioOut: null, at: Date.now() };
+}
+function cacheSet(key, patch) {
+  const row = { ...cacheGet(key), ...patch, at: Date.now() };
+  turnCache.set(key, row);
+  sweepTurnCache();
+  return row;
+}
+
 async function speak(text) {
   const clean = require('./notify').sanitizeAssistantText(text).slice(0, 800);
   if (!clean) return { url: null, text: '' };
@@ -184,11 +229,11 @@ async function speak(text) {
   return { url: rec.url || rec.publicUrl || rec, text: clean };
 }
 
-async function transcribeTurn(buf, mime) {
+async function transcribeTurn(buf, mime, timeoutMs) {
   if (!buf || !buf.length) return '';
   if (config.AI.mock) return '';
   const stt = require('../../venue/stt');
-  const r = await stt.transcribe(buf, mime || 'audio/webm');
+  const r = await stt.transcribe(buf, mime || 'audio/webm', null, { timeoutMs: timeoutMs || 15_000 });
   return stt.clean((r && (r.text || r)) || '');
 }
 
@@ -203,51 +248,86 @@ async function turn(user, aiCallId, { audio, mime, text, pendingQuestion } = {})
     if (call) await calls.end(call, 'completed');
     throw fail(409, 'This call reached its time limit');
   }
+  const start = Date.now();
+  const clip = decodeTurnAudio(audio, mime);
   let said = String(text || '').trim();
-  if (!said && audio) {
-    const buf = Buffer.isBuffer(audio) ? audio : Buffer.from(String(audio).replace(/^data:[^;]+;base64,/, ''), 'base64');
-    said = (await transcribeTurn(buf, mime)).trim();
+  const hash = said ? 't:' + crypto.createHash('sha256').update(said).digest('hex').slice(0, 24)
+    : (clip ? 'a:' + crypto.createHash('sha256').update(clip.buf).digest('hex').slice(0, 24) : '');
+  const key = `${row.id}:${hash || 'empty'}`;
+  const cached = cacheGet(key);
+  if (!said) said = cached.said || '';
+  if (!said && clip) {
+    const left = Math.max(4_000, TURN_BUDGET_MS - (Date.now() - start));
+    said = (await transcribeTurn(clip.buf, clip.mime, Math.min(15_000, left))).trim();
+    if (said) cacheSet(key, { said });
   }
   if (!said) return { ok: true, heard: '', text: '', wait: true, ...(await silenceSettings()) };
   const transcript = parseJson(row.transcript, []);
-  transcript.push({ role: 'user', text: said, at: Date.now() });
+  if (!cached.replyText) transcript.push({ role: 'user', text: said, at: Date.now() });
   const notify = require('./notify');
-  const start = Date.now();
-  let replyText = '';
-  const early = await notify.fulfillInviteIntent(user, said, null);
-  if (early && early.handled) {
-    replyText = notify.sanitizeAssistantText(early.text || (early.needComment ? 'Please add a short comment so I can decline this invite.' : 'Okay.'));
-  } else {
-    const history = transcript.slice(-12).map((t) => ({ role: t.role === 'assistant' ? 'assistant' : 'user', content: t.text }));
-    const inbound = !!row.requested;
-    const system = {
-      role: 'system',
-      content: `You are Notification on a live phone call. Speak in short, natural sentences. ${inbound ? 'The user called you. Ask how you can help.' : `You called about: ${reasonLine(row.reason) || 'an update'}.`} If the user clearly accepts or declines a speaker invite, the server will carry that out — just confirm briefly in plain language. Never output JSON, code fences, or raw actions. Do not invent URLs outside 1venue.`,
-    };
-    const model = await callModel(system, history);
-    replyText = notify.sanitizeAssistantText(model.text || '');
-    const acted = await notify.fulfillInviteIntent(user, said, model.action);
-    if (acted && acted.handled) replyText = notify.sanitizeAssistantText(acted.text || replyText);
-    else if (model.action && model.action.action && model.action.action !== 'accept_invite' && model.action.action !== 'decline_invite') {
-      await q('UPDATE ai_calls SET actions=$2 WHERE id=$1', [row.id, JSON.stringify(model.action)]);
-      if (!/yes|confirm|go ahead/i.test(replyText)) replyText = `${replyText || 'I can do that.'} Shall I go ahead?`;
-    } else {
-      const yes = /^(yes|yeah|yep|ok|okay|please do|go ahead|confirm|i do|sure)\b/i.test(said);
-      const pending = parseJson(row.actions, null);
-      if (yes && pending && pending.action) {
-        try {
-          await notify.runAction(user, pending, { confirmed: true, comment: pending.comment || '' });
-          replyText = replyText || 'Done. I’ve taken care of that.';
-          await q('UPDATE ai_calls SET actions=NULL WHERE id=$1', [row.id]);
-        } catch (e) {
-          replyText = `I couldn’t complete that: ${e.message}. You can finish it in the app instead.`;
+  let replyText = cached.replyText || '';
+  let skipTts = !!(cached.audioOut && cached.audioOut.skipTts);
+  if (!replyText) {
+    try {
+      const early = await notify.fulfillInviteIntent(user, said, null);
+      if (early && early.handled) {
+        replyText = notify.sanitizeAssistantText(early.text || (early.needComment ? 'Please add a short comment so I can decline this invite.' : 'Okay.'));
+      } else {
+        const history = transcript.slice(-12).map((t) => ({ role: t.role === 'assistant' ? 'assistant' : 'user', content: t.text }));
+        const inbound = !!row.requested;
+        const system = {
+          role: 'system',
+          content: `You are Notification on a live phone call. Speak in short, natural sentences. ${inbound ? 'The user called you. Ask how you can help.' : `You called about: ${reasonLine(row.reason) || 'an update'}.`} If the user clearly accepts or declines a speaker invite, the server will carry that out — just confirm briefly in plain language. Never output JSON, code fences, or raw actions. Do not invent URLs outside 1venue.`,
+        };
+        const model = await callModel(system, history);
+        if (model.noTts) skipTts = true;
+        replyText = notify.sanitizeAssistantText(model.text || '');
+        const acted = await notify.fulfillInviteIntent(user, said, model.action);
+        if (acted && acted.handled) replyText = notify.sanitizeAssistantText(acted.text || replyText);
+        else if (model.action && model.action.action && model.action.action !== 'accept_invite' && model.action.action !== 'decline_invite') {
+          await q('UPDATE ai_calls SET actions=$2 WHERE id=$1', [row.id, JSON.stringify(model.action)]);
+          if (!/yes|confirm|go ahead/i.test(replyText)) replyText = `${replyText || 'I can do that.'} Shall I go ahead?`;
+        } else {
+          const yes = /^(yes|yeah|yep|ok|okay|please do|go ahead|confirm|i do|sure)\b/i.test(said);
+          const pending = parseJson(row.actions, null);
+          if (yes && pending && pending.action) {
+            try {
+              await notify.runAction(user, pending, { confirmed: true, comment: pending.comment || '' });
+              replyText = replyText || 'Done. I’ve taken care of that.';
+              await q('UPDATE ai_calls SET actions=NULL WHERE id=$1', [row.id]);
+            } catch (e) {
+              replyText = `I couldn’t complete that: ${e.message}. You can finish it in the app instead.`;
+            }
+          }
         }
       }
+      if (replyText) cacheSet(key, { said, replyText });
+    } catch (e) {
+      console.error('[ai-calls] llm failed', e.status || '', e.detail || e.message, 'prediction', e.predictionId || '');
+      // Keep the call alive. Do not generate TTS for this error (avoids a billed error clip).
+      const silence = await silenceSettings();
+      return {
+        ok: true,
+        heard: said,
+        text: 'Sorry, I had trouble answering just then. Please say that again.',
+        audioUrl: null,
+        silenceMs: silence.silenceMs,
+        silenceQuestionMs: silence.silenceQuestionMs,
+        latencyMs: Date.now() - start,
+        error: e.status || 502,
+      };
     }
   }
-  transcript.push({ role: 'assistant', text: replyText, at: Date.now() });
-  await q('UPDATE ai_calls SET transcript=$2, owner_id=$3 WHERE id=$1', [row.id, JSON.stringify(transcript), ownerId()]);
-  const audioOut = await speak(replyText).catch(() => ({ url: null, text: replyText }));
+  if (!cached.replyText) {
+    transcript.push({ role: 'assistant', text: replyText, at: Date.now() });
+    await q('UPDATE ai_calls SET transcript=$2, owner_id=$3 WHERE id=$1', [row.id, JSON.stringify(transcript), ownerId()]);
+  }
+  let audioOut = cached.audioOut;
+  if (!audioOut) {
+    if (skipTts || !replyText) audioOut = { url: null, text: replyText, skipTts: true };
+    else audioOut = await speak(replyText).catch(() => ({ url: null, text: replyText }));
+    cacheSet(key, { said, replyText, audioOut });
+  }
   const silence = await silenceSettings();
   const asked = /\?\s*$/.test(replyText) || /shall i go ahead/i.test(replyText);
   return {
@@ -265,7 +345,7 @@ async function callModel(system, history) {
   const notify = require('./notify');
   const { runNotifyModel, parseAction } = notify;
   const out = await runNotifyModel([system, ...history]);
-  if (out.unavailable) return { text: 'I can’t reach the assistant just now. I’ll leave a message in our chat after we hang up, or you can type there.', action: null };
+  if (out.unavailable) return { text: 'I can’t reach the assistant just now. I’ll leave a message in our chat after we hang up, or you can type there.', action: null, noTts: true };
   return parseAction(out.text);
 }
 
@@ -294,4 +374,4 @@ function startWorker() {
   return timer;
 }
 
-module.exports = { requestCall, onAccepted, onEnded, turn, silenceSettings, publicSettings, startWorker, rowByCall, callGreeting, reasonLine, NUDGE_LEAD, claimNudge };
+module.exports = { requestCall, onAccepted, onEnded, turn, silenceSettings, publicSettings, startWorker, rowByCall, callGreeting, reasonLine, NUDGE_LEAD, claimNudge, decodeTurnAudio };

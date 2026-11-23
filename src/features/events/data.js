@@ -15,13 +15,30 @@ function slugify(s) {
   const base = String(s || 'event').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'event';
   return `${base.length < 3 ? base + '-ev' : base}-${crypto.randomBytes(3).toString('hex')}`;
 }
+function asJson(v, fallback) {
+  if (v == null || v === '') return fallback;
+  if (typeof v === 'string') {
+    try { const o = JSON.parse(v); return o == null ? fallback : o; } catch { return fallback; }
+  }
+  return v;
+}
+function asTags(v) {
+  const t = asJson(v, v);
+  if (Array.isArray(t)) return t;
+  if (typeof t === 'string' && t.trim()) return t.split(',').map((s) => s.trim()).filter(Boolean);
+  return [];
+}
+function asObj(v) {
+  const o = asJson(v, v);
+  return o && typeof o === 'object' && !Array.isArray(o) ? o : {};
+}
 function eventOut(r) {
   if (!r) return null;
   return {
     id: Number(r.id), slug: r.slug, code: r.code, title: r.title, description: r.description, category: r.category,
-    tags: r.tags || [], language: r.language, visibility: r.visibility, status: r.status,
+    tags: asTags(r.tags), language: r.language, visibility: r.visibility, status: r.status,
     startsAt: r.starts_at, endsAt: r.ends_at, startedAt: r.started_at, endedAt: r.ended_at,
-    coverUrl: r.cover_url, theme: r.theme || {}, speakerSeats: r.speaker_seats, settings: r.settings || {},
+    coverUrl: r.cover_url, theme: asObj(r.theme), speakerSeats: r.speaker_seats, settings: asObj(r.settings),
     meetingAccessMode: r.meeting_access_mode || 'host_funded', meetingDurationMin: r.meeting_duration_min == null ? null : Number(r.meeting_duration_min),
     meetingEntryPriceCredits: r.meeting_entry_units == null ? null : Number(r.meeting_entry_units) / UNITS_PER_CREDIT,
     templateSlug: r.template_slug, liveViewers: r.live_viewers, peakViewers: r.peak_viewers, totalJoins: r.total_joins,

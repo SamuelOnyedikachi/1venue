@@ -150,7 +150,7 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
 .page-messages .msg-row:not(.mine):not(.grouped) .msg-bubble { border-top-left-radius: 6px; }
 .page-messages .msg-row.mine .msg-bubble { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
 .page-messages .msg-row.mine:not(.grouped) .msg-bubble { border-top-right-radius: 6px; }
-.page-messages .msg-row.mine .msg-bubble a { color: inherit; text-decoration: underline; }
+.page-messages .msg-row.mine .msg-bubble a { color: color-mix(in srgb, var(--accent-ink, #fff) 58%, #d7f0ff); text-decoration: none; }
 .page-messages .msg-who { display: block; font-size: .75rem; color: var(--accent); margin-bottom: .1rem; }
 .page-messages .msg-txt { white-space: pre-wrap; line-height: 1.42; }
 .page-messages .msg-txt.deleted { display: flex; align-items: center; gap: .3rem; font-style: italic; opacity: .7; }

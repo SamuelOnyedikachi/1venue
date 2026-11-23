@@ -1,6 +1,6 @@
 // Messages: DMs, groups and meeting chats in one inbox (/messages, /messages/:id, /messages/new?user=ID).
 // Desktop: list + thread side by side. Phone: one pane at a time; the thread hides the bottom nav.
-import { h, esc, api, toast, toastErr, avatar, timeAgo, fmtDate, menu, sheet, confirmDlg, promptDlg, uploadFile, copy, isMobile, debounce } from '../ui.js';
+import { h, esc, api, toast, toastErr, avatar, timeAgo, fmtDate, menu, sheet, confirmDlg, promptDlg, uploadFile, copy, isMobile, debounce, linkify as linkifyText } from '../ui.js';
 import { icon } from '../icons.js';
 import { pillComposer } from '../composer.js';
 import { QUICK, emojiPopover } from '../emoji.js';
@@ -21,12 +21,7 @@ const siteHref = (path) => {
   if (/^https?:\/\//i.test(path)) return path;
   return siteBase() + (path.startsWith('/') ? path : '/' + path);
 };
-const linkify = (s) => {
-  const base = siteBase();
-  let t = String(s || '');
-  if (base) t = t.replace(/(^|[\s:(])(\/(?:e|v|u|a|messages|settings|discover|wallet|dashboard|host|books)[^\s<]*)/g, (_, pre, path) => pre + base + path);
-  return esc(t).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
-};
+const linkify = (s) => linkifyText(s, { siteBase: siteBase() });
 const hhmm = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const dayKey = (t) => new Date(t).toDateString();
 const dayLabel = (t) => { const d = new Date(t), now = new Date(); if (d.toDateString() === now.toDateString()) return 'Today'; const y = new Date(now); y.setDate(now.getDate() - 1); if (d.toDateString() === y.toDateString()) return 'Yesterday'; return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }); };

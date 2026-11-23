@@ -253,7 +253,13 @@ async function getConversation(me, id) {
     out.members = (await many(`SELECT u.id, u.username, u.display_name, u.avatar_url, u.email, u.email_verified_at, u.verified_active, u.is_system, m.role FROM conversation_members m JOIN users u ON u.id=m.user_id
       WHERE m.conversation_id=$1 AND m.left_at IS NULL ORDER BY m.role, m.joined_at LIMIT 200`, [c.id])).map((u) => ({ id: Number(u.id), username: u.username, name: u.display_name || u.username, avatarUrl: u.avatar_url || null, role: u.role, verified: isVerified(u) }));
   }
-  out.pins = await require('./power').listPins(c, me).catch(() => []);
+  try {
+    const power = require('./power');
+    out.pins = await power.listPins(c, me).catch(() => []);
+  } catch (e) {
+    out.pins = [];
+    console.warn('[messages] pins', e.message);
+  }
   return out;
 }
 /** Has this user written a real (non-system) message in the conversation? */

@@ -274,7 +274,25 @@ async function startAiAgent(ai, call) {
       let bin = '';
       for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
       const b64 = btoa(bin);
-      const r = await api(`/api/messages/ai-calls/${aiId}/turn`, { method: 'POST', body: { audio: b64, mime: blob.type || mime || 'audio/webm' } });
+      const filler = setTimeout(() => {
+        setAi('thinking', 'One moment…');
+        try {
+          if (window.speechSynthesis) {
+            const u = new SpeechSynthesisUtterance('One moment');
+            u.rate = 1.05;
+            speechSynthesis.cancel();
+            speechSynthesis.speak(u);
+            ignoreUntil = Date.now() + 1600;
+          }
+        } catch { /* */ }
+      }, 2800);
+      let r;
+      try {
+        r = await api(`/api/messages/ai-calls/${aiId}/turn`, { method: 'POST', body: { audio: b64, mime: blob.type || mime || 'audio/webm' }, timeoutMs: 25000 });
+      } finally {
+        clearTimeout(filler);
+        try { speechSynthesis.cancel(); } catch { /* */ }
+      }
       if (!cur || cur.call.id !== callId) return;
       if (r && r.silenceMs) silenceMs = Math.min(4000, Math.max(800, Number(r.silenceMs) || silenceMs));
       if (!r || r.wait) { setAi('listening', r && r.wait ? 'Didn’t catch that, try again' : null); return; }

@@ -276,10 +276,11 @@ async function forward(user, convId, mid, targetId) {
 // ---------------------------------------------------------------- AI
 const llmOn = () => !config.AI.mock && !!config.STT.replicate.token;
 async function llm(prompt, { system, maxTokens = 700, tag = 'messages-ai' } = {}) {
-  const { run } = require('../../lib/replicate');
-  const out = await run({ token: config.STT.replicate.token, apiBase: config.STT.replicate.apiBase, model: config.MATERIALS.model, tag, timeoutMs: config.MATERIALS.timeoutMs, wait: 60,
-    input: { prompt, system_prompt: system || 'You are a concise assistant inside a messaging app.', max_tokens: maxTokens, temperature: 0.3 } });
-  return Array.isArray(out.output) ? out.output.join('') : String(out.output || '');
+  const { run, llmInput, llmText, resolveLlm } = require('../../lib/replicate');
+  const model = resolveLlm(config.MATERIALS.model);
+  const out = await run({ token: config.STT.replicate.token, apiBase: config.STT.replicate.apiBase, model, tag, timeoutMs: config.MATERIALS.timeoutMs, wait: 15,
+    input: llmInput({ prompt, system: system || 'You are a concise assistant inside a messaging app.', maxTokens: maxTokens, temperature: 0.3 }) });
+  return llmText(out.output);
 }
 async function spend(userId, kind) {
   const t = await require('../../lib/plans').takeAi({ kind, ownerId: userId });
@@ -355,7 +356,7 @@ async function transcribe(user, convId, mid) {
         audio = `data:${a.mime || row.mime || 'audio/webm'};base64,${buf.toString('base64')}`;
       }
       const { run } = require('../../lib/replicate');
-      const r = await run({ token: config.STT.replicate.token, apiBase: config.STT.replicate.apiBase, model, input: stt.replicateInput(model, audio, null), timeoutMs: config.MESSAGES.sttTimeoutMs, tag: 'messages-stt', wait: 60 });
+      const r = await run({ token: config.STT.replicate.token, apiBase: config.STT.replicate.apiBase, model, input: stt.replicateInput(model, audio, null), timeoutMs: config.MESSAGES.sttTimeoutMs, tag: 'messages-stt', wait: 10 });
       text = stt.clean(stt.replicateText(r.output));
     }
   } catch (e) { await t.refund(); throw e; }

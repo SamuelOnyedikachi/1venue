@@ -17,10 +17,54 @@
 .cert-iframe { width: 100%; height: min(70vh, 28rem); border: 0; background: #fff; border-radius: 12px; }
 .perk-list { display: flex; flex-direction: column; gap: .25rem; padding: .35rem 0 .2rem; }
 .perk-list label { display: flex; gap: .45rem; align-items: center; font-size: .85rem; }
-.app-pip { display: flex; flex-direction: column; height: 100vh; margin: 0; background: var(--bg, #0b1020); color: var(--text, #e8eefc); font: 14px/1.4 system-ui, sans-serif; }
-.app-pip-tabs { display: flex; gap: 2px; padding: .4rem; border-bottom: 1px solid var(--line, #24304f); }
+.app-pip { display: flex; flex-direction: column; height: 100vh; margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; }
+.app-pip-bar { display: flex; align-items: center; gap: .15rem; padding: .3rem .3rem .3rem .2rem; border-bottom: 1px solid var(--line); background: var(--s1); }
+.app-pip-tabs { display: flex; gap: 2px; flex: 1; min-width: 0; }
 .pip-tab { flex: 1; display: flex; gap: .3rem; align-items: center; justify-content: center; border: 0; background: transparent; color: inherit; padding: .45rem; border-radius: 10px; cursor: pointer; }
-.pip-tab.on { background: var(--shade, #1a2340); font-weight: 700; }
-.app-pip-body { flex: 1; overflow: auto; }
-.app-pip-row { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: inherit; padding: .65rem .8rem; border-bottom: 1px solid var(--line, rgba(127,127,127,.15)); cursor: pointer; }
+.pip-tab.on { background: color-mix(in srgb, var(--accent) 16%, var(--s2)); color: var(--accent); font-weight: 700; }
+.pip-plus { flex: 0 0 auto; }
+.app-pip-body { flex: 1; overflow: auto; min-height: 0; background: var(--bg); }
+.app-pip-row { display: flex; align-items: center; gap: .55rem; width: 100%; text-align: left; border: 0; background: transparent; color: inherit; padding: .65rem .8rem; border-bottom: 1px solid var(--line); cursor: pointer; }
+.app-pip-row:hover { background: var(--s2); }
 .app-pip-people { margin: 0; padding-left: 1.1rem; }
+.app-pip-thread, .app-pip-compose { flex: 1; min-height: 0; }
+.app-pip-thread-head { display: flex; align-items: center; gap: .25rem; padding: .3rem .4rem; border-bottom: 1px solid var(--line); background: var(--s1); }
+.app-pip-acts { display: flex; gap: .4rem; flex-wrap: wrap; padding: .5rem .8rem; border-bottom: 1px solid var(--line); }
+.app-pip-msgs { flex: 1; overflow: auto; padding: .6rem .8rem; display: flex; flex-direction: column; gap: .45rem; }
+.app-pip-msg { max-width: 92%; align-self: flex-start; }
+.app-pip-msg.mine { align-self: flex-end; }
+.app-pip-bubble { padding: .4rem .65rem; border-radius: 14px; background: var(--s1); border: 1px solid var(--line); overflow-wrap: anywhere; }
+.app-pip-msg.mine .app-pip-bubble { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.app-pip-foot { display: flex; gap: .4rem; align-items: flex-end; padding: .5rem .6rem calc(.5rem + var(--safe-b, 0px)); border-top: 1px solid var(--line); background: var(--s1); }
+.app-pip-foot .input { flex: 1; min-width: 0; resize: none; }
+.app-pip-sugg { display: flex; flex-direction: column; }
+
+/* Chat links: colour only, no underline (messages page, meeting chat, PiP). */
+.msg-txt a, .msg-bubble a, .bubble .txt a, .app-pip-bubble a, .app-pip-row a, a.msg-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+.msg-txt a:hover, .msg-bubble a:hover, .bubble .txt a:hover, .app-pip-bubble a:hover, .app-pip-row a:hover, a.msg-link:hover,
+.msg-txt a:focus-visible, .msg-bubble a:focus-visible, .bubble .txt a:focus-visible, .app-pip-bubble a:focus-visible, a.msg-link:focus-visible {
+  color: var(--accent-2, var(--accent));
+  text-decoration: none;
+}
+.msg-txt a:visited, .msg-bubble a:visited, .bubble .txt a:visited, .app-pip-bubble a:visited, a.msg-link:visited {
+  color: color-mix(in srgb, var(--accent) 72%, var(--text));
+  text-decoration: none;
+}
+.page-messages .msg-row.mine .msg-bubble a,
+.page-messages .msg-row.mine .msg-bubble a:visited,
+.msg.mine .bubble a,
+.msg.mine .bubble a:visited,
+.app-pip-msg.mine a,
+.app-pip-msg.mine a:visited {
+  color: color-mix(in srgb, var(--accent-ink, #fff) 58%, #d7f0ff);
+  text-decoration: none;
+}
+.page-messages .msg-row.mine .msg-bubble a:hover,
+.msg.mine .bubble a:hover,
+.app-pip-msg.mine a:hover {
+  color: var(--accent-ink, #fff);
+  text-decoration: none;
+}

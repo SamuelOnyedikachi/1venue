@@ -105,13 +105,14 @@ async function callModel(m, x) {
   const excerpt = x.text.slice(0, Math.max(1000, config.MATERIALS.maxChars));
   const token = config.STT.replicate.token;
   if (config.AI.mock || !token) return { result: mockResult(m, x), model: 'mock', mock: true };
-  const { run } = require('../../lib/replicate');
+  const { run, llmInput, llmText, resolveLlm } = require('../../lib/replicate');
+  const model = resolveLlm(config.MATERIALS.model);
   const out = await run({
-    token, apiBase: config.STT.replicate.apiBase, model: config.MATERIALS.model, tag: 'materials', timeoutMs: config.MATERIALS.timeoutMs, wait: 60,
-    input: { prompt: prompt(m, x, excerpt), system_prompt: SYSTEM, max_tokens: 900, temperature: 0.3 },
+    token, apiBase: config.STT.replicate.apiBase, model, tag: 'materials', timeoutMs: config.MATERIALS.timeoutMs, wait: 15,
+    input: llmInput({ prompt: prompt(m, x, excerpt), system: SYSTEM, maxTokens: 900, temperature: 0.3 }),
   });
-  const text = Array.isArray(out.output) ? out.output.join('') : String(out.output || '');
-  return { result: parseJson(text), model: config.MATERIALS.model, mock: false };
+  const text = llmText(out.output);
+  return { result: parseJson(text), model, mock: false };
 }
 
 const inflight = new Map();
@@ -174,11 +175,12 @@ async function ask(m, { userId, question, takeAi }) {
       const history = prev.map((p) => `Q: ${p.question}\nA: ${p.answer}`).join('\n\n');
       const fence = '"""';
       const prompt = `File: "${m.title}"${summary ? `\nSummary: ${summary}` : ''}${stats}\nContent excerpt:\n${fence}\n${x.text.slice(0, Math.max(1000, config.MATERIALS.maxChars))}\n${fence}\n${history ? `\nEarlier questions:\n${history}\n` : ''}\nAnswer the question using only the file. If the file does not say, say so briefly. Plain text, under 180 words.\nQuestion: ${qText}`;
-      const { run } = require('../../lib/replicate');
-      const out = await run({ token, apiBase: config.STT.replicate.apiBase, model: config.MATERIALS.model, tag: 'materials-ask', timeoutMs: config.MATERIALS.timeoutMs, wait: 60,
-        input: { prompt, system_prompt: 'You answer questions about one document for its owner. Be accurate and concise.', max_tokens: 500, temperature: 0.2 } });
-      answer = (Array.isArray(out.output) ? out.output.join('') : String(out.output || '')).trim();
-      model = config.MATERIALS.model;
+      const { run, llmInput, llmText, resolveLlm } = require('../../lib/replicate');
+      const resolved = resolveLlm(config.MATERIALS.model);
+      const out = await run({ token, apiBase: config.STT.replicate.apiBase, model: resolved, tag: 'materials-ask', timeoutMs: config.MATERIALS.timeoutMs, wait: 15,
+        input: llmInput({ prompt, system: 'You answer questions about one document for its owner. Be accurate and concise.', maxTokens: 500, temperature: 0.2 }) });
+      answer = llmText(out.output).trim();
+      model = resolved;
     }
   } catch (e) { await t.refund(); throw e; }
   answer = cleanText(answer, { max: 4000 }) || 'No answer came back. Try rephrasing.';

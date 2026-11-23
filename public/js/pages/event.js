@@ -173,10 +173,11 @@ export async function mount(view, { slug }) {
   const promoSlot = h('div');
   const moreSlot = h('div');
   const comments = h('div', null, sectionHead('Conversation', 'chats'), commentThread('events', ev.id, { isHost: ev.isHost }));
-  const about = (ev.description || ev.tags?.length)
+  const tags = Array.isArray(ev.tags) ? ev.tags : [];
+  const about = (ev.description || tags.length)
     ? panel(
       ev.description ? h('div', { class: 'prose ev-desc', html: md(ev.description) }) : null,
-      ev.tags?.length ? h('div', { class: 'chips' }, ev.tags.map((t) => h('a', { class: 'chip', href: `/discover?q=${encodeURIComponent(t)}`, 'data-link': '' }, '#' + t))) : null,
+      tags.length ? h('div', { class: 'chips' }, tags.map((t) => h('a', { class: 'chip', href: `/discover?q=${encodeURIComponent(t)}`, 'data-link': '' }, '#' + t))) : null,
     )
     : null;
   const center = h('div', { class: 'ev-center' },

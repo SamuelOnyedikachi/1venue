@@ -11,32 +11,38 @@ module.exports = async function handle(req, res, parsed) {
   const urlPath = parsed.pathname;
 
   if (urlPath === '/api/config' && req.method === 'GET') {
-    const ai = require('../venue/ai');
-    const stt = require('../venue/stt');
+    // Auth flags are computed first so a failure in AI/STT/covers cannot hide "Continue with Google".
+    const safe = (fn, fallback) => { try { return fn(); } catch (e) { console.warn('[config]', e && e.message); return fallback; } };
     const google = require('../features/auth/google');
+    const apple = require('../features/auth/apple');
+    const auth = {
+      google: !!google.enabled(),
+      apple: !!apple.enabled(),
+      googleSignup: !!(google.enabled() && config.AUTH.google.allowSignup),
+      allowSignup: config.ALLOW_LOCAL_SIGNUP,
+      requireVerifiedEmail: config.AUTH.requireVerifiedEmail,
+      passwordMin: config.AUTH.passwordMin,
+    };
     return sendJSON(res, 200, {
       appName: config.APP_NAME,
       publicUrl: config.PUBLIC_URL || null,
       allowLocalSignup: config.ALLOW_LOCAL_SIGNUP,
-      auth: {
-        google: google.enabled(),
-        apple: require('../features/auth/apple').enabled(),
-        googleSignup: google.enabled() && config.AUTH.google.allowSignup,
-        allowSignup: config.ALLOW_LOCAL_SIGNUP,
-        requireVerifiedEmail: config.AUTH.requireVerifiedEmail,
-        passwordMin: config.AUTH.passwordMin,
-      },
+      auth,
       livekitUrl: LIVEKIT_URL || null,
       livekitConfigured: !!(LIVEKIT_URL && LIVEKIT_API_KEY && LIVEKIT_API_SECRET),
       media: config.MEDIA,
       maxParticipants: config.MAX_PARTICIPANTS,
       maxAudience: config.MAX_AUDIENCE,
       defaultSpeakerSeats: config.DEFAULT_SPEAKER_SEATS,
-      ai: ai.status(),
-      stt: stt.status(),
-      covers: { enabled: !!config.STT.replicate.token && config.COVERS.dailyLimit > 0, dailyLimit: config.COVERS.dailyLimit, options: config.COVERS.options },
-      bible: { defaultTranslation: config.BIBLE.defaultTranslation },
-      storage: { driver: config.STORAGE.driver, maxUploadBytes: config.STORAGE.maxUploadBytes, limits: require('../venue/uploads').publicLimits() },
+      ai: safe(() => require('../venue/ai').status(), { server: false }),
+      stt: safe(() => require('../venue/stt').status(), { server: false }),
+      covers: safe(() => {
+        const token = config.STT && config.STT.replicate && config.STT.replicate.token;
+        const c = config.COVERS || {};
+        return { enabled: !!token && c.dailyLimit > 0, dailyLimit: c.dailyLimit || 0, options: c.options || 1 };
+      }, { enabled: false, dailyLimit: 0, options: 1 }),
+      bible: { defaultTranslation: (config.BIBLE && config.BIBLE.defaultTranslation) || 'eng_kjv' },
+      storage: safe(() => ({ driver: config.STORAGE.driver, maxUploadBytes: config.STORAGE.maxUploadBytes, limits: require('../venue/uploads').publicLimits() }), { driver: 'local' }),
       features,
     });
   }

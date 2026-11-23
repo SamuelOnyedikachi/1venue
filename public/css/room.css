@@ -1397,9 +1397,23 @@ body.in-room .cmdbar {
   );
   color: #fff;
 }
+.bubble .txt a,
+.bubble a.msg-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+.bubble .txt a:hover,
+.bubble a.msg-link:hover {
+  color: var(--accent-2, var(--accent));
+  text-decoration: none;
+}
 .msg.mine .bubble a {
-  color: #fff;
-  text-decoration: underline;
+  color: color-mix(in srgb, var(--accent-ink, #fff) 58%, #d7f0ff);
+  text-decoration: none;
+}
+.msg.mine .bubble a:hover {
+  color: var(--accent-ink, #fff);
+  text-decoration: none;
 }
 .bubble .who {
   display: block;

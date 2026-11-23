@@ -61,15 +61,15 @@ function status() {
   };
 }
 
-async function transcribeReplicate(p, buf, mime, lang) {
+async function transcribeReplicate(p, buf, mime, lang, optsTimeout) {
   const R = config.STT.replicate;
   const dataUri = `data:${mime || 'audio/webm'};base64,${buf.toString('base64')}`;
-  const r = await replicate.run({ token: R.token, apiBase: R.apiBase, model: R.model, input: replicateInput(R.model, dataUri, lang), timeoutMs: R.timeoutMs, tag: 'stt', wait: Math.ceil(R.timeoutMs / 1000) });
+  const r = await replicate.run({ token: R.token, apiBase: R.apiBase, model: R.model, input: replicateInput(R.model, dataUri, lang), timeoutMs: optsTimeout != null ? optsTimeout : R.timeoutMs, tag: 'stt', wait: 10 });
   return { text: clean(replicateText(r.output)), provider: p.name, model: R.model, predictTime: r.metrics.predict_time || null };
 }
 
-async function transcribeWith(p, buf, mime, lang) {
-  if (p.kind === 'replicate') return transcribeReplicate(p, buf, mime, lang);
+async function transcribeWith(p, buf, mime, lang, opts = {}) {
+  if (p.kind === 'replicate') return transcribeReplicate(p, buf, mime, lang, opts.timeoutMs);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), config.STT.timeoutMs);
   try {
@@ -96,7 +96,7 @@ async function transcribeWith(p, buf, mime, lang) {
   }
 }
 
-async function transcribe(buf, mime, lang, { skipReplicate = false } = {}) {
+async function transcribe(buf, mime, lang, { skipReplicate = false, timeoutMs } = {}) {
   const errors = [];
   let list = chain();
   // Whisper has no Igbo: when an N-ATLaS server is configured, it goes first for Igbo.
@@ -104,7 +104,7 @@ async function transcribe(buf, mime, lang, { skipReplicate = false } = {}) {
   for (const p of list) {
     if (skipReplicate && p.kind === 'replicate') continue;
     try {
-      return await transcribeWith(p, buf, mime, lang);
+      return await transcribeWith(p, buf, mime, lang, { timeoutMs });
     } catch (e) {
       errors.push(e.message);
     }
