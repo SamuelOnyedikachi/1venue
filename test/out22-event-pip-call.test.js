@@ -20,9 +20,12 @@ describe('out22 event page parse, PiP actions, in-PiP call', () => {
 
   it('keeps header call/video/meeting icons and drops the second pill row', () => {
     const pip = read('public/js/app-pip.js');
-    assert.match(pip, /aria-label': 'Start a call'/);
-    assert.match(pip, /aria-label': 'Start a video call'/);
-    assert.match(pip, /aria-label': 'Start a meeting'/);
+    assert.match(pip, /Start a call/);
+    assert.match(pip, /Start a video call/);
+    assert.match(pip, /Start a meeting/);
+    assert.match(pip, /softBtn\('phone'/);
+    assert.match(pip, /softBtn\('video'/);
+    assert.match(pip, /softBtn\('calendarPlus'/);
     assert.doesNotMatch(pip, /app-pip-acts/);
     assert.doesNotMatch(pip, /\}, 'Call'\)/);
     assert.doesNotMatch(pip, /\}, 'Video'\)/);
@@ -46,8 +49,8 @@ describe('out22 event page parse, PiP actions, in-PiP call', () => {
   });
 
   it('bumps the cache versions', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v71-2026-11-23'/);
-    assert.match(read('public/index.html'), /app\.css\?v=57/);
-    assert.match(read('public/index.html'), /app\.js\?v=57/);
+    assert.match(read('public/sw.js'), /VERSION = 'v72-2026-11-23'/);
+    assert.match(read('public/index.html'), /app\.css\?v=58/);
+    assert.match(read('public/index.html'), /app\.js\?v=58/);
   });
 });

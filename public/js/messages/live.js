@@ -4,7 +4,7 @@
 import { api, toast } from '../ui.js';
 
 export const bus = new EventTarget();
-let ws = null, userId = null, retry = 0, timer = null, active = null, unreadTotal = 0;
+let ws = null, userId = null, retry = 0, timer = null, active = null, pipActive = null, unreadTotal = 0;
 const emit = (type, detail) => bus.dispatchEvent(new CustomEvent(type, { detail }));
 export const unread = () => unreadTotal;
 
@@ -26,12 +26,24 @@ export function refreshUnread() {
     try { const r = await api('/api/messages/unread'); unreadTotal = r.total || 0; paintBadges(); emit('unread', r); } catch { /* offline */ }
   }, 250);
 }
+function pipOpen() {
+  try {
+    const w = window.documentPictureInPicture && window.documentPictureInPicture.window;
+    return !!(w && !w.closed);
+  } catch { return false; }
+}
+function surfaceVisible() { return document.visibilityState === 'visible' || pipOpen(); }
+function watching(convId) { return Number(active) === Number(convId) || Number(pipActive) === Number(convId); }
 function sendVisible() {
-  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'visible', visible: document.visibilityState === 'visible', conversationId: active }));
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'visible', visible: surfaceVisible(), conversationId: pipActive || active }));
 }
 /** The Messages page tells us which thread is on screen (no push / no unread bump for it). */
 export function setActiveConversation(id) { active = id || null; sendVisible(); }
-export function typing(conversationId) { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'typing', conversationId })); }
+/** The app-wide PiP window's open thread (can differ from the main Messages page). */
+export function setPipConversation(id) { pipActive = id || null; sendVisible(); }
+export function typing(conversationId, state = 'typing') {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: state === 'recording' ? 'recording' : 'typing', conversationId, state: state === 'recording' ? 'recording' : 'typing' }));
+}
 
 function connect() {
   if (!userId || (ws && ws.readyState <= 1)) return;
@@ -47,13 +59,13 @@ function connect() {
     let m; try { m = JSON.parse(e.data); } catch { return; }
     if (m.type === 'message') {
       const mine = m.message && m.message.fromUserId === userId;
-      if (!mine && !(document.visibilityState === 'visible' && Number(active) === Number(m.conversationId))) {
+      if (!mine && !(surfaceVisible() && watching(m.conversationId))) {
         refreshUnread();
         if (m.message.kind !== 'call' && m.message.kind !== 'system' && !m.muted) {
           import('./tones.js').then((t) => t.playMessageTone()).catch(() => {});
           if (document.visibilityState !== 'visible') import('./notify.js').then((n) => n.localNotify({ title: m.message.fromName, body: m.message.text || 'Sent an attachment', url: `/messages/${m.conversationId}`, tag: `conv-${m.conversationId}` })).catch(() => {});
         }
-        if (!location.pathname.startsWith('/messages') && m.message.kind !== 'call') toast(`${m.message.fromName}: ${m.message.text || 'sent an attachment'}`.slice(0, 120), { icon: 'chat', group: 'people', action: { label: 'Open', run: () => import('../app.js').then((a) => a.navigate(`/messages/${m.conversationId}`)) } });
+        if (!location.pathname.startsWith('/messages') && !watching(m.conversationId) && m.message.kind !== 'call') toast(`${m.message.fromName}: ${m.message.text || 'sent an attachment'}`.slice(0, 120), { icon: 'chat', group: 'people', action: { label: 'Open', run: () => import('../app.js').then((a) => a.navigate(`/messages/${m.conversationId}`)) } });
       }
     } else if (m.type === 'unread' || m.type === 'read' || m.type === 'conversation-updated') refreshUnread();
     else if (m.type === 'call-ring') import('./call.js').then((c) => c.incoming(m.call)).catch(() => {});

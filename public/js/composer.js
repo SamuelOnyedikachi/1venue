@@ -50,10 +50,12 @@ export function checkLimit(file, limits) {
  * @param {(text:string, attachment:object|null)=>any} o.onSend
  * @param {(file:File, purpose:string)=>Promise<{url:string,mime:string,size:number,filename:string}>} [o.upload]
  * @param {boolean} [o.voice]   show the mic when empty (needs upload)
+ * @param {boolean} [o.dictate] show a voice-typing (dictation) button
+ * @param {(state:'typing'|'recording'|null)=>void} [o.onActivity]
  * @param {object} [o.limits]   /api/config storage.limits
  * @param {object} [o.drafts]   object to persist drafts in; [o.draftKey]
  */
-export function pillComposer({ placeholder = 'Message', onSend, upload, voice = !!upload, limits, drafts, draftKey, disabled = false, maxLength = 2000, suggest, accept = 'image/*,application/pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.tsv,.txt,.zip,audio/*,.mwb,application/x-mwb' } = {}) {
+export function pillComposer({ placeholder = 'Message', onSend, upload, voice = !!upload, dictate = false, onActivity, limits, drafts, draftKey, disabled = false, maxLength = 2000, suggest, accept = 'image/*,application/pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.tsv,.txt,.zip,audio/*,.mwb,application/x-mwb' } = {}) {
   const ta = h('textarea', { rows: 1, placeholder: disabled ? 'Chat is turned off by the host' : placeholder, disabled: !!disabled, 'data-focus': '', enterkeyhint: 'send', maxlength: maxLength, 'aria-label': placeholder });
   if (drafts && draftKey) ta.value = drafts[draftKey] || '';
   let pending = null, busy = false;
@@ -89,7 +91,7 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
     sugg.hidden = !out.length;
     sugg.replaceChildren(...out.slice(0, 10).map((x) => h('button', { type: 'button', class: `wa-chip${x.label ? '' : ' em'}`, 'data-tip': x.tip || null, onclick: () => x.run() }, x.glyph ? h('span', { class: 'g' }, x.glyph) : null, x.label || null)));
   }
-  ta.addEventListener('input', () => { if (drafts && draftKey) drafts[draftKey] = ta.value; fit(); paintAct(); paintSugg(); });
+  ta.addEventListener('input', () => { if (drafts && draftKey) drafts[draftKey] = ta.value; fit(); paintAct(); paintSugg(); if (ta.value.trim()) onActivity && onActivity('typing'); });
   async function send() {
     if (busy || disabled) return;
     if (pending && pending.uploading) return toast('Still uploading…', { icon: 'upload' });
@@ -146,6 +148,7 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
       rec.onstop = async () => {
         s.getTracks().forEach((t) => t.stop()); clearInterval(recTimer);
         const mime = rec.mimeType || 'audio/webm'; rec = null; recBar.hidden = true; ta.hidden = false; paintAct();
+        onActivity && onActivity(null);
         if (cancelRec || !chunks.length) return;
         const b = new File(chunks, 'Voice note.webm', { type: mime.split(';')[0] });
         try {
@@ -154,18 +157,35 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
         } catch (e) { toast(e.message || 'Could not send voice note', { icon: 'alert', group: 'admin' }); }
       };
       rec.start(); recStart = Date.now(); recBar.hidden = false; ta.hidden = true; paintAct();
-      recTimer = setInterval(() => { const s2 = Math.floor((Date.now() - recStart) / 1000); recBar.querySelector('.t').textContent = `${Math.floor(s2 / 60)}:${String(s2 % 60).padStart(2, '0')}`; if (s2 >= 120) rec && rec.stop(); }, 250);
+      onActivity && onActivity('recording');
+      recTimer = setInterval(() => { const s2 = Math.floor((Date.now() - recStart) / 1000); recBar.querySelector('.t').textContent = `${Math.floor(s2 / 60)}:${String(s2 % 60).padStart(2, '0')}`; if (s2 % 2 === 0) onActivity && onActivity('recording'); if (s2 >= 120) rec && rec.stop(); }, 250);
     } catch (e) { toast(e.name === 'NotAllowedError' ? 'Microphone permission is needed for voice notes' : (e.message || 'Microphone unavailable'), { icon: 'micOff', group: 'admin' }); }
   }
   act.onclick = () => { const m = act.dataset.mode; if (m === 'mic') startRec(); else if (m === 'stop') rec && rec.stop(); else send(); };
 
+  let dictating = false;
+  const dictateBtn = dictate ? ib('mic', 'Voice typing', () => toggleDictate()) : null;
+  function paintDictate() {
+    if (!dictateBtn) return;
+    dictateBtn.classList.toggle('on', dictating);
+    dictateBtn.setAttribute('aria-pressed', String(dictating));
+    dictateBtn.setAttribute('aria-label', dictating ? 'Stop voice typing' : 'Voice typing');
+    dictateBtn.dataset.tip = dictating ? 'Stop voice typing' : 'Voice typing';
+  }
+  async function toggleDictate() {
+    try {
+      const v = await import('./voice.js');
+      if (v.isListening(ta)) { v.stopListening(ta, 'user'); dictating = false; paintDictate(); return; }
+      await v.listenOn(ta, { keepTyping: true, onStart: () => { dictating = true; paintDictate(); }, onEnd: () => { dictating = false; paintDictate(); } });
+    } catch (e) { toast(e.message || 'Voice typing is not available', { icon: 'micOff' }); }
+  }
   const emojiBtn = ib('smile', 'Emoji', () => emojiPopover(emojiBtn, (e) => insertAtCaret(e), { keepOpen: true }));
   function insertAtCaret(t) {
     const s = ta.selectionStart ?? ta.value.length, en = ta.selectionEnd ?? ta.value.length;
     ta.value = ta.value.slice(0, s) + t + ta.value.slice(en); ta.selectionStart = ta.selectionEnd = s + t.length;
     ta.dispatchEvent(new Event('input')); ta.focus({ preventScroll: true });
   }
-  const pill = h('div', { class: 'wa-pill' }, emojiBtn, upload ? ib('paperclip', 'Attach photo or file', () => file.click()) : null, ta, recBar, file);
+  const pill = h('div', { class: 'wa-pill' }, emojiBtn, upload ? ib('paperclip', 'Attach photo or file', () => file.click()) : null, dictateBtn, ta, recBar, file);
   const el = h('div', { class: `wa${disabled ? ' off' : ''}` }, sugg, prev, h('div', { class: 'wa-row' }, pill, act));
   paintAct(); requestAnimationFrame(fit);
   const clear = () => { ta.value = ''; ta.dispatchEvent(new Event('input')); };

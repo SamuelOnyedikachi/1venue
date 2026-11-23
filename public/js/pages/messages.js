@@ -229,6 +229,7 @@ export async function mount(view, params) {
       composer = pillComposer({ placeholder: S.conv.type === 'dm' && !isMobile() ? `Message ${S.conv.title}` : 'Message', maxLength: 4000,
         upload: (f, purpose) => uploadFile(f, { purpose: purpose === 'voice' ? 'voice' : 'chat' }),
         suggest: quickSuggest,
+        onActivity: (st) => { if (S.conv) sendTyping(S.conv.id, st === 'recording' ? 'recording' : 'typing'); },
         onSend: async (text, att) => {
           if (S.editing) { const id = S.editing; S.editing = null; await api(`/api/messages/conversations/${S.conv.id}/messages/${id}`, { method: 'PATCH', body: { text } }).then((r) => upsert(r.message)); return; }
           const r = await api(`/api/messages/conversations/${S.conv.id}/messages`, { method: 'POST', body: { text, attachment: att || undefined, replyToId: S.replyTo ? S.replyTo.id : undefined } });
@@ -239,8 +240,6 @@ export async function mount(view, params) {
       const pill = composer.el.querySelector('.wa-pill');
       if (pill) add(pill, h('button', { class: 'wa-ib msg-quick-btn', type: 'button', 'aria-label': 'Quick replies', 'data-tip': 'Quick replies (type /)', html: icon('quick', { size: 19 }), onclick: (e) => quickMenu(e.currentTarget) }),
         h('button', { class: 'wa-ib', type: 'button', 'aria-label': 'Send later', 'data-tip': 'Send later', html: icon('clock', { size: 19 }), onclick: () => sendLaterSheet() }));
-      let last = 0;
-      composer.ta.addEventListener('input', () => { if (Date.now() - last > 2500 && composer.ta.value) { last = Date.now(); sendTyping(S.conv.id); } });
     }
     return composer.el;
   }
@@ -871,14 +870,20 @@ export async function mount(view, params) {
   on('open', () => { if (S.conv) open(S.conv.id); else loadList(); });
   on('typing', (m) => {
     if (!S.conv || m.conversationId !== S.conv.id) return;
-    S.typing.set(m.userId, { name: m.name, at: Date.now() }); paintTyping();
+    S.typing.set(m.userId, { name: m.name, at: Date.now(), state: m.state === 'recording' ? 'recording' : 'typing' }); paintTyping();
     setTimeout(paintTyping, 4200);
   });
   function paintTyping() {
     for (const [k, v] of S.typing) if (Date.now() - v.at > 4000) S.typing.delete(k);
-    const names = [...S.typing.values()].map((v) => v.name);
-    typingEl.hidden = !names.length;
-    typingEl.textContent = names.length ? (S.conv.type === 'dm' ? 'typing…' : `${names.slice(0, 2).join(', ')} ${names.length > 1 ? 'are' : 'is'} typing…`) : '';
+    const rec = [...S.typing.values()].filter((v) => v.state === 'recording');
+    const typ = [...S.typing.values()].filter((v) => v.state !== 'recording');
+    const who = (arr) => arr.slice(0, 2).map((v) => v.name).join(', ');
+    const dm = S.conv.type === 'dm';
+    const bits = [];
+    if (rec.length) bits.push(dm ? 'recording voice…' : `${who(rec)} ${rec.length > 1 ? 'are' : 'is'} recording voice…`);
+    if (typ.length) bits.push(dm ? 'typing…' : `${who(typ)} ${typ.length > 1 ? 'are' : 'is'} typing…`);
+    typingEl.hidden = !bits.length;
+    typingEl.textContent = bits.join(' ');
   }
   const onVis = () => { if (document.visibilityState === 'visible' && S.conv) markRead(); };
   document.addEventListener('visibilitychange', onVis);

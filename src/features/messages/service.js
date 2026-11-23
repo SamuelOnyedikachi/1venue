@@ -552,11 +552,12 @@ async function clearHistory(me, convId) {
   await q('UPDATE conversation_members SET cleared_before=$3, last_read_message_id=GREATEST(last_read_message_id, $3) WHERE conversation_id=$1 AND user_id=$2', [c.id, me, top]);
   return { ok: true };
 }
-async function relayTyping(me, convId) {
+async function relayTyping(me, convId, state = 'typing') {
   const c = await convRow(me, convId).catch(() => null);
   if (!c) return;
+  const kind = state === 'recording' ? 'recording' : 'typing';
   const u = await one('SELECT username, display_name FROM users WHERE id=$1', [me]);
-  for (const uid of await memberIds(c.id)) if (uid !== Number(me)) socket.sendToUser(uid, { type: 'typing', conversationId: c.id, userId: Number(me), name: nameOf(u) });
+  for (const uid of await memberIds(c.id)) if (uid !== Number(me)) socket.sendToUser(uid, { type: 'typing', conversationId: c.id, userId: Number(me), name: nameOf(u), state: kind });
 }
 
 // ---------------------------------------------------------------- groups

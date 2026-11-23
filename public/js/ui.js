@@ -269,8 +269,11 @@ export function hue(s) { let x = 0; for (const c of String(s || '?')) x = (x * 3
 export const initials = (n) => String(n || '?').trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join('').toUpperCase() || '?';
 export function avatar(name, url, cls = '') {
   const el = h('span', { class: `av ${cls}`, style: { '--h': hue(name) }, title: name || '' });
-  if (url) el.append(h('img', { src: url, alt: '', loading: 'lazy', onerror: (e) => { e.target.remove(); el.textContent = initials(name); } }));
-  else el.textContent = initials(name);
+  let src = url;
+  if (src) {
+    try { src = new URL(src, document.baseURI).href; } catch { /* keep */ }
+    el.append(h('img', { src, alt: '', loading: 'lazy', onerror: (e) => { e.target.remove(); el.textContent = initials(name); } }));
+  } else el.textContent = initials(name);
   return el;
 }
 export function timeAgo(d) {

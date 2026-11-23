@@ -248,7 +248,9 @@ export function pushRecent(e) { const r = [e, ...recentEmoji().filter((x) => x !
 
 /** Small searchable popover anchored above an element. onPick(emoji). */
 export function emojiPopover(anchor, onPick, { keepOpen = false } = {}) {
-  const open = document.querySelector('.emoji-pop');
+  const doc = (anchor && anchor.ownerDocument) || document;
+  const win = doc.defaultView || window;
+  const open = doc.querySelector('.emoji-pop');
   if (open) { open._close?.(); if (open._anchor === anchor) return null; }
   const input = h('input', { class: 'emoji-search', type: 'search', placeholder: 'Search emoji - happy, pray, fire…', 'aria-label': 'Search emoji' });
   const grid = h('div', { class: 'emoji-grid', role: 'listbox' });
@@ -261,16 +263,16 @@ export function emojiPopover(anchor, onPick, { keepOpen = false } = {}) {
   input.addEventListener('input', paint);
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { const f = grid.querySelector('.emoji-cell'); if (f) { e.preventDefault(); f.click(); } } if (e.key === 'Escape') close(); });
   paint();
-  document.body.append(pop);
+  doc.body.append(pop);
   const r = anchor.getBoundingClientRect();
-  const W = Math.min(320, innerWidth - 16);
+  const W = Math.min(320, win.innerWidth - 16);
   pop.style.width = W + 'px';
-  pop.style.left = Math.max(8, Math.min(innerWidth - W - 8, r.left)) + 'px';
-  pop.style.bottom = Math.max(8, innerHeight - r.top + 8) + 'px';
+  pop.style.left = Math.max(8, Math.min(win.innerWidth - W - 8, r.left)) + 'px';
+  pop.style.bottom = Math.max(8, win.innerHeight - r.top + 8) + 'px';
   const away = (e) => { if (!pop.contains(e.target) && !anchor.contains(e.target)) close(); };
-  function close() { pop.remove(); document.removeEventListener('pointerdown', away, true); }
+  function close() { pop.remove(); doc.removeEventListener('pointerdown', away, true); };
   pop._anchor = anchor; pop._close = close;
-  setTimeout(() => document.addEventListener('pointerdown', away, true));
+  setTimeout(() => doc.addEventListener('pointerdown', away, true));
   if (matchMedia('(pointer:fine)').matches) input.focus();
   return { close, el: pop };
 }

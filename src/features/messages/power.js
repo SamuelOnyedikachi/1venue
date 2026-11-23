@@ -98,16 +98,34 @@ async function search(me, { q: text = '', conversationId = null, from = '', has 
   const convs = await many(`SELECT c.*, m.cleared_before FROM conversation_members m JOIN conversations c ON c.id=m.conversation_id WHERE m.user_id=$1 AND m.left_at IS NULL${conversationId ? ' AND c.id=$2' : ''}`, conversationId ? [me, Number(conversationId)] : [me]);
   const blocked = await access.blockedByMe(me);
   const out = [];
-  const like = `%${likeEsc(term.toLowerCase())}%`;
+  const tokens = [...new Set((term.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []))].slice(0, 8);
+  const textClause = (p, join) => {
+    if (!tokens.length) return '';
+    const parts = tokens.map((tok) => {
+      p.push(`%${likeEsc(tok)}%`);
+      const i = p.length;
+      return `(LOWER(COALESCE(body,'')) LIKE $${i} ESCAPE '\\' OR LOWER(COALESCE(sender_name,'')) LIKE $${i} ESCAPE '\\')`;
+    });
+    return ` AND (${parts.join(` ${join} `)})`;
+  };
   for (const c of convs.slice(0, 300)) {
     c.id = Number(c.id);
     const s = svc().src(c);
-    const p = [s.key, Number(c.cleared_before) || 0]; let w = `${s.col}=$1${s.extra} AND id > $2 AND deleted_at IS NULL AND (kind IS NULL OR kind NOT IN ('system','call'))`;
-    if (term) { p.push(like); w += ` AND LOWER(COALESCE(body,'')) LIKE $${p.length} ESCAPE '\\'`; }
-    if (from === 'me') { p.push(me); w += ` AND sender_user_id=$${p.length}`; } else if (from === 'them') { p.push(me); w += ` AND (sender_user_id IS NULL OR sender_user_id<>$${p.length})`; }
-    if (has === 'link') w += " AND body LIKE '%http%'";
-    else if (['file', 'image', 'voice'].includes(has)) { p.push(`%"kind":"${has}"%`); w += ` AND attachments LIKE $${p.length}`; }
-    const rows = await many(`SELECT * FROM ${s.table} WHERE ${w} ORDER BY id DESC LIMIT 20`, p);
+    const filters = (join) => {
+      const p = [s.key, Number(c.cleared_before) || 0];
+      let w = `${s.col}=$1${s.extra} AND id > $2 AND deleted_at IS NULL AND (kind IS NULL OR kind NOT IN ('system','call'))`;
+      w += textClause(p, join);
+      if (from === 'me') { p.push(me); w += ` AND sender_user_id=$${p.length}`; } else if (from === 'them') { p.push(me); w += ` AND (sender_user_id IS NULL OR sender_user_id<>$${p.length})`; }
+      if (has === 'link') w += " AND body LIKE '%http%'";
+      else if (['file', 'image', 'voice'].includes(has)) { p.push(`%"kind":"${has}"%`); w += ` AND attachments LIKE $${p.length}`; }
+      return { p, w };
+    };
+    let { p, w } = filters('AND');
+    let rows = await many(`SELECT * FROM ${s.table} WHERE ${w} ORDER BY id DESC LIMIT 20`, p);
+    if (!rows.length && tokens.length > 1) {
+      ({ p, w } = filters('OR'));
+      rows = await many(`SELECT * FROM ${s.table} WHERE ${w} ORDER BY id DESC LIMIT 20`, p);
+    }
     if (!rows.length) continue;
     let title = c.title;
     if (c.type === 'dm') {

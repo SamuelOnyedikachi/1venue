@@ -2,7 +2,7 @@
  * User socket (wss://…/ws/me): one connection per signed-in tab, separate from the meeting hub so a
  * dead meeting can never drop someone's inbox. Authenticated with the session cookie at upgrade.
  *
- * Client -> server: { type: 'visible', visible, conversationId }   { type: 'typing', conversationId }
+ * Client -> server: { type: 'visible', visible, conversationId }   { type: 'typing'|'recording', conversationId }
  * Server -> client: ready, message, message-edited, message-deleted, reaction, read, typing,
  *                   conversation-updated, unread, call-ring, call-accepted, call-declined,
  *                   call-ended, call-upgraded, presence
@@ -69,11 +69,13 @@ function create() {
       let msg; try { msg = JSON.parse(String(raw)); } catch { return; }
       if (!msg || typeof msg.type !== 'string') return;
       if (msg.type === 'visible') { ws.visible = !!msg.visible; ws.activeConversation = msg.conversationId ? Number(msg.conversationId) : null; return; }
-      if (msg.type === 'typing' && msg.conversationId) {
+      if ((msg.type === 'typing' || msg.type === 'recording') && msg.conversationId) {
+        const state = (msg.type === 'recording' || msg.state === 'recording') ? 'recording' : 'typing';
         const now = Date.now();
-        if (ws.lastTyping && now - ws.lastTyping < 1500) return;
-        ws.lastTyping = now;
-        require('./service').relayTyping(uid, Number(msg.conversationId)).catch(() => {});
+        const key = state === 'recording' ? 'lastRecording' : 'lastTyping';
+        if (ws[key] && now - ws[key] < 1500) return;
+        ws[key] = now;
+        require('./service').relayTyping(uid, Number(msg.conversationId), state).catch(() => {});
       }
     });
     ws.on('close', () => {
