@@ -123,6 +123,7 @@ const ROUTES = [
   [/^\/materials\/(\d+)\/?$/, () => import('./pages/material.js'), 'id'],
   [/^\/dashboard\/?$/, () => import('./pages/dashboard.js')],
   [/^\/a\/([a-f0-9]{32,})\/?$/, () => import('./pages/attendance.js'), 'token'],
+  [/^\/cert\/([A-Za-z0-9]{10})\/?$/, () => import('./pages/cert.js'), 'code'],
   [/^\/feed\/?$/, () => import('./pages/feed.js')],
   [/^\/messages\/?$/, () => import('./pages/messages.js')],
   [/^\/messages\/(\w+)\/?$/, () => import('./pages/messages.js'), 'id'],
@@ -298,6 +299,8 @@ function renderUserSlot() {
       { label: 'My sessions', icon: 'history', run: () => navigate('/sessions') },
       { label: 'My whiteboard', icon: 'board', group: 'content', run: () => navigate('/whiteboard') },
       { label: 'Settings', icon: 'settings', group: 'settings', run: () => navigate('/settings') },
+      { label: document.fullscreenElement ? 'Exit fullscreen' : 'Fullscreen', icon: 'maximize', group: 'settings', run: () => import('./app-pip.js').then((m) => m.toggleFullscreen()) },
+      { label: 'Pop out 1venue', icon: 'pip', group: 'settings', run: () => import('./app-pip.js').then((m) => m.popOut()) },
       state.user.isAdmin ? { label: 'Admin', icon: 'shield', group: 'admin', run: () => navigate('/admin') } : null, '-',
       { label: 'Sign out', icon: 'logout', group: 'admin', run: logout },
     ]);

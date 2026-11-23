@@ -52,6 +52,8 @@ async function finishMeeting(code, reason, endedAt) {
   if (meeting.eventId) {
     try { await require('../venue/data').markEventEnded(meeting.eventId); } catch (e) { console.warn('[event end]', e.message); }
   }
+  try { await require('../features/certificates/service').issueForMeeting(meeting); }
+  catch (e) { console.warn('[certs] issue', e.message); }
   if (meeting.venue) {
     try { await require('../venue/data').markVenueClosed(code); } catch (e) { console.warn('[venue close]', e.message); }
   }

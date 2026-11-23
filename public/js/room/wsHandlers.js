@@ -20,6 +20,9 @@ export function handle(R, m) {
     case 'waiting-updated': R.waiting = m.waiting || []; break;
     case 'admission-failed': toast(m.reason || `${m.participantName || 'The participant'} could not be admitted`, { icon: 'wallet', group: 'people', ms: 7000 }); return;
     case 'paid-entry-extension': if (R.paidEntry) { R.paidEntry.runtimeEndMs = Number(m.runtimeEndMs); R.paidEntryWarned = false; R.syncPaidEntry?.(); } break;
+    case 'paid-entry-switch': R.showPaidSwitch?.(m); break;
+    case 'paid-usage-low-balance': R.showLowBalance?.(m); break;
+    case 'kicked': R.kicked?.(m); return;
     case 'permissions-updated': if (R.meP()) R.meP().permissions = m.permissions; R.applyPerms(); break;
     case 'force-stop-share': R.media.setShare(false).catch(() => {}); toast('The host stopped your screen share', { icon: 'screenOff', group: 'media' }); break;
     case 'share-started': case 'share-stopped': roster(); break;

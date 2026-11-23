@@ -132,7 +132,10 @@ async function handleApple(req, res, parsed) {
       allowSignup: config.AUTH.apple.allowSignup,
     });
     if (!r || !r.row) return appleFail(res, 'apple-signup-closed');
-    if (r.created) mail.sendLater('welcome', r.row.email, { name: r.row.display_name || r.row.username, link: origin(req) + '/' });
+    if (r.created) {
+      mail.sendLater('welcome', r.row.email, { name: r.row.display_name || r.row.username, link: origin(req) + '/' });
+      require('../messages/welcome').onSignup(r.row);
+    } else require('../messages/welcome').onReturn(r.row);
     await auth.startSession(req, res, r.row, { method: 'apple' });
     // 303: the browser follows with a GET, a top-level same-site navigation, so the new
     // (SameSite=Lax) session cookies are sent on it.
@@ -172,7 +175,10 @@ module.exports = async function handle(req, res, parsed) {
     const claims = await google.finish({ code: q.get('code'), verifier: flow.v, nonce: flow.n, redirectUri: redirectUri(req) });
     const r = await userForGoogle(claims);
     if (!r || !r.row) return fail(res, 'google-signup-closed');
-    if (r.created) mail.sendLater('welcome', r.row.email, { name: r.row.display_name || r.row.username, link: origin(req) + '/' });
+    if (r.created) {
+      mail.sendLater('welcome', r.row.email, { name: r.row.display_name || r.row.username, link: origin(req) + '/' });
+      require('../messages/welcome').onSignup(r.row);
+    } else require('../messages/welcome').onReturn(r.row);
     await auth.startSession(req, res, r.row, { method: 'google' });
     return redirect(res, flow.next || '/dashboard', [flowCookie('', 0)]);
   } catch (e) {

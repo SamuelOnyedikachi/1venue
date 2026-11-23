@@ -12,7 +12,7 @@ const split = (net) => {
   const host = Math.floor(net * 0.8);
   return { host, platform: net - host };
 };
-const sessionOut = (r) => r && ({ code: r.code, historyId: Number(r.history_id), hostUserId: Number(r.host_user_id), entryUnits: Number(r.entry_units), entryCredits: Number(r.entry_units) / U, durationMin: Number(r.duration_min), startedMs: Number(r.started_ms), advertisedEndMs: Number(r.advertised_end_ms), runtimeEndMs: Number(r.runtime_end_ms), endedMs: r.ended_ms == null ? null : Number(r.ended_ms), state: r.state });
+const sessionOut = (r) => r && ({ code: r.code, historyId: Number(r.history_id), hostUserId: Number(r.host_user_id), entryUnits: Number(r.entry_units), entryCredits: Number(r.entry_units) / U, durationMin: Number(r.duration_min), startedMs: Number(r.started_ms), advertisedEndMs: Number(r.advertised_end_ms), runtimeEndMs: Number(r.runtime_end_ms), endedMs: r.ended_ms == null ? null : Number(r.ended_ms), state: r.state, billingModel: r.billing_model || 'entry', switchDeadlineMs: r.switch_deadline_ms == null ? null : Number(r.switch_deadline_ms) });
 
 async function open({ code, historyId, hostUserId, entryCredits, durationMin, startedMs = Date.now() }) {
   const duration = Number(durationMin);
@@ -39,6 +39,8 @@ const admission = (code, userId) => one('SELECT * FROM paid_meeting_entries WHER
 /** Charge once per signed-in account and meeting. Reacceptance clears a prior kick marker. */
 async function accept({ code, userId, participantId, now = Date.now() }) {
   if (!userId) throw fail(401, 'Sign in before joining this paid-entry meeting');
+  const peek = await one('SELECT billing_model, state FROM paid_meeting_sessions WHERE code=$1', [code]);
+  if (peek && peek.billing_model === 'usage') return require('./usage').acceptUsage({ code, userId, participantId, now, startNow: false });
   return db.tx(async (c) => {
     const user = (await c.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [userId])).rows[0];
     if (!user) throw fail(401, 'Sign in before joining this paid-entry meeting');
@@ -100,6 +102,13 @@ async function extend({ code, hostUserId, minutes, now = Date.now() }) {
 
 /** Refund unused advertised room time and release the host's 80% share after the room ends. */
 async function settle(code, endedMs = Date.now()) {
+  const peek = await one('SELECT * FROM paid_meeting_sessions WHERE code=$1', [code]);
+  if (!peek) return null;
+  if (peek.state === 'settled') return sessionOut(peek);
+  if (peek.billing_model === 'usage') {
+    await require('./usage').finalizeUsage(code, endedMs);
+    return sessionOut(await one('SELECT * FROM paid_meeting_sessions WHERE code=$1', [code]));
+  }
   return db.tx(async (c) => {
     const session = (await c.query('SELECT * FROM paid_meeting_sessions WHERE code=$1 FOR UPDATE', [code])).rows[0];
     if (!session) return null;
@@ -171,7 +180,10 @@ async function transfer(userId, credits) {
 }
 
 async function tick(now = Date.now()) {
-  const rows = (await db.q("SELECT code FROM paid_meeting_sessions WHERE state='active' AND runtime_end_ms<=$1", [now])).rows;
+  const usage = require('./usage');
+  const ownerId = require('./billing').ownerId;
+  await usage.tick({ ownerId, now }).catch((e) => console.warn('[paid usage]', e.message));
+  const rows = (await db.q("SELECT code FROM paid_meeting_sessions WHERE state='active' AND COALESCE(billing_model,'entry')<>'usage' AND runtime_end_ms<=$1", [now])).rows;
   const due = new Set(rows.map((row) => row.code));
   for (const [code, meeting] of require('../../rooms/store').allMeetings()) {
     if (meeting._paidEndRequested) due.add(code);
@@ -188,4 +200,4 @@ async function tick(now = Date.now()) {
   }
 }
 
-module.exports = { open, get, admission, accept, markKicked, extend, settle, earnings, transfer, tick, units, split };
+module.exports = { open, get, admission, accept, markKicked, extend, settle, earnings, transfer, tick, units, split, sessionOut };

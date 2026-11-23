@@ -200,16 +200,39 @@ const SECTIONS = {
         const rows = [];
         const none = h('tr', { class: 'ht-none' }, h('td', { colspan: 6, class: 'small muted' }, 'No tiers yet, so anyone can join free. Add a tier to sell tickets or cap the numbers.'));
         const sync = () => { if (rows.length) none.remove(); else body.append(none); };
+        const perkKeys = [['badge', 'Badge and coloured name'], ['skipWaitingRoom', 'Skip the waiting room'], ['priorityQa', 'Priority questions'], ['earlyEntry', 'Early entry (15 minutes)'], ['backstage', 'Backstage room']];
+        const suggestPerks = (name, priceKobo) => {
+          const vip = /\b(vip|premium|gold|platinum|vvip|backstage)\b/i.test(name || '') || Number(priceKobo) > 0 && !rows.some((r) => (r.read().priceKobo || 0) > Number(priceKobo));
+          if (vip && Number(priceKobo) > 0) return Object.fromEntries(perkKeys.map(([k]) => [k, true]));
+          if (Number(priceKobo) > 0) return { badge: true };
+          return {};
+        };
         const addRow = (t = {}) => {
           const name = inp({ value: t.name || '', placeholder: 'Tier name', 'aria-label': 'Tier name' });
           const price = inp({ type: 'number', min: 0, step: 50, value: t.priceKobo != null ? t.priceKobo / 100 : 0, disabled: t.sold > 0 && t.priceKobo > 0, 'aria-label': 'Price in naira, 0 is free' });
           const qty = inp({ type: 'number', min: 0, value: t.quantity ?? '', placeholder: 'No limit', 'aria-label': 'Quantity' });
           const act = h('input', { type: 'checkbox', checked: t.active !== false, class: 'ht-switch', 'aria-label': 'On sale' });
+          let perks = t.perks ? { ...t.perks } : suggestPerks(t.name, t.priceKobo || 0);
+          const boxes = {};
+          const perkBox = h('div', { class: 'perk-list' });
+          const paintPerks = () => {
+            perkBox.replaceChildren(h('div', { class: 'tiny muted' }, 'Perks'), ...perkKeys.map(([k, label]) => {
+              const c = h('input', { type: 'checkbox', checked: !!perks[k], onchange: () => { perks[k] = c.checked; } });
+              boxes[k] = c;
+              return h('label', null, c, label);
+            }));
+          };
+          paintPerks();
+          if (!t.id) {
+            const auto = () => { if (t.perks) return; perks = suggestPerks(name.value, Math.round(Number(price.value || 0) * 100)); paintPerks(); };
+            name.addEventListener('change', auto); price.addEventListener('change', auto);
+          }
           const tr = h('tr', null, h('td', { 'data-label': 'Tier' }, name), h('td', { 'data-label': 'Price (₦)' }, price), h('td', { 'data-label': 'Quantity' }, qty), h('td', { 'data-label': 'On sale' }, act),
             h('td', { 'data-label': 'Sold', class: 'num' }, String(t.sold || 0)),
-            h('td', { class: 'ht-act' }, !t.sold ? iconBtn('trash', 'Remove tier', { cls: 'danger', onClick: () => { tr.remove(); rows.splice(rows.indexOf(tr), 1); sync(); } }) : null));
-          tr.read = () => ({ id: t.id, name: name.value, priceKobo: Math.round(Number(price.value || 0) * 100), quantity: qty.value === '' ? null : Number(qty.value), active: act.checked });
-          rows.push(tr); body.append(tr); sync();
+            h('td', { class: 'ht-act' }, !t.sold ? iconBtn('trash', 'Remove tier', { cls: 'danger', onClick: () => { tr.remove(); perkTr.remove(); rows.splice(rows.indexOf(tr), 1); sync(); } }) : null));
+          const perkTr = h('tr', { class: 'ht-perks' }, h('td', { colspan: 6 }, perkBox));
+          tr.read = () => ({ id: t.id, name: name.value, priceKobo: Math.round(Number(price.value || 0) * 100), quantity: qty.value === '' ? null : Number(qty.value), active: act.checked, perks });
+          rows.push(tr); body.append(tr, perkTr); sync();
         };
         tiers.forEach(addRow); sync();
         const sold = tiers.reduce((x, t) => x + (t.sold || 0), 0);

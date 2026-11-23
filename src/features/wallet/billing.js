@@ -82,7 +82,7 @@ async function tick(now=Date.now()) {
   if(busy||stopping)return;busy=true;
   try {
     await data.heartbeat(ownerId,false,now);
-    const rows=(await db.q("SELECT s.*,w.balance_units FROM credit_billing_sessions s LEFT JOIN credit_wallets w ON w.user_id=s.user_id WHERE s.state='active'")).rows;
+    const rows=(await db.q("SELECT s.*,w.balance_units FROM credit_billing_sessions s LEFT JOIN credit_wallets w ON w.user_id=s.user_id WHERE s.state='active' AND COALESCE(s.deferred,0)=0")).rows;
     for(let row of rows) {
       try {
         if(row.owner_id!==ownerId) {await recoverSession(row,now);row=await data.get(row.id);if(!row||row.owner_id!==ownerId||row.state!=='active')continue;}

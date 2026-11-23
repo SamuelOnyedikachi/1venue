@@ -2,6 +2,7 @@
 // links, and open any material on its own page (/materials/:id) for a preview and AI analysis.
 import { icon } from '../icons.js';
 import { h, api, toast, toastErr, reportClientError } from '../ui.js';
+import { saleEditor, priceLabel } from '../material-sale.js';
 import { requireLogin } from '../app.js';
 import { ytId } from '../room/youtube.js';
 import { ACCEPT, kindIcon, materialThumb, materialSub, uploadMaterial } from '../materials-lib.js';
@@ -24,7 +25,8 @@ export async function mount(view) {
         return h('div', { class: 'mat-card card layer' },
           h('a', { class: 'mat-card-link', href: `/materials/${m.id}`, 'data-link': '' },
             h('div', { class: 'mat-card-thumb', 'data-kind': m.kind }, th ? h('img', { src: th, alt: '', loading: 'lazy' }) : h('span', { html: icon(kindIcon(m.kind), { size: 28 }) })),
-            h('div', { class: 'mat-card-body' }, h('b', { class: 'ellipsis' }, m.title), h('div', { class: 'tiny muted ellipsis' }, materialSub(m)))),
+            h('div', { class: 'mat-card-body' }, h('b', { class: 'ellipsis' }, m.title), h('div', { class: 'tiny muted ellipsis' }, materialSub(m), m.forSale ? ` · ${priceLabel(m)}` : ''))),
+          h('div', { class: 'mat-card-sale' }, saleEditor(m, { onSaved: () => reload() })),
           h('button', { class: 'icon-btn sm mat-card-rm', type: 'button', 'aria-label': `Remove ${m.title}`, 'data-tip': 'Remove', html: icon('trash', { size: 15 }), onclick: async () => {
             if (!confirm(`Remove “${m.title}”?`)) return;
             try { await api(`/api/materials/${m.id}`, { method: 'DELETE' }); toast('Removed', { icon: 'check' }); reload(); } catch (e) { toastErr(e); }

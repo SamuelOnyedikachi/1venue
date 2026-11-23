@@ -524,3 +524,47 @@ body[data-page="event"] .main {
 .rail-when.soon .mon {
   color: #e11d48;
 }
+
+.gift-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+.gift-amount {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  max-width: 16rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--s1);
+  padding: 0 0.65rem;
+}
+.gift-amount:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.gift-amount .input,
+.gift-amount .gift-amount-input {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  min-width: 0;
+  flex: 1;
+  max-width: none;
+  width: 100%;
+  padding-inline: 0.15rem;
+}
+.gift-cur {
+  font-weight: 650;
+  font-size: 0.82rem;
+  color: var(--muted);
+  flex: none;
+  letter-spacing: 0.02em;
+}
+.gift-hint {
+  margin: 0;
+}

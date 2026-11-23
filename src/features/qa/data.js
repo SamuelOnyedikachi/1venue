@@ -9,13 +9,13 @@ const { tx, one, many } = require('../../core/db');
 function questionOut(r, voted) {
   let hostAnswers = [];
   try { hostAnswers = Array.isArray(r.host_answers) ? r.host_answers : (typeof r.host_answers === 'string' ? JSON.parse(r.host_answers) : []); } catch { hostAnswers = []; }
-  return { id: Number(r.id), authorKey: r.author_key, authorName: r.author_name, body: r.body, upvotes: r.upvotes, status: r.status, aiAnswer: r.ai_answer, hostAnswers, createdAt: r.created_at, voted: !!voted };
+  return { id: Number(r.id), authorKey: r.author_key, authorName: r.author_name, body: r.body, upvotes: r.upvotes, status: r.status, aiAnswer: r.ai_answer, hostAnswers, createdAt: r.created_at, voted: !!voted, priority: !!r.priority };
 }
-async function addQuestion({ code, historyId, authorKey, authorName, body }) {
+async function addQuestion({ code, historyId, authorKey, authorName, body, priority }) {
   const t = String(body || '').trim().slice(0, 1000);
   if (!t) { const e = new Error('Question is empty'); e.status = 400; throw e; }
-  return questionOut(await one('INSERT INTO questions (code, meeting_history_id, author_key, author_name, body) VALUES ($1,$2,$3,$4,$5) RETURNING *',
-    [code, historyId || null, authorKey, String(authorName).slice(0, 80), t]));
+  return questionOut(await one('INSERT INTO questions (code, meeting_history_id, author_key, author_name, body, priority) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+    [code, historyId || null, authorKey, String(authorName).slice(0, 80), t, priority ? 1 : 0]));
 }
 async function upvoteQuestion(id, voterKey) {
   return tx(async (c) => {
@@ -76,7 +76,7 @@ async function deleteHostAnswer(id, answerId) {
 async function listQuestions(code, historyId, voterKey) {
   const rows = await many(`SELECT qq.*, EXISTS(SELECT 1 FROM question_votes v WHERE v.question_id=qq.id AND v.voter_key=$3) AS voted
     FROM questions qq WHERE code=$1 AND ($2::int IS NULL OR meeting_history_id=$2) AND status <> 'dismissed'
-    ORDER BY (status='live') DESC, (status='answered') ASC, upvotes DESC, created_at ASC LIMIT 200`, [code, historyId || null, voterKey || '']);
+    ORDER BY (status='live') DESC, (status='answered') ASC, (priority > 0) DESC, upvotes DESC, created_at ASC LIMIT 200`, [code, historyId || null, voterKey || '']);
   return rows.map((r) => questionOut(r, r.voted));
 }
 

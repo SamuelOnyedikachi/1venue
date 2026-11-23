@@ -3632,6 +3632,15 @@ html.menu-lock body {
     bottom: calc(var(--nav-h) + 66px + var(--safe-b));
   }
 }
+
+.im-tickets {
+  display: inline-block;
+  margin: 0.15rem 0 0.35rem;
+  color: var(--accent, var(--theme, #2563eb));
+  text-decoration: none;
+  font-weight: 600;
+}
+.im-tickets:hover { text-decoration: underline; }
 /* --- src/10-components/money.css --- */
 /* Money: coin glyph for credits, price breakdown, payment status icons. */
 .credits {
@@ -3857,6 +3866,33 @@ html.menu-lock body {
   min-width: 220px;
   max-width: 320px;
 }
+/* --- src/10-components/phase3.css --- */
+/* Gift input keeps currency affixes; sale, certs, ticket badges, buy chip, app PiP */
+.gift-hint { display: none; }
+.mat-sale { margin-top: .4rem; }
+.mat-card-sale { padding: .65rem .85rem 0.9rem; border-top: 1px solid var(--line, rgba(127,127,127,.2)); }
+.ticket-tag { display: inline-flex; align-items: center; gap: .2rem; font-size: .68rem; font-weight: 700; letter-spacing: .02em; padding: .1rem .4rem; border-radius: 999px; background: color-mix(in srgb, var(--ticket-accent, var(--accent)) 18%, transparent); color: var(--ticket-accent, var(--accent)); }
+.ticket-tag[data-vip] { --ticket-accent: #b45309; }
+.person .who-ticket, .msg .who .ticket-tag { margin-left: .25rem; }
+.buy-chip { position: absolute; right: 12px; bottom: 12px; z-index: 40; display: flex; align-items: center; gap: .55rem; max-width: min(22rem, calc(100% - 24px)); padding: .5rem .6rem .5rem .8rem; border-radius: 14px; background: var(--card, #111827e6); color: inherit; box-shadow: 0 8px 28px rgba(0,0,0,.28); backdrop-filter: blur(12px); }
+.buy-chip-body { min-width: 0; }
+.msg-buy { display: flex; align-items: center; gap: .6rem; margin-top: .35rem; padding: .55rem .7rem; border-radius: 12px; background: var(--shade, rgba(127,127,127,.12)); }
+.cert-picks { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; }
+.cert-pick { border: 2px solid transparent; border-radius: 12px; padding: .5rem; background: var(--shade, rgba(127,127,127,.08)); cursor: pointer; text-align: left; }
+.cert-pick.on { border-color: var(--accent); }
+.cert-pick-art { height: 54px; border-radius: 8px; margin-bottom: .35rem; background: linear-gradient(135deg, var(--cert-accent, var(--accent)), color-mix(in srgb, var(--cert-accent, var(--accent)) 40%, #fff)); }
+.cert-pick[data-design="classic"] .cert-pick-art { box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 5px color-mix(in srgb, var(--cert-accent, var(--accent)) 70%, #000); }
+.cert-pick[data-design="minimal"] .cert-pick-art { background: #f7f7f4; box-shadow: inset 0 -3px 0 var(--cert-accent, var(--accent)); }
+.cert-iframe { width: 100%; height: min(70vh, 28rem); border: 0; background: #fff; border-radius: 12px; }
+.perk-list { display: flex; flex-direction: column; gap: .25rem; padding: .35rem 0 .2rem; }
+.perk-list label { display: flex; gap: .45rem; align-items: center; font-size: .85rem; }
+.app-pip { display: flex; flex-direction: column; height: 100vh; margin: 0; background: var(--bg, #0b1020); color: var(--text, #e8eefc); font: 14px/1.4 system-ui, sans-serif; }
+.app-pip-tabs { display: flex; gap: 2px; padding: .4rem; border-bottom: 1px solid var(--line, #24304f); }
+.pip-tab { flex: 1; display: flex; gap: .3rem; align-items: center; justify-content: center; border: 0; background: transparent; color: inherit; padding: .45rem; border-radius: 10px; cursor: pointer; }
+.pip-tab.on { background: var(--shade, #1a2340); font-weight: 700; }
+.app-pip-body { flex: 1; overflow: auto; }
+.app-pip-row { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: inherit; padding: .65rem .8rem; border-bottom: 1px solid var(--line, rgba(127,127,127,.15)); cursor: pointer; }
+.app-pip-people { margin: 0; padding-left: 1.1rem; }
 /* --- src/10-components/post.css --- */
 /* social post / comments */
 .post {
@@ -6026,6 +6062,18 @@ body[data-page="books"] .main {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
+.cover-src {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: color-mix(in srgb, var(--accent) 72%, #000);
+  border-radius: 999px;
+  padding: 3px 8px;
+}
 .cover-use {
   position: absolute;
   right: 8px;
@@ -6097,6 +6145,44 @@ body[data-page="books"] .main {
     min-width: 0;
     justify-content: center;
     white-space: normal;
+  }
+}
+
+/* 3-column create layout: fields | schedule | preview, actions under the grid */
+.create-form {
+  width: 100%;
+}
+.create-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(260px, 360px);
+  gap: 1.2rem;
+  align-items: start;
+}
+.create-col,
+.create-preview {
+  min-width: 0;
+}
+.create-actions {
+  width: 100%;
+  padding-top: 0.15rem;
+}
+.create-access :where(p) {
+  margin: 0;
+}
+
+@media (max-width: 1100px) {
+  .create-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .create-preview {
+    grid-column: 1 / -1;
+    position: static;
+  }
+}
+
+@media (max-width: 720px) {
+  .create-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 /* --- src/20-pages/dashboard.css --- */
@@ -7012,6 +7098,50 @@ body[data-page="event"] .main {
 }
 .rail-when.soon .mon {
   color: #e11d48;
+}
+
+.gift-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+.gift-amount {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  max-width: 16rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--s1);
+  padding: 0 0.65rem;
+}
+.gift-amount:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.gift-amount .input,
+.gift-amount .gift-amount-input {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  min-width: 0;
+  flex: 1;
+  max-width: none;
+  width: 100%;
+  padding-inline: 0.15rem;
+}
+.gift-cur {
+  font-weight: 650;
+  font-size: 0.82rem;
+  color: var(--muted);
+  flex: none;
+  letter-spacing: 0.02em;
+}
+.gift-hint {
+  margin: 0;
 }
 /* --- src/20-pages/feed.css --- */
 /* Redesigned social feed */

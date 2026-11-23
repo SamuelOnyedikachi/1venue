@@ -16,7 +16,7 @@ const qaPlugin = {
       const p = active(meeting, pid);
       if (!p || limited(pid, 'qa', 4000)) return;
       try {
-        const question = await data.addQuestion({ code: meetingCode, historyId: meeting.historyId, authorKey: voterKey(p), authorName: msg.anonymous ? 'Anonymous' : p.name, body: msg.body });
+        const question = await data.addQuestion({ code: meetingCode, historyId: meeting.historyId, authorKey: voterKey(p), authorName: msg.anonymous ? 'Anonymous' : p.name, body: msg.body, priority: !!(p.ticket && p.ticket.perks && p.ticket.perks.priorityQa) });
         broadcast(meetingCode, { type: 'qa-new', question });
       } catch (e) { err(ctx, pid, e.message); }
     });

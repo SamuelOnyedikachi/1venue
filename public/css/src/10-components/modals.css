@@ -446,3 +446,12 @@ html.menu-lock body {
     bottom: calc(var(--nav-h) + 66px + var(--safe-b));
   }
 }
+
+.im-tickets {
+  display: inline-block;
+  margin: 0.15rem 0 0.35rem;
+  color: var(--accent, var(--theme, #2563eb));
+  text-decoration: none;
+  font-weight: 600;
+}
+.im-tickets:hover { text-decoration: underline; }

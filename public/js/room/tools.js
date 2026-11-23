@@ -8,10 +8,23 @@ import { SpeechRec } from './captions.js';
 import { SOUNDS, playSound, soundsMuted, setSoundsMuted } from './sounds.js';
 import { ytId } from './youtube.js';
 import { add } from '../safe-text.js';
+import { certEditor } from '../cert-ui.js';
+import { priceLabel } from '../material-sale.js';
 
 const btn = (ic, label, run, { group = '', cls = '', disabled } = {}) => h('button', { class: `btn ${cls}`, 'data-group': group, type: 'button', disabled: !!disabled, onclick: run, html: icon(ic, { size: 16 }) + (label ? `<span>${esc(label)}</span>` : '') });
 
 // Content sharing helpers live at module level: the panel re-renders often, so the file input and progress must survive it.
+// Random opening passage, picked once per page load per corpus so panel re-renders don't reshuffle it.
+const OPEN_REFS = {
+  bible: ['John 3:16', 'Psalm 23', 'Romans 8:28', 'Philippians 4:6-7', 'Isaiah 40:31', 'Proverbs 3:5-6', 'Jeremiah 29:11', 'Matthew 11:28-30', 'Joshua 1:9', '1 Corinthians 13:4-7', 'Psalm 46:1-3', 'Lamentations 3:22-23', 'Matthew 5:3-10', 'Hebrews 11:1', 'Psalm 121'],
+  quran: ['1:1-7', '2:255', '112:1-4', '94:1-8', '2:286', '13:28', '3:139', '65:2-3', '93:1-11', '55:1-13', '39:53', '2:152-153', '103:1-3', '24:35', '49:13'],
+};
+const openPicks = {};
+function randomRef(corpus) {
+  if (!openPicks[corpus]) { const l = OPEN_REFS[corpus]; openPicks[corpus] = l[Math.floor(Math.random() * l.length)]; }
+  return openPicks[corpus];
+}
+
 let presentBusy = '';
 
 async function fillMaterialsInline(R, root) {
@@ -34,12 +47,19 @@ async function fillMaterialsInline(R, root) {
       const th = m.kind === 'youtube' && m.payload?.videoId ? `https://i.ytimg.com/vi/${m.payload.videoId}/mqdefault.jpg`
         : m.kind === 'image' && m.payload?.url ? m.payload.url
         : (m.payload?.pages && m.payload.pages[0]) || null;
-      host.append(h('button', {
-        class: 'list-item', type: 'button',
-        onclick: () => presentMaterial(R, m),
-      }, th ? h('img', { class: 'sug-thumb', src: th, alt: '' }) : h('span', { class: 'ico-tile sm', 'data-group': 'content', html: icon(m.kind === 'youtube' ? 'youtube' : m.kind === 'image' ? 'image' : m.kind === 'sheet' ? 'grid' : m.kind === 'doc' ? 'file' : 'presentation', { size: 16 }) }),
-        h('div', { class: 'grow' }, h('b', null, m.title), h('div', { class: 'tiny muted' }, sub)),
-        h('span', { html: icon('play', { size: 14 }) })));
+      const row = h('div', { class: 'col', style: { gap: '.25rem' } },
+        h('button', {
+          class: 'list-item', type: 'button',
+          onclick: () => presentMaterial(R, m),
+        }, th ? h('img', { class: 'sug-thumb', src: th, alt: '' }) : h('span', { class: 'ico-tile sm', 'data-group': 'content', html: icon(m.kind === 'youtube' ? 'youtube' : m.kind === 'image' ? 'image' : m.kind === 'sheet' ? 'grid' : m.kind === 'doc' ? 'file' : 'presentation', { size: 16 }) }),
+          h('div', { class: 'grow' }, h('b', null, m.title), h('div', { class: 'tiny muted' }, sub + (m.forSale ? ` · ${priceLabel(m)}` : ''))),
+          h('span', { html: icon('play', { size: 14 }) })));
+      if (R.isMod() && m.forSale) {
+        row.append(h('div', { class: 'row gap-s wrap' },
+          h('button', { class: 'btn xs', type: 'button', onclick: () => R.send('material-offer', { materialId: m.id }) }, 'Send to chat'),
+          h('button', { class: 'btn xs', type: 'button', onclick: () => R.send('material-overlay', { materialId: m.id }) }, 'Show on screen')));
+      }
+      host.append(row);
     });
   } catch (e) {
     host.replaceChildren(h('div', { class: 'tiny muted' }, e.message || 'Could not load materials'));
@@ -186,7 +206,7 @@ const note = (t) => h('p', { class: 'tiny muted', style: { margin: '.4rem 0' } }
 function scriptureView(R, corpus = 'bible') {
   // Compact sidebar reader: one control line, then as much room as possible for the verses.
   const isQuran = corpus === 'quran';
-  const defaultRef = isQuran ? 'Al-Fatihah 1-7' : 'John 3:16';
+  const defaultRef = randomRef(isQuran ? 'quran' : 'bible');
   const box = h('div', { class: 'scr-tool' });
   const canShow = R.canScripture();
   const shared = R.scripture && R.scrCorpus(R.scripture.translation) === corpus ? R.scripture : null;
@@ -509,16 +529,38 @@ export function buildTools(R) {
         const cnt = h('b', null, '2');
         box.append(note('People are spread evenly. You can move anyone and close all rooms at once.'), h('div', { class: 'row gap-s' }, h('span', { class: 'grow' }, 'Rooms'),
           h('button', { class: 'icon-btn', onclick: () => { n = Math.max(2, n - 1); cnt.textContent = n; }, html: icon('chevronLeft') }), cnt, h('button', { class: 'icon-btn', onclick: () => { n = Math.min(10, n + 1); cnt.textContent = n; }, html: icon('chevronRight') })),
-          btn('split', 'Open breakout rooms', () => R.send('breakout-create', { count: n }), { group: 'people', cls: 'primary block' }));
+          btn('split', 'Open breakout rooms', () => R.send('breakout-create', { count: n }), { group: 'people', cls: 'primary block' }),
+          R.me.role === 'host' ? btn('sparkles', 'Open backstage', () => R.send('breakout-open-backstage', {}), { group: 'people', cls: 'block' }) : null);
       } else {
+        if (R.me.role === 'host') box.append(btn('sparkles', 'Open backstage', () => R.send('breakout-open-backstage', {}), { group: 'people', cls: 'block' }));
         box.append(btn('x', 'Close all rooms', () => R.send('breakout-close', {}), { cls: 'danger block' }));
-        b.rooms.forEach((room) => box.append(h('div', { class: 'shade', 'data-group': 'people' }, h('div', { class: 'row' }, h('b', { class: 'grow' }, room.name), btn('login', 'Visit', () => R.joinBreakout(room), { cls: 'xs' })),
+        b.rooms.forEach((room) => box.append(h('div', { class: 'shade', 'data-group': 'people' }, h('div', { class: 'row' }, h('b', { class: 'grow' }, room.name + (room.backstage ? ' · ticket perk' : '')), (R.isMod() || (room.backstage && R.me.ticket && R.me.ticket.perks && R.me.ticket.perks.backstage) || !room.backstage) ? btn('login', 'Visit', () => { if (room.backstage) R.send('breakout-join', { roomId: room.id }); else R.joinBreakout && R.joinBreakout(room); }, { cls: 'xs' }) : null),
           ...room.participantIds.map((pid) => { const p = R.p(pid); return h('div', { class: 'person' }, h('span', { class: 'grow' }, p ? p.name : pid), h('select', { class: 'input sm', onchange: (e) => R.send('breakout-move', { targetId: pid, roomId: e.target.value }) }, b.rooms.map((r) => h('option', { value: r.id, selected: r.id === room.id }, r.name)))); }))));
       }
       return box;
     },
+    certs() {
+      const box = h('div', { class: 'stack' });
+      if (!R.isMod()) { box.append(note('Only the host can turn certificates on.')); return box; }
+      const current = (R.settings && R.settings.certs) || {};
+      const accent = (R.theme && R.theme.accent) || '#2563eb';
+      const editor = certEditor(current, { accent, onChange: (c) => { R._certsDraft = c; } });
+      const save = async () => {
+        const certs = (editor.get && editor.get()) || R._certsDraft || current;
+        try {
+          if (R.eventId) await api(`/api/events/${R.eventId}/certs`, { method: 'POST', body: certs });
+          else if (R.code) await api(`/api/rooms/${R.code}/certs`, { method: 'POST', body: certs });
+          R.settings = { ...(R.settings || {}), certs };
+          toast('Certificates saved', { icon: 'check' });
+        } catch (e) { toastErr(e); }
+      };
+      box.append(note('When the meeting ends, everyone who stayed long enough gets a PDF by Notification and email.'), editor,
+        btn('check', 'Save', save, { group: 'content', cls: 'primary block' }));
+      return box;
+    },
     security() {
       const s = R.security;
+
       const set = (k) => (v) => R.send('update-security', { settings: { [k]: v } });
       const max = h('input', { class: 'input sm', type: 'number', min: 2, max: 1000, value: R.maxParticipants || '', style: { width: '90px' }, onchange: (e) => R.send('set-max-participants', { max: Number(e.target.value) }) });
       return h('div', { class: 'stack' },

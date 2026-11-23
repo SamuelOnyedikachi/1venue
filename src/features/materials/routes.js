@@ -122,7 +122,7 @@ module.exports = function routes(route, kit) {
     const isHost = !!(u && ev.host && u.id === ev.host.id);
     const isPrivate = ev.visibility === 'private' || ev.visibility === 'unlisted';
     if (isPrivate && !isHost) throw httpError(403, 'Only the host can see materials for a private event');
-    return { materials: await data.listEventMaterials(Number(id)) };
+    return { materials: await data.listEventMaterials(Number(id), u && u.id) };
   });
   route('PUT', '/api/events/(\\d+)/materials', async (ctx, [id]) => {
     const u = await requireUser(ctx.req, ctx.res);
@@ -135,5 +135,34 @@ module.exports = function routes(route, kit) {
       log.warn('materials', 'event attach failed', { user: u.id, event: Number(id), status: e.status || 500, error: e.message });
       throw e;
     }
+  });
+
+  route('POST', '/api/materials/(\\d+)/sale', async (ctx, [id]) => {
+    const u = await requireUser(ctx.req, ctx.res);
+    const b = await ctx.body();
+    const m = await data.updateMaterial(Number(id), u.id, {
+      forSale: b.forSale, priceKobo: b.priceKobo, callDiscountPct: b.callDiscountPct,
+    });
+    if (!m) throw httpError(404, 'Material not found');
+    return m;
+  });
+  route('POST', '/api/materials/(\\d+)/buy', async (ctx, [id]) => {
+    const u = await requireUser(ctx.req, ctx.res);
+    const b = await ctx.body();
+    const row = await require('../../core/db').one('SELECT * FROM materials WHERE id=$1', [Number(id)]);
+    if (!row) throw httpError(404, 'Material not found');
+    const material = require("./data").materialOut(row);
+    const sale = require('./sale');
+    const method = b && b.method === 'paystack' ? 'paystack' : 'credits';
+    const opts = { eventId: b && b.eventId, meetingCode: b && (b.meetingCode || b.code), returnPath: b && b.returnPath };
+    if (method === 'paystack') return sale.startPaystack(u, material, opts);
+    return sale.buyWithCredits(u, material, opts);
+  });
+  route('GET', '/api/materials/(\\d+)/quote', async (ctx, [id]) => {
+    const u = await getAuthUser(ctx.req, ctx.res);
+    const row = await require('../../core/db').one('SELECT * FROM materials WHERE id=$1', [Number(id)]);
+    if (!row) throw httpError(404, 'Material not found');
+    const q = ctx.url.searchParams || new URL(ctx.req.url, 'http://localhost').searchParams;
+    return require('./sale').quote(require('./data').materialOut(row), { eventId: q.get('eventId'), meetingCode: q.get('meetingCode') || q.get('code'), userId: u && u.id });
   });
 };

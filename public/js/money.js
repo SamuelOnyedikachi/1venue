@@ -36,6 +36,31 @@ export function format(minor, currency) {
   const d = digitsOf(currency);
   return new Intl.NumberFormat(undefined, { style: 'currency', currency, currencyDisplay: 'narrowSymbol', minimumFractionDigits: d, maximumFractionDigits: d }).format(minor / 10 ** d);
 }
+/** Symbol, ISO code and fraction digits for the payer's display currency. */
+export function currencyParts(currency = M.currency) {
+  const code = String(currency || M.currency || M.base || 'NGN').toUpperCase();
+  const digits = digitsOf(code);
+  let symbol = code;
+  try {
+    const parts = new Intl.NumberFormat(undefined, { style: 'currency', currency: code, currencyDisplay: 'narrowSymbol' }).formatToParts(0);
+    symbol = (parts.find((p) => p.type === 'currency') || {}).value || code;
+  } catch (_) { /* keep the code */ }
+  return { code, symbol, digits };
+}
+/** Display-currency minor units → base (NGN kobo). Null when there is no rate. */
+export function toBase(minor, from = M.currency) {
+  if (!from || from === M.base) return Math.round(Number(minor || 0));
+  const r = M.rates && M.rates[from];
+  if (!r) return null;
+  return Math.round((Number(minor) / 10 ** digitsOf(from) / r) * 10 ** digitsOf(M.base));
+}
+/** Major units in `currency` (e.g. 5000 naira) → base minor units. */
+export function majorToBaseMinor(major, currency = M.currency) {
+  const d = digitsOf(currency);
+  const displayMinor = Math.round(Number(major || 0) * 10 ** d);
+  const base = toBase(displayMinor, currency);
+  return base == null ? displayMinor : base;
+}
 /** A base-currency price shown in the person's currency (falls back to the base). */
 export function fmtMoney(minorBase, { currency = M.currency, whole = false } = {}) {
   const v = convert(Number(minorBase || 0), currency);

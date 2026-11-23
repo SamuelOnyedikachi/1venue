@@ -197,10 +197,11 @@ function googlePill(next) {
   return pills.length === 1 ? pills[0] : h('div', { class: 'au-social' }, ...pills);
 }
 
-async function finishSignIn(next, { signup = false } = {}) {
+async function finishSignIn(next, { signup = false, stay = false, onSignedIn } = {}) {
   await refreshSession();
   if (!state.user) throw new Error('You are signed in, but this browser did not keep the session. Check that cookies are allowed for this site.');
   toast(signup ? `Welcome to 1venue, ${state.user.displayName}` : `You’re in, ${state.user.displayName}`, { icon: 'check' });
+  if (stay) { onSignedIn && onSignedIn(state.user); return; }
   const here = location.pathname + location.search;
   if (/^\/(login|signup|forgot-password)\b/.test(location.pathname) || next !== here) navigate(next, { replace: true });
   else navigate(here, { replace: true }); // re-render the page now that we are signed in
@@ -214,7 +215,7 @@ const MESSAGES = { verified: ['ok', 'Email confirmed. Log in to continue.'], res
  * Log-in overlay over a blurred page. mode: 'login' | 'forgot'. Opening again reuses it.
  * Closing returns to the page underneath (or home when it was opened from /login).
  */
-export function openAuth({ next, mode = 'login', email = '', error = '', message = '' } = {}) {
+export function openAuth({ next, mode = 'login', email = '', error = '', message = '', stay = false, onSignedIn } = {}) {
   next = safeNext(next || (/^\/(login|signup)/.test(location.pathname) ? '/dashboard' : location.pathname + location.search));
   if (open) { open.go(mode === 'forgot' ? 'forgot' : 'start', { email, next }); return open; }
   const cfg = state.config || {};
@@ -264,7 +265,7 @@ export function openAuth({ next, mode = 'login', email = '', error = '', message
     const google = googlePill(next);
     box.replaceChildren(...head('Log in or sign up', AUTH_SUB).filter(Boolean), msg || '', google || '', google ? orLine() : '', form,
       h('p', { class: 'au-swap' }, h('a', { href: '/forgot-password', class: 'au-link' }, 'Forgot password?')),
-      canSignup ? h('p', { class: 'au-swap' }, 'New to 1venue? ', h('a', { href: `/signup?next=${encodeURIComponent(next)}`, 'data-link': '', onclick: () => close(true) }, 'Create an account')) : '',
+      canSignup ? h('p', { class: 'au-swap' }, 'New to 1venue? ', h('a', { href: `/signup?next=${encodeURIComponent(next)}`, 'data-link': stay ? null : '', onclick: (e) => { if (stay) { e.preventDefault(); window.open(`/signup?next=${encodeURIComponent(next)}`, 'venue-signup'); } else close(true); } }, 'Create an account')) : '',
       legalLinks());
     setTimeout(() => inp.focus(), 40);
   }
@@ -283,7 +284,7 @@ export function openAuth({ next, mode = 'login', email = '', error = '', message
       btn.disabled = true;
       try {
         await api('/api/login', { method: 'POST', body: { login: ident, password: pw.input.value } });
-        await finishSignIn(next);
+        await finishSignIn(next, { stay, onSignedIn });
         close(true);
       } catch (er) {
         if (er.status === 401) f.setError([er.message, er.data?.hint].filter(Boolean).join(' '));
@@ -418,7 +419,7 @@ function signupPage(view, next, params) {
           h('button', { class: 'au-btn au-primary', type: 'button', onclick: () => openAuth({ next, email: email.input.value.trim() }) }, 'Continue to log in')));
         return;
       }
-      await finishSignIn(next, { signup: true });
+      await finishSignIn(next, { signup: true, stay, onSignedIn });
     } catch (er) {
       const m = er.message || '';
       if (er.status === 409 && /username/i.test(m)) uname.setError(m);

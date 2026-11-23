@@ -5,6 +5,7 @@ import { icon } from '../icons.js';
 import { pillComposer } from '../composer.js';
 import { searchSounds } from './sounds.js';
 import { passageCard } from '../passage.js';
+import { buyAttachment } from './buy.js';
 
 const I = (n, s = 18) => h('span', { class: 'i', html: icon(n, { size: s }) });
 const vMark = (on) => on ? h('span', { class: 'verified-dot', title: 'Verified', 'aria-label': 'Verified', html: icon('check', { size: 11 }) }) : null;
@@ -13,6 +14,7 @@ const ibtn = (ic, tip, run, { group = '', cls = '', on = false } = {}) => h('but
 const linkify = (s) => esc(s).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>').replace(/(^|\s)@([\w.-]{2,30})/g, '$1<b class="mention">@$2</b>');
 const fmtTime = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const ROLE = { host: ['Host', 'crown'], cohost: ['Co-host', 'shield'], participant: ['', ''], guest: ['Guest', ''] };
+const ticketTag = (p) => (p && p.ticket && p.ticket.perks && p.ticket.perks.badge) ? h('span', { class: 'ticket-tag', 'data-vip': /vip|premium|gold|platinum/i.test(p.ticket.name) ? '' : null }, p.ticket.name) : null;
 
 export const TABS = [
   ['chat', 'Chat', 'chat', 'social'],
@@ -82,7 +84,7 @@ export function createPanel(R) {
       else att = h('a', { class: 'msg-file', href: src, target: '_blank', rel: 'noopener', download: a.name || 'file', html: icon('file', { size: 18 }) + `<span>${esc(a.name || 'file')}</span>${kb ? `<small>${kb}</small>` : ''}` });
     }
     return h('div', { class: `msg${mine ? ' mine' : ''}` }, mine ? null : avatar(name, null, 'sm'),
-      h('div', { class: 'bubble' }, mine ? null : h('b', { class: 'who' }, name), m.text ? h('div', { class: 'txt', html: linkify(m.text) }) : null, att, h('time', null, fmtTime(at))));
+      h('div', { class: 'bubble' }, mine ? null : h('b', { class: 'who' }, name, ticketTag(R.p(m.participantId))), m.text ? h('div', { class: 'txt', html: linkify(m.text) }) : null, att, (a && a.kind === 'material') ? buyAttachment(a, R) : null, h('time', null, fmtTime(at))));
   }
   // One composer per conversation, reused across re-renders so text, uploads and recordings survive.
   const composers = new Map();
@@ -203,7 +205,7 @@ export function createPanel(R) {
     const self = p.id === R.me.id;
     const st = R.mediaState(p.id);
     return h('div', { class: `person${R.speaking.has(p.id) ? ' speaking' : ''}` }, avatar(p.name, p.avatarUrl, 'sm'),
-      h('div', { class: 'grow' }, h('div', { class: 'row gap-xs' }, h('b', { class: 'ellipsis' }, p.name + (self ? ' (you)' : '')), vMark(p.verified), ric ? h('span', { class: 'role-tag', 'data-role': p.role, html: icon(ric, { size: 12 }) + rl }) : null, R.isSpeaker(p.id) && R.stage.enabled ? h('span', { class: 'role-tag', 'data-role': 'speaker', html: icon('mic', { size: 12 }) + 'Speaker' }) : null),
+      h('div', { class: 'grow' }, h('div', { class: 'row gap-xs' }, h('b', { class: 'ellipsis' }, p.name + (self ? ' (you)' : '')), vMark(p.verified), ticketTag(p), ric ? h('span', { class: 'role-tag', 'data-role': p.role, html: icon(ric, { size: 12 }) + rl }) : null, R.isSpeaker(p.id) && R.stage.enabled ? h('span', { class: 'role-tag', 'data-role': 'speaker', html: icon('mic', { size: 12 }) + 'Speaker' }) : null),
         h('div', { class: 'tiny muted row gap-xs' }, h('span', { html: icon(p.device === 'mobile' ? 'pin' : p.device === 'tablet' ? 'grid' : 'tv', { size: 12 }) }), p.device || 'desktop', p.isGuest ? ' · guest' : '', p.sharing ? ' · presenting' : '')),
       p.handRaised ? h('span', { class: 'hand-ico', 'data-tip': 'Hand raised', html: '✋' }) : null,
       h('span', { class: `mic-ico${st.mic ? ' on' : ''}`, 'data-tip': st.mic ? 'Mic on' : p.mutedByHost ? 'Muted by host' : 'Muted', html: icon(st.mic ? 'mic' : 'micOff', { size: 16 }) }),
@@ -215,7 +217,11 @@ export function createPanel(R) {
     const q = (sub.peopleQ || '').toLowerCase();
     const wrap = h('div', { class: 'people-view' });
     const search = h('input', { class: 'input sm', type: 'search', placeholder: `Search ${people.length} people`, value: sub.peopleQ || '', oninput: debounce((e) => { sub.peopleQ = e.target.value; render(); R.focusNext = true; }, 200), 'data-focus': sub.peopleQ ? '' : null });
-    wrap.append(h('div', { class: 'row gap-s' }, h('div', { class: 'grow' }, search),
+    const tiers = [...new Set(people.map((p) => p.ticket && p.ticket.name).filter(Boolean))];
+    const tierSel = tiers.length ? h('select', { class: 'input sm', 'aria-label': 'Filter by ticket', onchange: (e) => { sub.peopleTier = e.target.value; render(); } },
+      h('option', { value: '' }, 'All tickets'), ...tiers.map((t) => h('option', { value: t, selected: sub.peopleTier === t }, t))) : null;
+    if (tierSel) tierSel.value = sub.peopleTier || '';
+    wrap.append(h('div', { class: 'row gap-s' }, h('div', { class: 'grow' }, search), tierSel,
       ibtn('userPlus', 'Invite people', () => R.invite(), { group: 'people' }),
       mod ? ibtn('shield', 'Security & lock', () => open('tools', 'security'), { group: 'admin' }) : null));
     if (mod) wrap.append(h('div', { class: 'chips mod-row' },
@@ -261,7 +267,8 @@ export function createPanel(R) {
     }
     const groups = [['Hosts', people.filter((p) => p.role === 'host' || p.role === 'cohost')], [R.stage.enabled ? 'On stage' : '', R.stage.enabled ? people.filter((p) => p.role !== 'host' && p.role !== 'cohost' && R.isSpeaker(p.id)) : []], [R.stage.enabled ? 'Audience' : 'In the room', people.filter((p) => p.role !== 'host' && p.role !== 'cohost' && !(R.stage.enabled && R.isSpeaker(p.id)))]];
     for (const [title, list] of groups) {
-      const f = list.filter((p) => !q || p.name.toLowerCase().includes(q));
+      const f = list.filter((p) => (!q || p.name.toLowerCase().includes(q) || (p.ticket && p.ticket.name || '').toLowerCase().includes(q)) && (!sub.peopleTier || (p.ticket && p.ticket.name) === sub.peopleTier));
+      f.sort((a, b) => ((b.ticket && b.ticket.perks && b.ticket.perks.badge) ? 1 : 0) - ((a.ticket && a.ticket.perks && a.ticket.perks.badge) ? 1 : 0));
       if (!f.length || !title) continue;
       wrap.append(h('section', { class: 'plain' }, h('div', { class: 'sec-sub' }, `${title} · ${f.length}`), ...f.slice(0, 300).map(personRow)));
     }
@@ -332,7 +339,7 @@ export function createPanel(R) {
     const anon = h('input', { type: 'checkbox' });
     box.append(h('div', { class: 'compose-card' }, ta, h('div', { class: 'row' }, h('label', { class: 'row gap-xs tiny grow' }, anon, 'Ask anonymously'), btn('send', 'Ask', () => { if (ta.value.trim()) { R.send('qa-ask', { body: ta.value.trim(), anonymous: anon.checked }); ta.value = ''; } }, { cls: 'sm primary', group: 'engage' }))));
     const order = { live: 0, open: 1, answered: 2, dismissed: 3 };
-    const qs = [...R.data.questions].filter((q) => q.status !== 'dismissed' || R.isMod()).sort((a, b) => (order[a.status] - order[b.status]) || (b.upvotes - a.upvotes));
+    const qs = [...R.data.questions].filter((q) => q.status !== 'dismissed' || R.isMod()).sort((a, b) => (order[a.status] - order[b.status]) || ((b.priority ? 1 : 0) - (a.priority ? 1 : 0)) || (b.upvotes - a.upvotes));
     if (!qs.length) box.append(h('div', { class: 'empty sm' }, I('question', 28), h('p', null, 'No questions yet - be the first.')));
     qs.forEach((q) => {
       const answers = (q.hostAnswers || []);
@@ -406,6 +413,7 @@ export function createPanel(R) {
     ['timeline', 'Screen timeline', 'timeline', 'content', 'Snapshot slides into a shared strip'],
     ['record', 'Record', 'record', 'media', 'Saved to your device, never our servers'],
     ['breakouts', 'Breakout rooms', 'split', 'people', 'Split into small groups'],
+    ['certs', 'Certificates', 'graduation', 'content', 'Send a certificate when this event ends'],
     ['security', 'Security', 'shield', 'admin', 'Waiting room, lock, guest access'],
     ['activity', 'Activity', 'activity', 'nav', 'Who did what, live'],
     ['diagnostics', 'Diagnostics', 'signal', 'settings', 'Connection & media health'],
@@ -419,7 +427,12 @@ export function createPanel(R) {
       return h('div', { class: 'tool-view', 'data-group': meta[3] }, h('div', { class: 'row sub-head' }, ibtn('chevronLeft', 'All tools', () => { sub.tools = null; render(); }), h('span', { class: 'ico-tile sm', 'data-group': meta[3], html: icon(meta[2], { size: 16 }) }), h('b', { class: 'grow' }, meta[1]),
         (t === 'bible' || t === 'quran') && R.scripture && R.scrCorpus() === t ? h('span', { class: 'scr-live', 'data-tip': `On screen now · ${R.scripture.reference} · shown by ${R.scripture.by}`, 'aria-label': `On screen now: ${R.scripture.reference}, shown by ${R.scripture.by}` }, h('i', { class: 'rec-dot' })) : null, v.headExtras ? h('span', { class: 'sub-head-extras' }, v.headExtras) : null), v);
     }
-    return h('div', { class: 'tool-grid stagger' }, TOOLS.filter(([id]) => !(['security', 'breakouts'].includes(id) && !R.isMod())).map(([id, label, ic, g, desc]) =>
+    return h('div', { class: 'tool-grid stagger' }, TOOLS.filter(([id]) => {
+      if (id === 'security' && !R.isMod()) return false;
+      if (id === 'certs' && !R.isMod()) return false;
+      if (id === 'breakouts' && !R.isMod() && !(R.breakouts && R.breakouts.rooms || []).some((r) => r.backstage && R.me.ticket && R.me.ticket.perks && R.me.ticket.perks.backstage)) return false;
+      return true;
+    }).map(([id, label, ic, g, desc]) =>
       h('button', { class: 'tool-card', 'data-group': g, type: 'button', onclick: () => { sub.tools = id; render(); } }, h('span', { class: 'ico-tile', 'data-group': g, html: icon(ic, { size: 20 }) }), h('b', null, label), h('small', null, desc), R.toolBadge(id) ? h('em', { class: 'dot-live' }) : null)));
   }
 

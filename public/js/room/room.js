@@ -249,7 +249,9 @@ class Room {
       ev && ev.host ? h('div', { class: 'row gap-s muted small' }, avatar(ev.host.name, ev.host.avatarUrl, 'xs'), `Hosted by ${ev.host.name}`) : null,
       !state.user ? h('p', { class: 'tiny muted' }, 'Joining as a guest. ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); requireLogin('Sign in to keep your history'); } }, 'Sign in'), ' to save transcripts and history.') : null,
       (creating && this.intent?.meetingAccessMode === 'paid_entry') || (this.meetingInfo?.paidEntry?.enabled) || (ev?.meetingAccessMode === 'paid_entry')
-        ? h('p', { class: 'small muted' }, `Paid entry: ${this.intent?.meetingEntryPriceCredits || this.meetingInfo?.paidEntry?.entryCredits || ev?.meetingEntryPriceCredits} credits for ${this.intent?.meetingDurationMin || this.meetingInfo?.paidEntry?.durationMin || ev?.meetingDurationMin} minutes. Sign in; credits are charged when the host accepts you. Your payment covers rejoining this meeting.`)
+        ? h('p', { class: 'small muted' }, (this.meetingInfo?.paidEntry?.model === 'usage' || (creating && this.intent?.meetingAccessMode === 'paid_entry' && !this.intent?.meetingEntryPriceCredits))
+          ? 'Paid Entry: everyone, including the host, is billed per minute from their own credits while they are connected. Sign in with credits to join.'
+          : `Paid entry: ${this.intent?.meetingEntryPriceCredits || this.meetingInfo?.paidEntry?.entryCredits || ev?.meetingEntryPriceCredits} credits for ${this.intent?.meetingDurationMin || this.meetingInfo?.paidEntry?.durationMin || ev?.meetingDurationMin} minutes. Sign in; credits are charged when the host accepts you. Your payment covers rejoining this meeting.`)
         : null,
       joinB,
       h('div', { class: 'row gap-s tiny muted center' }, h('span', { html: icon('lock', { size: 12 }) }), 'Recordings stay on your device. Captions are processed privately.'));
@@ -305,7 +307,7 @@ class Room {
     this.enter(r);
   }
   waitingScreen(r) {
-    this.view.replaceChildren(h('div', { class: 'waiting' }, h('div', { class: 'wait-orb', html: LOGO(64) }), h('h2', null, r.venue ? `You’re at ${r.venue.name}` : 'Waiting for the host to let you in'), h('p', { class: 'muted' }, r.venue ? `The host will let you in to ${r.name || 'the meeting'} shortly - this venue always uses a waiting room.` : r.paidEntry?.enabled ? `The host must accept you. ${r.paidEntry.paid ? 'Your entry is paid; rejoining this meeting will not charge you again.' : `${r.paidEntry.entryCredits} credits will be charged when the host accepts you.`}` : `${r.name || fmtCode(this.code)} · we’ll bring you in automatically.`),
+    this.view.replaceChildren(h('div', { class: 'waiting' }, h('div', { class: 'wait-orb', html: LOGO(64) }), h('h2', null, r.venue ? `You’re at ${r.venue.name}` : 'Waiting for the host to let you in'), h('p', { class: 'muted' }, r.venue ? `The host will let you in to ${r.name || 'the meeting'} shortly - this venue always uses a waiting room.` : r.paidEntry?.enabled ? (r.paidEntry.model === 'usage' ? 'The host must accept you. You will be billed per minute from your credits once you are in.' : `The host must accept you. ${r.paidEntry.paid ? 'Your entry is paid; rejoining this meeting will not charge you again.' : `${r.paidEntry.entryCredits} credits will be charged when the host accepts you.`}`) : `${r.name || fmtCode(this.code)} · we’ll bring you in automatically.`),
       h('div', { class: 'dots-loader' }, h('i'), h('i'), h('i')), h('button', { class: 'btn ghost', onclick: () => { this.destroy(); navigate('/'); } }, 'Cancel')));
     this.waitingMode = true;
     this.connectWs((m) => {
@@ -633,7 +635,7 @@ Object.assign(Room.prototype, {
 /* ======================================================================= chrome, commands, lifecycle */
 Object.assign(Room.prototype, {
   syncPaidEntry() {
-    if (!this.alive || !this.paidEntry?.enabled) return;
+    if (!this.alive || !this.paidEntry?.enabled || this.paidEntry.model === 'usage') return;
     const leftMs = Number(this.paidEntry.runtimeEndMs || this.paidEntry.advertisedEndMs) - Date.now();
     const leftMin = Math.max(0, Math.ceil(leftMs / 60000));
     if (leftMs <= 0) { clearInterval(this.paidEntrySyncTimer); return; }
@@ -661,6 +663,145 @@ Object.assign(Room.prototype, {
     } finally {
       this.paidEntryExtending = false;
     }
+  },
+
+  async enablePaidEntry() {
+    if (!(await confirmDlg('Switch this meeting to Paid Entry? Everyone already in will get 5 minutes to accept. You and they will be billed per minute from your own credits while connected. There are no refunds.', { ok: 'Switch to Paid Entry' }))) return;
+    try {
+      const r = await api('/api/meeting/paid-entry/enable', { method: 'POST', body: { code: this.code, participantId: this.me.id, wsCredential: this.wsCredential } });
+      this.paidEntry = r.paidEntry;
+      toast('This meeting is now Paid Entry. You are billed from this moment.', { icon: 'wallet', ms: 6000 });
+      refreshCredits();
+    } catch (e) { toastErr(e); }
+  },
+  showPaidSwitch(m) {
+    this.paidEntry = this.paidEntry || { enabled: true, model: 'usage' };
+    this.paidEntry.switchDeadlineMs = Number(m.deadlineMs);
+    if (this.me?.role === 'host' || this.me?.id === m.hostId) return;
+    this.openPaidSwitchModal(Number(m.deadlineMs));
+  },
+  openPaidSwitchModal(deadlineMs) {
+    if (this._paidSwitchEl) this._paidSwitchEl.remove();
+    const time = h('p', { class: 'paid-switch-time' }, '');
+    const tick = () => {
+      const left = Math.max(0, deadlineMs - Date.now());
+      const s = Math.ceil(left / 1000);
+      time.textContent = s ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} left to decide` : 'Time is up';
+      if (left <= 0) clearInterval(this._paidSwitchTick);
+    };
+    tick();
+    this._paidSwitchTick = setInterval(tick, 250);
+    const card = h('div', { class: 'paid-switch-card' },
+      h('h3', null, 'This meeting is now Paid Entry'),
+      h('p', { class: 'small' }, 'Everyone pays per minute from their own credits while they are connected, at the same rate the host pays. Billing starts when you accept. There are no refunds.'),
+      time,
+      h('div', { class: 'row gap-s' },
+        h('button', { class: 'btn primary', type: 'button', onclick: () => this.acceptPaidUsage() }, 'Accept and continue'),
+        h('button', { class: 'btn ghost', type: 'button', onclick: () => this.leavePaidUsage() }, 'Leave')));
+    const wrap = h('div', { class: 'paid-switch-scrim', role: 'dialog', 'aria-modal': 'true' }, card);
+    this._paidSwitchEl = wrap;
+    (this.root || this.view).append(wrap);
+  },
+  async acceptPaidUsage() {
+    const go = async () => {
+      const r = await api('/api/meeting/paid-entry/accept', { method: 'POST', body: { code: this.code, participantId: this.me.id, wsCredential: this.wsCredential } });
+      if (this._paidSwitchTick) clearInterval(this._paidSwitchTick);
+      this._paidSwitchEl?.remove();
+      this._paidSwitchEl = null;
+      toast('You are in. Billing starts now, only for time you stay connected.', { icon: 'wallet', ms: 5000 });
+      refreshCredits();
+      return r;
+    };
+    try {
+      if (!state.user) {
+        const { openAuth } = await import('../pages/login.js');
+        openAuth({ next: location.pathname + location.search, stay: true, onSignedIn: async () => {
+          try {
+            await api('/api/meeting/account/claim', { method: 'POST', body: { code: this.code, participantId: this.me.id, wsCredential: this.wsCredential, acceptPaid: true } });
+            if (this._paidSwitchTick) clearInterval(this._paidSwitchTick);
+            this._paidSwitchEl?.remove();
+            this._paidSwitchEl = null;
+            toast('You are in. Billing starts now, only for time you stay connected.', { icon: 'wallet', ms: 5000 });
+            refreshCredits();
+          } catch (e) {
+            if (e.status === 402) this.showLowBalance({ graceUntilMs: Date.now() + 120000 });
+            else toastErr(e);
+          }
+        } });
+        return;
+      }
+      await go();
+    } catch (e) {
+      if (e.status === 402) this.showLowBalance({ graceUntilMs: Date.now() + 120000 });
+      else toastErr(e);
+    }
+  },
+  leavePaidUsage() {
+    if (this._paidSwitchTick) clearInterval(this._paidSwitchTick);
+    this._paidSwitchEl?.remove();
+    this.destroy?.();
+    navigate('/');
+  },
+  showLowBalance(m) {
+    const until = Number(m.graceUntilMs || 0);
+    if (this._lowEl) this._lowEl.remove();
+    const time = h('p', { class: 'paid-switch-time' }, '');
+    const tick = () => {
+      const left = Math.max(0, until - Date.now());
+      const s = Math.ceil(left / 1000);
+      time.textContent = s ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} to add credits` : 'Time is up';
+      if (left <= 0) clearInterval(this._lowTick);
+    };
+    tick();
+    this._lowTick = setInterval(tick, 250);
+    const card = h('div', { class: 'paid-switch-card' },
+      h('h3', null, 'Your credits have run out'),
+      h('p', { class: 'small' }, 'Add credits in the next 2 minutes to stay in this meeting. You will not be billed during this pause.'),
+      time,
+      h('div', { class: 'row gap-s' },
+        h('button', { class: 'btn primary', type: 'button', onclick: () => this.openInCallTopup() }, 'Add credits'),
+        !state.user ? h('button', { class: 'btn ghost', type: 'button', onclick: () => this.openInCallAccount() }, 'Sign in') : null));
+    const wrap = h('div', { class: 'paid-switch-scrim', role: 'dialog', 'aria-modal': 'true' }, card);
+    this._lowEl = wrap;
+    (this.root || this.view).append(wrap);
+  },
+  async openInCallAccount({ acceptPaid = false } = {}) {
+    const { openAuth } = await import('../pages/login.js');
+    openAuth({ next: location.pathname + location.search, stay: true, onSignedIn: async () => {
+      try {
+        const r = await api('/api/meeting/account/claim', { method: 'POST', body: { code: this.code, participantId: this.me.id, wsCredential: this.wsCredential, acceptPaid } });
+        if (r.claimed && r.freeUntilMs) this.billingFreeUntil = Number(r.freeUntilMs);
+        toast('Your account is connected to this call.', { icon: 'check' });
+        refreshCredits();
+      } catch (e) { toastErr(e); }
+    } });
+  },
+  async openInCallTopup() {
+    try {
+      const credits = 30;
+      const start = await api('/api/wallet/checkout', { method: 'POST', body: { credits } });
+      if (!start?.authorizationUrl) throw new Error('Checkout is unavailable');
+      window.open(start.authorizationUrl, 'venue-topup');
+      toast('Finish payment in the new tab. This call stays open.', { icon: 'wallet', ms: 6000 });
+      const t0 = Date.now();
+      const poll = async () => {
+        if (Date.now() - t0 > 15 * 60 * 1000) return;
+        try {
+          if (start.reference) await api('/api/wallet/payments/' + encodeURIComponent(start.reference) + '/verify', { method: 'POST' }).catch(() => null);
+          const w = await api('/api/wallet');
+          if ((w.balanceCredits || 0) > 0) {
+            if (this._lowTick) clearInterval(this._lowTick);
+            this._lowEl?.remove();
+            this._lowEl = null;
+            toast('Credits added. You can stay in the meeting.', { icon: 'check' });
+            refreshCredits();
+            return;
+          }
+        } catch { /* keep polling */ }
+        setTimeout(poll, 2500);
+      };
+      setTimeout(poll, 2500);
+    } catch (e) { toastErr(e); }
   },
   buildUi() {
     this.headEl = h('header', { class: 'room-head' });
@@ -900,7 +1041,7 @@ Object.assign(Room.prototype, {
   },
   kicked(m) {
     this.destroy();
-    this.view.replaceChildren(h('div', { class: 'waiting' }, h('span', { class: 'ico-tile lg', 'data-group': 'danger', html: icon('userX', { size: 30 }) }), h('h2', null, 'You were removed from the room'), h('p', { class: 'muted' }, m.byName ? `Removed by ${m.byName}` : ''), m.paidEntryRefundPending ? h('p', { class: 'small muted' }, 'If you stay out, the unused portion of your advertised time will be refunded after the meeting ends. If the host accepts you again, your original payment covers rejoining.') : null, h('a', { class: 'btn primary', href: '/' }, 'Back home')));
+    this.view.replaceChildren(h('div', { class: 'waiting' }, h('span', { class: 'ico-tile lg', 'data-group': 'danger', html: icon('userX', { size: 30 }) }), h('h2', null, 'You were removed from the room'), h('p', { class: 'muted' }, m.byName ? `Removed by ${m.byName}` : ''), m.paidUsage ? h('p', { class: 'small muted' }, 'Billing for your time has stopped. You were not charged for the time after you left.') : m.paidEntryRefundPending ? h('p', { class: 'small muted' }, 'If you stay out, the unused portion of your advertised time will be refunded after the meeting ends. If the host accepts you again, your original payment covers rejoining.') : null, h('a', { class: 'btn primary', href: '/' }, 'Back home')));
   },
   destroy() {
     if (!this.alive) return; this.alive = false;
@@ -1082,7 +1223,8 @@ Object.assign(Room.prototype, {
     const s = sheet({ title: 'More', icon: 'more' });
     const it = (ic, label, g, run) => h('button', { class: 'tool-card', 'data-group': g, type: 'button', onclick: () => { s.close(); run(); } }, h('span', { class: 'ico-tile', 'data-group': g, html: icon(ic, { size: 20 }) }), h('b', null, label));
     s.body.append(h('div', { class: 'tool-grid' },
-      R.me.role === 'host' && R.paidEntry?.enabled ? it('clock', 'Extend 15 minutes · 15 credits', 'wallet', () => R.extendPaidEntry()) : null,
+      R.me.role === 'host' && R.paidEntry?.enabled && R.paidEntry.model !== 'usage' ? it('clock', 'Extend 15 minutes · 15 credits', 'wallet', () => R.extendPaidEntry()) : null,
+      R.me.role === 'host' && !R.paidEntry?.enabled ? it('wallet', 'Switch to Paid Entry', 'wallet', () => R.enablePaidEntry()) : null,
       it('captions', R.captioner.on ? 'Stop captions' : 'Captions', 'content', () => (R.captioner.on ? R.captioner.stop() : R.captioner.start(), R.changed())),
       it('record', 'Record', 'media', () => R.panel.open('tools', 'record')),
       it('pip', 'Mini window', 'media', () => R.pip()),

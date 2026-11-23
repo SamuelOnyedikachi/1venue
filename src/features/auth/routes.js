@@ -82,6 +82,7 @@ module.exports = function routes(route, kit) {
     await sendVerify(ctx, row);
     if (A.requireVerifiedEmail) return { $status: 202, $body: { ok: true, checkEmail: true, message: 'Check your inbox to confirm your email, then sign in.' } };
     await auth.startSession(ctx.req, ctx.res, row);
+    require('../messages/welcome').onSignup(row);
     return { $status: 201, $body: { user: auth.publicUser(auth.shapeUser(row)), verifyEmailSent: true } };
   }
   route('POST', '/api/signup', signup);
@@ -105,6 +106,7 @@ module.exports = function routes(route, kit) {
       return { $status: 403, $body: { error: 'Confirm your email first. We just sent you a new link.', code: 'email-unverified' } };
     }
     await auth.startSession(ctx.req, ctx.res, row);
+    require('../messages/welcome').onReturn(row);
     return { user: auth.publicUser(auth.shapeUser(row)) };
   }
   route('POST', '/api/login', login);

@@ -75,5 +75,45 @@ module.exports = {
       }
       emitBreakouts(meeting, meetingCode);
     });
+
+    function canBackstage(p) {
+      if (!p) return false;
+      if (p.role === 'host' || p.role === 'cohost') return true;
+      return !!(p.ticket && p.ticket.perks && p.ticket.perks.backstage);
+    }
+
+    ctx.onWs('breakout-open-backstage', ({ participantId, meeting, meetingCode }) => {
+      const actor = meeting.participants.get(participantId);
+      if (!actor || actor.role !== 'host') return;
+      const rooms = (meeting.breakouts && meeting.breakouts.open && meeting.breakouts.rooms) ? meeting.breakouts.rooms.slice() : [];
+      if (!rooms.some((r) => r.backstage)) {
+        rooms.push({
+          id: 'bo_backstage',
+          name: 'Backstage',
+          backstage: true,
+          participantIds: [],
+          livekitRoom: (meeting.mediaRoom || meetingCode) + '-bo-backstage',
+        });
+      }
+      meeting.breakouts = { open: true, rooms, createdAt: (meeting.breakouts && meeting.breakouts.createdAt) || Date.now(), createdBy: participantId };
+      emitBreakouts(meeting, meetingCode);
+      broadcast(meetingCode, { type: 'toast', message: 'Backstage is open for ticket holders with access' });
+    });
+
+    ctx.onWs('breakout-join', ({ msg, participantId, meeting, meetingCode }) => {
+      const actor = meeting.participants.get(participantId);
+      if (!actor || actor.status !== 'ACTIVE') return;
+      if (!meeting.breakouts?.open) return;
+      const room = meeting.breakouts.rooms.find((r) => r.id === msg.roomId);
+      if (!room) return;
+      if (room.backstage && !canBackstage(actor)) {
+        sendToParticipant(participantId, { type: 'toast', message: 'Backstage is for ticket types with that perk' });
+        return;
+      }
+      meeting.breakouts.rooms.forEach((r) => { r.participantIds = r.participantIds.filter((id) => id !== participantId); });
+      room.participantIds.push(participantId);
+      sendToParticipant(participantId, { type: 'breakout-assign', room });
+      emitBreakouts(meeting, meetingCode);
+    });
   },
 };

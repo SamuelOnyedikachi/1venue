@@ -10,6 +10,7 @@ const KINDS = ['slides', 'image', 'youtube', 'pdf', 'pptx', 'doc', 'sheet'];
 function materialOut(r) {
   if (!r) return null;
   const payload = typeof r.payload === 'string' ? JSON.parse(r.payload) : (r.payload || {});
+  const sale = require('./sale').saleFields(r);
   return {
     id: Number(r.id),
     title: r.title,
@@ -18,7 +19,31 @@ function materialOut(r) {
     createdAt: r.created_at,
     ownerUserId: r.owner_user_id, orgId: r.org_id || null,
     updatedAt: r.updated_at,
+    ...sale,
   };
+}
+function lockedPayload(m) {
+  const p = m.payload || {};
+  if (Array.isArray(p.pages) && p.pages.length) return { pages: p.pages.slice(0, 1) };
+  if (p.url) return { url: p.url };
+  if (p.videoId) return { videoId: p.videoId, url: p.url };
+  return {};
+}
+async function withAccess(m, userId, { eventId, live } = {}) {
+  if (!m) return m;
+  const sale = require('./sale');
+  const acc = await sale.accessFor(m.id, userId, { ownerId: m.ownerUserId });
+  m.purchased = acc.purchased;
+  m.owner = acc.owner;
+  if (m.forSale && m.priceKobo && (live || (eventId && await sale.isEventLive(eventId)))) {
+    m.promoPriceKobo = sale.promoPrice(m.priceKobo, m.callDiscountPct, true);
+    m.callDiscountLive = m.promoPriceKobo !== m.priceKobo;
+  }
+  if (m.forSale && !acc.purchased && !acc.owner) {
+    m.locked = true;
+    m.payload = lockedPayload(m);
+  } else m.locked = false;
+  return m;
 }
 function sanitizeMaterialPayload(kind, payload) {
   const p = payload && typeof payload === 'object' ? payload : {};
@@ -77,14 +102,21 @@ async function createMaterial(userId, { title, kind, payload }) {
   );
   return materialOut(r);
 }
-async function updateMaterial(id, userId, { title, payload } = {}) {
+async function updateMaterial(id, userId, { title, payload, forSale, priceKobo, callDiscountPct } = {}) {
   const cur = await one(`SELECT * FROM materials WHERE id=$1 AND owner_user_id=$2`, [id, userId]);
   if (!cur) return null;
   const t = title != null ? (String(title).trim().slice(0, 120) || cur.title) : cur.title;
   const pl = payload != null ? sanitizeMaterialPayload(cur.kind, payload) : (typeof cur.payload === 'string' ? JSON.parse(cur.payload) : cur.payload);
+  const sale = require('./sale').sanitizeSale({ forSale, priceKobo, callDiscountPct });
+  const for_sale = sale.for_sale != null ? sale.for_sale : cur.for_sale;
+  const price_kobo = sale.price_kobo !== undefined ? sale.price_kobo : cur.price_kobo;
+  const call_discount_pct = sale.call_discount_pct != null ? sale.call_discount_pct : cur.call_discount_pct;
+  if ((for_sale === true || for_sale === 1) && (price_kobo == null || Number(price_kobo) < 5000)) {
+    const e = new Error('Set a price of at least ₦50 to mark this for sale'); e.status = 400; throw e;
+  }
   const r = await one(
-    `UPDATE materials SET title=$3, payload=$4, updated_at=NOW() WHERE id=$1 AND owner_user_id=$2 RETURNING *`,
-    [id, userId, t, JSON.stringify(pl)]
+    `UPDATE materials SET title=$3, payload=$4, for_sale=$5, price_kobo=$6, call_discount_pct=$7, updated_at=NOW() WHERE id=$1 AND owner_user_id=$2 RETURNING *`,
+    [id, userId, t, JSON.stringify(pl), for_sale, price_kobo, call_discount_pct || 0]
   );
   return materialOut(r);
 }
@@ -92,13 +124,16 @@ async function deleteMaterial(id, userId) {
   const r = await q(`DELETE FROM materials WHERE id=$1 AND owner_user_id=$2`, [id, userId]);
   return r.rowCount > 0;
 }
-async function listEventMaterials(eventId) {
+async function listEventMaterials(eventId, userId) {
   const rows = await many(
     `SELECT m.* FROM event_materials em JOIN materials m ON m.id=em.material_id
      WHERE em.event_id=$1 ORDER BY em.sort_order, m.title`,
     [eventId]
   );
-  return rows.map(materialOut);
+  const live = await require('./sale').isEventLive(eventId);
+  const out = [];
+  for (const r of rows) out.push(await withAccess(materialOut(r), userId, { eventId, live }));
+  return out;
 }
 async function setEventMaterials(eventId, userId, materialIds) {
   const ev = await one(`SELECT id FROM events WHERE id=$1 AND host_user_id=$2`, [eventId, userId]);
@@ -120,13 +155,18 @@ async function viewableMaterial(id, userId) {
   if (userId) {
     const own = await getMaterial(id, userId);
     if (own) return { material: own, canEdit: true };
+    if (await require('./sale').purchased(id, userId)) {
+      const bought = await one('SELECT * FROM materials WHERE id=$1', [id]);
+      return bought ? { material: await withAccess(materialOut(bought), userId), canEdit: false } : null;
+    }
   }
   const r = await one(
     `SELECT m.* FROM materials m WHERE m.id=$1 AND EXISTS (SELECT 1 FROM event_materials em JOIN events e ON e.id=em.event_id
        WHERE em.material_id=m.id AND (e.visibility='public' OR e.host_user_id=$2))`,
     [id, userId || 0]
   );
-  return r ? { material: materialOut(r), canEdit: false } : null;
+  const m = r ? await withAccess(materialOut(r), userId) : null;
+  return m ? { material: m, canEdit: false } : null;
 }
 function analysisOut(r) {
   if (!r) return null;
@@ -149,4 +189,4 @@ async function saveAnalysis(materialId, { sourceKey, result, model, userId }) {
   return analysisOut(r);
 }
 
-module.exports = { KINDS, viewableMaterial, getAnalysis, saveAnalysis, materialOut, sanitizeMaterialPayload, listMaterials, getMaterial, createMaterial, updateMaterial, deleteMaterial, listEventMaterials, setEventMaterials };
+module.exports = { KINDS, viewableMaterial, getAnalysis, saveAnalysis, materialOut, withAccess, sanitizeMaterialPayload, listMaterials, getMaterial, createMaterial, updateMaterial, deleteMaterial, listEventMaterials, setEventMaterials };

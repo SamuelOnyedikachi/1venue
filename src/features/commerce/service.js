@@ -10,6 +10,7 @@ const crypto = require('node:crypto');
 const { q, tx, one, many } = require('../../core/db');
 const plans = require('../../lib/plans');
 const gateway = require('../wallet/paystack');
+const perks = require('./perks');
 const fail = (status, message, extra) => Object.assign(new Error(message), { status, expose: true }, extra || {});
 const asJson = (v) => { if (!v) return {}; if (typeof v === 'object') return v; try { return JSON.parse(v); } catch (_) { return {}; } };
 
@@ -121,7 +122,7 @@ async function reviewPromotion(adminId, promoId, decision) {
 
 // ---------------------------------------------------------------- tickets
 const tierOut = (t) => ({ id: Number(t.id), name: t.name, priceKobo: Number(t.price_kobo), quantity: t.quantity == null ? null : Number(t.quantity), sold: Number(t.sold),
-  remaining: t.quantity == null ? null : Math.max(0, Number(t.quantity) - Number(t.sold)), active: !!t.active });
+  remaining: t.quantity == null ? null : Math.max(0, Number(t.quantity) - Number(t.sold)), active: !!t.active, perks: perks.normalizePerks(t.perks) });
 async function tiers(eventId, { all = false } = {}) {
   return (await many(`SELECT * FROM ticket_tiers WHERE event_id=$1 ${all ? '' : 'AND active'} ORDER BY sort_order, id`, [eventId])).map(tierOut);
 }
@@ -143,13 +144,16 @@ async function saveTiers(user, eventId, list) {
     if (qty != null && (!Number.isSafeInteger(qty) || qty < 0 || qty > 1e6)) throw fail(400, 'Quantity must be a whole number');
     const active = raw.active !== false;
     const cur = raw.id ? existing.get(Number(raw.id)) : null;
+    const suggested = perks.suggestPerks(list)[i];
+    const nextPerks = raw.perks != null ? perks.normalizePerks(raw.perks) : (cur ? perks.normalizePerks(cur.perks) : suggested);
+    const perksJson = JSON.stringify(nextPerks);
     if (cur) {
       if (qty != null && qty < Number(cur.sold)) throw fail(400, `${name}: ${cur.sold} already sold`);
       if (Number(cur.sold) > 0 && price !== Number(cur.price_kobo)) throw fail(400, `${name}: the price cannot change after sales`);
-      await q('UPDATE ticket_tiers SET name=$2, price_kobo=$3, quantity=$4, active=$5, sort_order=$6 WHERE id=$1', [cur.id, name, price, qty, active, i++]);
+      await q('UPDATE ticket_tiers SET name=$2, price_kobo=$3, quantity=$4, active=$5, sort_order=$6, perks=$7 WHERE id=$1', [cur.id, name, price, qty, active, i++, perksJson]);
       keep.add(Number(cur.id));
     } else {
-      const r = await one('INSERT INTO ticket_tiers (event_id, name, price_kobo, quantity, active, sort_order) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [ev.id, name, price, qty, active, i++]);
+      const r = await one('INSERT INTO ticket_tiers (event_id, name, price_kobo, quantity, active, sort_order, perks) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id', [ev.id, name, price, qty, active, i++, perksJson]);
       keep.add(Number(r.id));
     }
   }
@@ -215,19 +219,37 @@ async function donate(user, eventId, amountKobo) {
   return initialize(user, { kind: 'donation', hostUserId: ev.host_user_id, eventId, priceKobo: amount, feeBps: p.feeBps, feeKobo: split.fee }, `/e/${ev.slug}`);
 }
 /** Room join gate: events with ticket tiers need a valid ticket (hosts, speakers and venue managers skip). */
+async function ticketFor(eventId, userId) {
+  if (!userId) return null;
+  const rows = await many(`SELECT tt.* FROM tickets t JOIN ticket_tiers tt ON tt.id=t.tier_id
+    WHERE t.event_id=$1 AND t.user_id=$2 AND t.status='valid'`, [eventId, userId]);
+  if (!rows.length) return null;
+  const ranked = rows
+    .map((t) => ({ name: t.name, perks: perks.normalizePerks(t.perks), priceKobo: Number(t.price_kobo) }))
+    .sort((a, b) => (KEYS_SCORE(b.perks) - KEYS_SCORE(a.perks)) || (b.priceKobo - a.priceKobo));
+  return ranked[0];
+}
+function KEYS_SCORE(p) { return perks.KEYS.reduce((n, k) => n + (p[k] ? 1 : 0), 0); }
 async function canJoinEvent(eventId, user) {
-  const ev = await one('SELECT id, host_user_id, meeting_access_mode FROM events WHERE id=$1', [eventId]);
+  const ev = await one('SELECT id, host_user_id, meeting_access_mode, starts_at FROM events WHERE id=$1', [eventId]);
   if (!ev) return { ok: true };
   if (ev.meeting_access_mode === 'paid_entry') return { ok: true };
   const has = await one('SELECT 1 FROM ticket_tiers WHERE event_id=$1 AND active LIMIT 1', [eventId]);
-  if (!has) return { ok: true };
-  const ent = await plans.entitlements(ev.host_user_id);
-  if (!ent.features.ticketing) return { ok: true };
-  if (!user) return { ok: false, reason: 'Sign in with the account that has your ticket to join this event.' };
-  if (user.id === ev.host_user_id) return { ok: true };
-  if (await one("SELECT 1 FROM tickets WHERE event_id=$1 AND user_id=$2 AND status='valid' LIMIT 1", [eventId, user.id])) return { ok: true };
-  if (await one('SELECT 1 FROM event_speakers WHERE event_id=$1 AND user_id=$2 LIMIT 1', [eventId, user.id])) return { ok: true };
-  return { ok: false, reason: 'This event needs a ticket. Get one on the event page, then join again.' };
+  const isHost = !!(user && user.id === ev.host_user_id);
+  const isSpeaker = !!(user && await one('SELECT 1 FROM event_speakers WHERE event_id=$1 AND user_id=$2 LIMIT 1', [eventId, user.id]));
+  let ticket = user ? await ticketFor(eventId, user.id) : null;
+  if (has) {
+    const ent = await plans.entitlements(ev.host_user_id);
+    if (ent.features.ticketing) {
+      if (!user) return { ok: false, reason: 'Sign in with the account that has your ticket to join this event.' };
+      if (!isHost && !isSpeaker && !ticket) return { ok: false, reason: 'This event needs a ticket. Get one on the event page, then join again.' };
+    }
+  }
+  if (has) {
+    const blocked = perks.earlyEntryBlock(ev, { isHost, isSpeaker, perks: ticket && ticket.perks });
+    if (blocked) return { ok: false, reason: blocked };
+  }
+  return { ok: true, ticket: ticket || null, isHost, isSpeaker };
 }
 
 // ---------------------------------------------------------------- verification and settlement
@@ -270,6 +292,9 @@ async function settle(purchase, verified) {
       if (!r.rowCount) { status = 'review'; err = 'sold_out_refund_needed'; }
       else await issueTickets(c, { tierId: p.tier_id, eventId: p.event_id, userId: p.user_id, paymentId: p.id, quantity: Number(p.quantity) });
     }
+    if (p.kind === 'material') {
+      await require('../materials/sale').grantFromPayment(c, p);
+    }
     if (p.kind === 'promotion' && asJson(p.detail).extendPromotionId) {
       const d = asJson(p.detail);
       const cur = (await c.query('SELECT * FROM promotions WHERE id=$1', [d.extendPromotionId])).rows[0];
@@ -291,10 +316,10 @@ async function settle(purchase, verified) {
       await c.query('UPDATE commerce_payments SET promotion_id=$2 WHERE id=$1', [p.id, promo.id]);
     }
     const paid = (await c.query('UPDATE commerce_payments SET status=$2, provider_id=$3, amount_paid_kobo=$4, paid_at=NOW(), last_error=$5 WHERE id=$1 RETURNING *', [p.id, status, String(verified.id), verified.amount, err])).rows[0];
-    if (status === 'paid' && (p.kind === 'ticket' || p.kind === 'donation') && p.host_user_id) {
+    if (status === 'paid' && (p.kind === 'ticket' || p.kind === 'donation' || p.kind === 'material') && p.host_user_id) {
       const split = plans.feeSplit(Number(p.subtotal_kobo ?? p.price_kobo), Number(p.fee_bps));
       await c.query(`INSERT INTO host_ledger (host_user_id, kind, payment_id, gross_kobo, fee_kobo, net_kobo) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
-        [p.host_user_id, p.kind === 'ticket' ? 'sale' : 'donation', p.id, split.gross, split.fee, split.net]);
+        [p.host_user_id, p.kind === 'donation' ? 'donation' : 'sale', p.id, split.gross, split.fee, split.net]);
     }
     return paid;
   });
@@ -406,5 +431,5 @@ async function adminPayments({ status, kind } = {}) {
 }
 async function myPayments(userId) { return (await many('SELECT * FROM commerce_payments WHERE user_id=$1 ORDER BY id DESC LIMIT 50', [userId])).map(paymentOut); }
 
-module.exports = { paymentOut, getPayment, confirm, settle, validVerified, quotePromotion, startPromotion, myPromotions, pausePromotion, reviewPromotion, tiers, saveTiers, publicTickets, getTicket, donate, canJoinEvent, myTickets,
+module.exports = { paymentOut, getPayment, confirm, settle, validVerified, quotePromotion, startPromotion, myPromotions, pausePromotion, reviewPromotion, tiers, saveTiers, publicTickets, getTicket, donate, canJoinEvent, ticketFor, myTickets,
   balance, earnings, requestPayout, backfillPayoutBanks, decidePayout, listPayouts, markRefunded, adminPayments, myPayments };

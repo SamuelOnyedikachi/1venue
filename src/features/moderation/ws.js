@@ -163,7 +163,7 @@ module.exports = {
         try { paidEntryKicked = await require('../wallet/paid-entry').markKicked(meetingCode, target.userId); }
         catch (e) { sendToParticipant(participantId, { type: 'error', error: 'Could not record the participant refund. Try removing them again.' }); return; }
       }
-      if (paidEntryKicked) sendToParticipant(participantId, { type: 'toast', message: 'If they do not rejoin, the unused portion of their advertised time will be refunded after the meeting ends.' });
+      if (paidEntryKicked && !(meeting.paidEntry && meeting.paidEntry.model === 'usage')) sendToParticipant(participantId, { type: 'toast', message: 'If they do not rejoin, the unused portion of their advertised time will be refunded after the meeting ends.' });
       blockParticipant(meeting, target, { preventRejoin });
       try {
         if (ctx.db) {

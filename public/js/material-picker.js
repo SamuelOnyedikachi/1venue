@@ -4,6 +4,7 @@
 import { icon } from './icons.js';
 import { h, api, toast, reportClientError } from './ui.js';
 import { ACCEPT, kindIcon, kindLabel, materialThumb, materialSub, uploadMaterial } from './materials-lib.js';
+import { saleEditor, priceLabel } from './material-sale.js';
 
 let uid = 0;
 /** materialPicker({ selected: number[], onChange(ids) }) -> { el, set(ids) } */
@@ -46,8 +47,10 @@ export function materialPicker({ selected = [], onChange = () => {} } = {}) {
   function paintChips() {
     countEl.textContent = ids.length ? String(ids.length) : '';
     countEl.hidden = !ids.length;
-    chips.replaceChildren(...ids.map((mid) => all.find((m) => m.id === mid)).filter(Boolean).map((m) => h('span', { class: 'chip-mat' }, thumbEl(m, 'chip-mat-thumb'), h('span', { class: 'ellipsis' }, m.title),
-      h('button', { class: 'rm', type: 'button', 'aria-label': `Remove ${m.title}`, onclick: () => toggle(m.id) }, '−'))));
+    chips.replaceChildren(...ids.map((mid) => all.find((m) => m.id === mid)).filter(Boolean).map((m) => h('div', { class: 'chip-mat-wrap col', style: { gap: '.35rem' } },
+      h('span', { class: 'chip-mat' }, thumbEl(m, 'chip-mat-thumb'), h('span', { class: 'ellipsis' }, m.title + (m.forSale ? ` · ${priceLabel(m)}` : '')),
+        h('button', { class: 'rm', type: 'button', 'aria-label': `Remove ${m.title}`, onclick: () => toggle(m.id) }, '−')),
+      saleEditor(m, { onSaved: (u) => { const i = all.findIndex((x) => x.id === u.id); if (i >= 0) all[i] = u; paintChips(); } }))));
   }
   function toggle(mid) { ids = ids.includes(mid) ? ids.filter((x) => x !== mid) : [...ids, mid]; onChange(ids); paintList(); paintChips(); }
   function setOpen(v) {

@@ -83,6 +83,13 @@ async function settle(id,{now=Date.now(),endReason=null,ownerId=null,force=false
 async function settleLocked(c,row,now,endReason=null) {
     const id=row.id;
     if(row.state!=='active')return shape(row);
+    if(row.deferred){
+      if(!endReason)return shape(row);
+      const ended=Math.floor(now);
+      const updated=(await c.query("UPDATE credit_billing_sessions SET state='closing',ended_ms=$2,end_reason=$3,cleanup_until_ms=$4 WHERE id=$1 RETURNING *",[id,ended,endReason,ended+11*60*1000])).rows[0];
+      await c.query('UPDATE meeting_history SET ended_at=$2 WHERE id=$1 AND ended_at IS NULL',[row.history_id,new Date(ended).toISOString()]);
+      return shape(updated);
+    }
     const freeUntil=Number(row.free_until_ms||row.started_ms), hasStartedBilling=Math.floor(now)>=freeUntil;
     if(!hasStartedBilling&&!endReason)return shape(row);
     const wallet=row.user_id==null?null:(await c.query('SELECT balance_units FROM credit_wallets WHERE user_id=$1 FOR UPDATE',[row.user_id])).rows[0];

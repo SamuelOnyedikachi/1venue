@@ -7,6 +7,36 @@ const {
   db, config, normCode, isCode, parseBody, sendJSON, getAuthUser, meetings, clients, getParticipantsList, getWaitingList, getRaisedHands, getContentState, getSecurityState, broadcast, broadcastToModerators, generateCode, generateInviteToken, createMeetingSettings, createParticipant, normalizeParticipantName, findParticipantByUserId, isBlocked, can, resolvePermissions, endMeeting, getOrRestoreMeeting, discardSnapshot, createLiveKitToken, grantsFromPermissions, signWsCredential, stage, publicErr, LIVEKIT_URL,
 } = require('./http-kit');
 const { isVerified } = require('../lib/auth');
+const crypto = require('crypto');
+const { clientIp } = require('../lib/http');
+
+
+const guestHourHits = new Map();
+function guestDeviceId(req, res) {
+  const raw = String(req.headers.cookie || '');
+  const m = /(?:^|;\s*)venue_did=([A-Za-z0-9_-]+)/.exec(raw);
+  if (m) return m[1];
+  const id = crypto.randomBytes(16).toString('hex');
+  const prev = res.getHeader('Set-Cookie');
+  const cookie = `venue_did=${id}; Path=/; Max-Age=31536000; SameSite=Lax`;
+  res.setHeader('Set-Cookie', prev ? [].concat(prev, cookie) : cookie);
+  return id;
+}
+function guestHourlyOk(key, cap) {
+  const win = Math.floor(Date.now() / 3600000);
+  const k = key + ':' + win;
+  const n = (guestHourHits.get(k) || 0) + 1;
+  guestHourHits.set(k, n);
+  if (guestHourHits.size > 20000) {
+    for (const kk of guestHourHits.keys()) if (!kk.endsWith(':' + win)) guestHourHits.delete(kk);
+  }
+  return n <= cap;
+}
+function limitGuestAction(req, res, kind, cap) {
+  const ip = clientIp(req) || 'unknown';
+  const did = guestDeviceId(req, res);
+  return guestHourlyOk(`guest-${kind}-ip:${ip}`, cap) && guestHourlyOk(`guest-${kind}-did:${did}`, cap);
+}
 
 module.exports = async function handle(req, res, parsed) {
   const urlPath = parsed.pathname;
@@ -44,6 +74,11 @@ module.exports = async function handle(req, res, parsed) {
       }
       const perms = resolvePermissions(meeting, participant);
       const grants = grantsFromPermissions(perms);
+      if (meeting.paidEntry && meeting.paidEntry.enabled && meeting.paidEntry.model === 'usage') {
+        const gate = await require('../features/wallet/usage').mediaGate(meeting.code, participant);
+        if (!gate.ok) return sendJSON(res, gate.status || 403, { error: gate.error, topUp: !!gate.topUp, graceUntilMs: gate.graceUntilMs || null });
+        grants.ttl = gate.ttl || 60;
+      }
       // Breakout rooms live in their own LiveKit rooms (CODE-bo-N)
       let roomName = meeting.mediaRoom || code;
       if (body.room && body.room !== code) {
@@ -104,8 +139,14 @@ module.exports = async function handle(req, res, parsed) {
       if (requestedAccess === 'paid_entry' && !authUser) return sendJSON(res, 401, { error: 'Sign in to host a paid-entry meeting' });
       const paidDuration = event ? event.meetingDurationMin : Number(body.meetingDurationMin);
       const paidPrice = event ? event.meetingEntryPriceCredits : Number(body.meetingEntryPriceCredits);
-      if (requestedAccess === 'paid_entry' && (!Number.isInteger(paidDuration) || paidDuration < 1 || paidDuration > 720 || !Number.isSafeInteger(paidPrice) || paidPrice < 1)) {
+      const legacyPaid = requestedAccess === 'paid_entry' && Number.isInteger(paidDuration) && paidDuration >= 1 && paidDuration <= 720 && Number.isSafeInteger(paidPrice) && paidPrice >= 1;
+      const usagePaid = requestedAccess === 'paid_entry' && !legacyPaid;
+      if (requestedAccess === 'paid_entry' && !legacyPaid && (body.meetingDurationMin != null || body.meetingEntryPriceCredits != null) && (event && (event.meetingDurationMin || event.meetingEntryPriceCredits))) {
         return sendJSON(res, 400, { error: 'Paid entry requires an advertised duration from 1 to 720 minutes and a positive whole-credit entry price' });
+      }
+      if (!authUser && requestedAccess === 'host_funded' && !body.venue && !event) {
+        const cap = (require('../config').WALLET_USAGE || {}).guestInstantPerIpHour || 3;
+        if (!limitGuestAction(req, res, 'create', cap)) return sendJSON(res, 429, { error: 'Too many guest meetings from this network. Sign in to continue.', signInRequired: true });
       }
       // Permanent venue: fixed code, owner only, waiting room always on.
       let venue = null;
@@ -158,8 +199,13 @@ module.exports = async function handle(req, res, parsed) {
         hostUserId: authUser ? authUser.id : null,
         hostDisplayName: hostName,
       });
-      if (requestedAccess === 'paid_entry') {
+      if (requestedAccess === 'paid_entry' && legacyPaid) {
         openedPaidEntry = await require('../features/wallet/paid-entry').open({ code, historyId, hostUserId: authUser.id, entryCredits: paidPrice, durationMin: paidDuration, startedMs: Date.now() });
+      } else if (usagePaid) {
+        openedPaidEntry = await require('../features/wallet/usage').openUsage({
+          code, historyId, hostUserId: authUser.id, startedMs: Date.now(), ownerId: require('../features/wallet/billing').ownerId,
+        });
+        await require('../features/wallet/usage').acceptUsage({ code, userId: authUser.id, participantId: hostId, isHost: true, startNow: false });
       }
 
       await db.logParticipantJoin({
@@ -170,7 +216,7 @@ module.exports = async function handle(req, res, parsed) {
       });
 
       const settings = createMeetingSettings({
-        waitingRoom: !!body.waitingRoom || !!venue || requestedAccess === 'paid_entry',
+        waitingRoom: !!body.waitingRoom || !!venue || legacyPaid,
         guestAccess: body.guestAccess !== false,
         participantScreenShare: body.participantScreenShare !== false,
         participantMicrophone: body.participantMicrophone !== false,
@@ -202,7 +248,7 @@ module.exports = async function handle(req, res, parsed) {
       publishedCode = code;
       meetings.set(code, {
         code,
-        paidEntry: openedPaidEntry ? { enabled: true, entryCredits: openedPaidEntry.entryCredits, durationMin: openedPaidEntry.durationMin, startedMs: openedPaidEntry.startedMs, advertisedEndMs: openedPaidEntry.advertisedEndMs, runtimeEndMs: openedPaidEntry.runtimeEndMs } : null,
+        paidEntry: openedPaidEntry ? { enabled: true, model: usagePaid ? 'usage' : 'entry', entryCredits: openedPaidEntry.entryCredits, durationMin: openedPaidEntry.durationMin, startedMs: openedPaidEntry.startedMs, advertisedEndMs: openedPaidEntry.advertisedEndMs, runtimeEndMs: openedPaidEntry.runtimeEndMs, rateCreditsPerMin: 1, switchDeadlineMs: openedPaidEntry.switchDeadlineMs || null } : null,
         billingId: openedBilling?.historyId || null,
         mediaRoom: openedBilling?.session.media_room || null,
         name,
@@ -329,7 +375,7 @@ module.exports = async function handle(req, res, parsed) {
       const authUser = await getAuthUser(req, res);
       const paidMeeting = !!(meeting.paidEntry && meeting.paidEntry.enabled);
       if (paidMeeting && !authUser) return sendJSON(res, 401, { error: 'Sign in to join this paid-entry meeting', signInRequired: true });
-      const paidAdmission = paidMeeting && authUser
+      let paidAdmission = paidMeeting && authUser
         ? await require('../features/wallet/paid-entry').admission(code, authUser.id)
         : null;
       const participantId = body.participantId || 'user-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
@@ -386,11 +432,15 @@ module.exports = async function handle(req, res, parsed) {
       }
 
       // Ticketed events: a valid ticket is needed to join (hosts, speakers and returning hosts skip).
+      let joinTicket = null;
       if (meeting.eventId && !paidMeeting && !(rejoinCandidate && (rejoinCandidate.role === 'host' || rejoinCandidate.role === 'cohost'))) {
         try {
           const gate = await require('../features/commerce/service').canJoinEvent(meeting.eventId, authUser);
           if (!gate.ok) return sendJSON(res, 403, { error: gate.reason, ticketRequired: true, eventSlug: meeting.eventSlug || null });
+          joinTicket = gate.ticket || null;
         } catch (e) { console.warn('[tickets] gate', e.message); }
+      } else if (meeting.eventId && authUser) {
+        try { joinTicket = await require('../features/commerce/service').ticketFor(meeting.eventId, authUser.id); } catch (_) {}
       }
 
       let role = isGuest ? 'guest' : 'participant';
@@ -415,10 +465,12 @@ module.exports = async function handle(req, res, parsed) {
         }
       }
 
+      const usagePaidJoin = !!(paidMeeting && meeting.paidEntry && meeting.paidEntry.model === 'usage');
       const paidAdmissionApproved = !!(paidMeeting && rejoinCandidate && rejoinCandidate.paidAdmissionApproved);
-      const needsWaiting = paidMeeting
+      const skipWait = !!(joinTicket && joinTicket.perks && joinTicket.perks.skipWaitingRoom);
+      const needsWaiting = paidMeeting && !usagePaidJoin
         ? role !== 'host' && role !== 'cohost' && !paidAdmissionApproved
-        : meeting.settings && meeting.settings.waitingRoom && role !== 'host' &&
+        : meeting.settings && meeting.settings.waitingRoom && role !== 'host' && !skipWait &&
           !(rejoinCandidate && (rejoinCandidate.status === 'ACTIVE' || rejoinCandidate.status === 'APPROVED' || rejoinCandidate.role === 'host' || rejoinCandidate.role === 'cohost'));
 
       if (needsWaiting) status = 'WAITING';
@@ -442,6 +494,7 @@ module.exports = async function handle(req, res, parsed) {
         participant.isHost = true;
       }
 
+      if (joinTicket) participant.ticket = joinTicket;
       meeting.participants.set(pid, participant);
 
       if (status === 'ACTIVE' && meeting.historyId) {
@@ -504,6 +557,17 @@ module.exports = async function handle(req, res, parsed) {
           email: authUser?.email || null,
         });
       } catch (e) { console.warn('[membership] join', e.message); }
+
+      if (usagePaidJoin && authUser && status === 'ACTIVE' && participant.role !== 'host') {
+        try {
+          const admission = await require('../features/wallet/paid-entry').accept({ code, userId: authUser.id, participantId: pid });
+          participant.paidAdmissionApproved = true;
+          paidAdmission = admission;
+        } catch (e) {
+          meeting.participants.delete(pid);
+          return sendJSON(res, e.status || 402, { error: e.message || 'Add credits to join this paid-entry meeting', signInRequired: e.status === 401, topUp: e.status === 402 });
+        }
+      }
 
       // Restore role from membership if previously cohost/host
       if (membership && (membership.role === 'cohost' || membership.role === 'host') && membership.status === 'ACTIVE') {
@@ -637,6 +701,90 @@ module.exports = async function handle(req, res, parsed) {
     }
   }
 
+
+
+  if (urlPath === '/api/meeting/paid-entry/enable' && req.method === 'POST') {
+    try {
+      const body = await parseBody(req);
+      const code = normCode(body.code);
+      const meeting = meetings.get(code) || (isCode(code) ? await getOrRestoreMeeting(code) : null);
+      if (!meeting) return sendJSON(res, 404, { error: 'Meeting not found' });
+      const participant = meeting.participants.get(body.participantId);
+      if (!participant || participant.id !== meeting.hostId || participant.role !== 'host') return sendJSON(res, 403, { error: 'Only the host can switch this meeting to Paid Entry' });
+      if (!body.wsCredential || !require('../lib/wsCredential').verifyWsCredential(body.wsCredential, { participantId: participant.id, code }).ok) return sendJSON(res, 403, { error: 'Invalid room credential' });
+      const user = await getAuthUser(req, res);
+      if (!user) return sendJSON(res, 401, { error: 'Sign in to switch this meeting to Paid Entry', signInRequired: true });
+      if (meeting.paidEntry && meeting.paidEntry.enabled) return sendJSON(res, 409, { error: 'This meeting is already on Paid Entry' });
+      const result = await require('../features/wallet/usage').offerSwitch({ code, hostUserId: user.id, ownerId: require('../features/wallet/billing').ownerId });
+      await require('../features/wallet/usage').acceptUsage({ code, userId: user.id, participantId: participant.id, isHost: true, startNow: false });
+      meeting.hostUserId = user.id;
+      participant.userId = user.id;
+      meeting.paidEntry = { ...result.session, enabled: true, model: 'usage', switchDeadlineMs: result.deadlineMs };
+      for (const [pid, p] of meeting.participants) {
+        if (p.role === 'host' || pid === participant.id) continue;
+        if (p.status !== 'ACTIVE' && p.status !== 'WAITING') continue;
+        await require('../features/wallet/usage').markPending(code, { userId: p.userId || null, participantId: pid }).catch(() => {});
+      }
+      broadcast(code, { type: 'paid-entry-switch', deadlineMs: result.deadlineMs, rateCreditsPerMin: 1, hostId: participant.id });
+      return sendJSON(res, 200, { paidEntry: meeting.paidEntry, deadlineMs: result.deadlineMs });
+    } catch (e) {
+      return sendJSON(res, e.status || 400, { error: publicErr(e, 'Could not switch to Paid Entry') });
+    }
+  }
+
+  if (urlPath === '/api/meeting/paid-entry/accept' && req.method === 'POST') {
+    try {
+      const body = await parseBody(req);
+      const code = normCode(body.code);
+      const meeting = meetings.get(code) || (isCode(code) ? await getOrRestoreMeeting(code) : null);
+      if (!meeting?.paidEntry?.enabled || meeting.paidEntry.model !== 'usage') return sendJSON(res, 404, { error: 'Paid-entry meeting not found' });
+      const participant = meeting.participants.get(body.participantId);
+      if (!participant) return sendJSON(res, 403, { error: 'Not a participant of this meeting' });
+      if (!body.wsCredential || !require('../lib/wsCredential').verifyWsCredential(body.wsCredential, { participantId: participant.id, code }).ok) return sendJSON(res, 403, { error: 'Invalid room credential' });
+      const user = await getAuthUser(req, res);
+      if (!user) return sendJSON(res, 401, { error: 'Sign in to continue in this paid-entry meeting', signInRequired: true });
+      const admission = await require('../features/wallet/usage').acceptUsage({ code, userId: user.id, participantId: participant.id, isHost: participant.role === 'host', startNow: false });
+      participant.userId = user.id;
+      participant.username = user.username;
+      participant.paidAdmissionApproved = true;
+      return sendJSON(res, 200, { ok: true, admission });
+    } catch (e) {
+      return sendJSON(res, e.status || 400, { error: publicErr(e, 'Could not accept Paid Entry'), topUp: e.status === 402 });
+    }
+  }
+
+  if (urlPath === '/api/meeting/account/claim' && req.method === 'POST') {
+    try {
+      const body = await parseBody(req);
+      const code = normCode(body.code);
+      const meeting = meetings.get(code) || (isCode(code) ? await getOrRestoreMeeting(code) : null);
+      if (!meeting) return sendJSON(res, 404, { error: 'Meeting not found' });
+      const participant = meeting.participants.get(body.participantId);
+      if (!participant) return sendJSON(res, 403, { error: 'Not a participant of this meeting' });
+      if (!body.wsCredential || !require('../lib/wsCredential').verifyWsCredential(body.wsCredential, { participantId: participant.id, code }).ok) return sendJSON(res, 403, { error: 'Invalid room credential' });
+      const user = await getAuthUser(req, res);
+      if (!user) return sendJSON(res, 200, { claimed: false, authenticated: false });
+      participant.userId = user.id;
+      participant.username = user.username;
+      participant.verified = isVerified(user);
+      if (participant.role === 'host' || participant.id === meeting.hostId) {
+        meeting.hostUserId = user.id;
+        if (meeting.billingId) {
+          const row = await require('../features/wallet/billing-data').claimHost(meeting.billingId, user);
+          await db.upsertMembership({ code, userId: user.id, participantId: participant.id, displayName: participant.name, role: 'host', status: 'ACTIVE', email: user.email || null }).catch(() => {});
+          return sendJSON(res, 200, { claimed: true, role: 'host', freeUntilMs: row.free_until_ms });
+        }
+      }
+      await db.upsertMembership({ code, userId: user.id, participantId: participant.id, displayName: participant.name, role: participant.role, status: participant.status, email: user.email || null }).catch(() => {});
+      if (meeting.paidEntry && meeting.paidEntry.enabled && meeting.paidEntry.model === 'usage' && body.acceptPaid) {
+        await require('../features/wallet/usage').acceptUsage({ code, userId: user.id, participantId: participant.id, isHost: participant.role === 'host', startNow: false });
+        participant.paidAdmissionApproved = true;
+      }
+      return sendJSON(res, 200, { claimed: true, role: participant.role });
+    } catch (e) {
+      return sendJSON(res, e.status || 400, { error: publicErr(e, 'Could not connect your account'), topUp: e.status === 402 });
+    }
+  }
 
   if (urlPath === '/api/leave' && req.method === 'POST') {
     try {

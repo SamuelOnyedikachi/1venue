@@ -5,6 +5,7 @@ import { catOf } from '../components.js';
 import { isRichInput } from '../event-draft.js';
 import { listenOn, isListening, stopListening } from '../voice.js';
 import { materialPicker } from '../material-picker.js';
+import { certEditor } from '../cert-ui.js';
 
 const field = (label, ic, el, actions) => h('div', { class: 'field-row' },
   h('div', { class: 'field-lab' },
@@ -23,6 +24,7 @@ export async function mount(view, params) {
   let catTouched = !!editing, themeTouched = !!editing;
   let acc = ev.theme?.accent || '#2563eb', acc2 = ev.theme?.accent2 || '#7c3aed';
   let materialIds = [];
+  let certs = (ev.settings && ev.settings.certs) || {};
   const mapSpeaker = (s) => ({ id: s.id, userId: s.userId, name: s.name, headline: s.headline || '', avatarUrl: s.avatarUrl || null, email: s.email || '', status: s.status || 'active' });
   let speakers = [];
   let speakersLoaded = !editing;
@@ -147,8 +149,9 @@ export async function mount(view, params) {
 
   // Materials: searchable picker with "Upload materials" inside it.
   const matPicker = materialPicker({ selected: materialIds, onChange: (ids) => { materialIds = ids; } });
+  const certsEl = certEditor(certs, { accent: acc, onChange: (c) => { certs = c; } });
 
-  const setTheme = (a, a2, { touched = true } = {}) => { acc = a; acc2 = a2; if (touched) themeTouched = true; swatches.querySelectorAll('.swatch').forEach((sw, i) => sw.classList.toggle('on', ACCENTS[i][1] === a)); preview(); };
+  const setTheme = (a, a2, { touched = true } = {}) => { acc = a; acc2 = a2; if (touched) themeTouched = true; swatches.querySelectorAll('.swatch').forEach((sw, i) => sw.classList.toggle('on', ACCENTS[i][1] === a)); certsEl.setAccent(a); preview(); };
   const swatches = h('div', { class: 'swatches' }, ACCENTS.map(([n, a, a2]) => h('button', { type: 'button', class: `swatch${acc === a ? ' on' : ''}`, 'data-tip': n, style: { background: `linear-gradient(135deg, ${a}, ${a2})` }, 'aria-label': n, onclick: () => setTheme(a, a2) })));
   const coverIn = h('input', { type: 'file', accept: 'image/*', class: 'hidden' });
   const prev = h('div', { class: 'ev-card card', style: { pointerEvents: 'none' } });
@@ -174,6 +177,9 @@ export async function mount(view, params) {
   const coverOpts = h('div', { class: 'cover-opts', hidden: true });
   const coverNote = h('div', { class: 'tiny faint cover-quota' });
   let genBusy = false;
+  let coverAttempt = 0;
+  const coverSession = (crypto.randomUUID && crypto.randomUUID()) || String(Date.now());
+  const coverExclude = [];
   let coverLimit = state.config?.covers?.dailyLimit || 10;
   let coverLeft = coverLimit;
   const paintCoverQuota = (extra) => {
@@ -195,15 +201,17 @@ export async function mount(view, params) {
   async function generateCovers() {
     if (!coversOn || genBusy || coverLeft <= 0) return;
     genBusy = true; if (genBtn) genBtn.disabled = true;
-    const n = state.config.covers.options || 2;
+    coverAttempt += 1;
     coverOpts.hidden = false;
-    coverOpts.replaceChildren(...Array.from({ length: n }, () => h('div', { class: 'cover-opt skel' })));
-    coverNote.textContent = 'Designing covers…';
+    coverOpts.replaceChildren(h('div', { class: 'cover-opt skel' }));
+    coverNote.textContent = coverAttempt >= 3 ? 'Designing a new cover…' : 'Looking for a cover…';
     try {
-      const r = await api('/api/covers/generate', { method: 'POST', body: { title: title.value || catOf(category)[0], description: desc.value, category, accent: acc, accent2: acc2 } });
+      const r = await api('/api/covers/generate', { method: 'POST', body: { title: title.value || catOf(category)[0], description: desc.value, category, accent: acc, accent2: acc2, attempt: coverAttempt, session: coverSession, exclude: coverExclude } });
       if (typeof r.left === 'number') coverLeft = r.left;
       coverOpts.replaceChildren(...r.options.map((o) => {
-        const b = h('button', { type: 'button', class: 'cover-opt', 'aria-label': 'Use this cover' }, h('img', { src: o.url, alt: '' }), h('span', { class: 'cover-use', html: icon('check', { size: 14 }) + 'Use' }));
+        if (o.libraryId) coverExclude.push(o.libraryId);
+        const src = o.source === 'library' ? 'From library' : 'New';
+        const b = h('button', { type: 'button', class: 'cover-opt', 'aria-label': 'Use this cover' }, h('img', { src: o.url, alt: '' }), h('span', { class: 'cover-src' }, src), h('span', { class: 'cover-use', html: icon('check', { size: 14 }) + 'Use' }));
         b.onclick = async () => {
           coverOpts.querySelectorAll('.cover-opt').forEach((x) => x.classList.toggle('on', x === b)); b.disabled = true;
           try {
@@ -215,7 +223,7 @@ export async function mount(view, params) {
         return b;
       }));
       if (genBtn) genBtn.innerHTML = icon('refresh', { size: 15 }) + 'Regenerate';
-      paintCoverQuota('Pick one to use it.');
+      paintCoverQuota((r.source === 'library' ? 'From the library.' : 'Newly generated.') + ' Pick it to use it.');
     } catch (e) {
       coverOpts.hidden = true;
       paintCoverQuota();
@@ -379,6 +387,7 @@ export async function mount(view, params) {
       meetingAccessMode: category === 'meeting' ? meetingAccessMode : 'host_funded',
       meetingDurationMin: category === 'meeting' && meetingAccessMode === 'paid_entry' ? Number(meetingDuration.value) : null,
       meetingEntryPriceCredits: category === 'meeting' && meetingAccessMode === 'paid_entry' ? Number(entryPrice.value) : null,
+      settings: { ...((editing && editing.settings) || {}), certs: certsEl.get() },
     };
     if (!editing || speakersLoaded) {
       out.speakers = speakers.map((s) => ({ id: s.id, userId: s.userId || null, name: s.name, headline: s.headline || null, avatarUrl: s.avatarUrl || null, email: s.email || null, status: s.status || undefined }));
@@ -406,37 +415,39 @@ export async function mount(view, params) {
   }
   if (liveNow) liveNow.onclick = () => save(true);
 
-  const form = h('form', { class: 'col', style: { gap: '1.1rem' }, onsubmit: (e) => { e.preventDefault(); save(false); } },
-    h('div', { class: 'card pad layer col', style: { gap: '1rem' } },
-      field('Title', 'type', title, aiBtn),
-      field('Description', 'notes', desc),
-      field('Category', 'tag', catSel),
-      field('Tags', 'hash', tags)),
-    meetingAccess,
-    h('div', { class: 'card pad layer col has-suggest', style: { gap: '1rem' } },
-      h('div', { class: 'grid2' }, field('Starts', 'calendar', starts), field('Ends', 'clock', ends)),
-      field('Visibility', 'eye', visSeg),
-      field('Speaker seats', 'stage', h('div', { class: 'col has-suggest', style: { gap: '.6rem' } },
-        h('div', { class: 'row between wrap' }, h('div', { class: 'tiny faint' }, 'Everyone else watches and can request to speak.'), stepper),
-        h('div', { class: 'suggest-box' }, speakerInput, speakerSug),
-        speakerChips,
-      ))),
-    h('div', { class: 'card pad layer col has-suggest', style: { gap: '1rem' } },
-      field('Event colours', 'palette', swatches),
-      field('Cover', 'image', h('div', { class: 'col cover-step', style: { gap: '.6rem' } },
-        h('div', { class: 'row wrap', style: { gap: '.5rem' } }, coverBtn, genBtn, coverIn),
-        coverOpts, coverNote)),
-      field('Materials', 'folder', matPicker.el)),
-    h('div', { class: 'row wrap', style: { gap: '.6rem' } }, submit, liveNow));
+  const form = h('form', { class: 'create-form col', style: { gap: '1.1rem' }, onsubmit: (e) => { e.preventDefault(); save(false); } },
+    h('div', { class: 'create-grid' },
+      h('div', { class: 'card pad layer col create-col has-suggest', style: { gap: '1rem' } },
+        field('Title', 'type', title, aiBtn),
+        field('Description', 'notes', desc),
+        field('Category', 'tag', catSel),
+        field('Tags', 'hash', tags),
+        field('Event colours', 'palette', swatches),
+        field('Cover', 'image', h('div', { class: 'col cover-step', style: { gap: '.6rem' } },
+          h('div', { class: 'row wrap', style: { gap: '.5rem' } }, coverBtn, genBtn, coverIn),
+          coverOpts, coverNote))),
+      h('div', { class: 'card pad layer col create-col has-suggest', style: { gap: '1rem' } },
+        h('div', { class: 'grid2' }, field('Starts', 'calendar', starts), field('Ends', 'clock', ends)),
+        field('Visibility', 'eye', visSeg),
+        meetingAccess,
+        field('Speaker seats', 'stage', h('div', { class: 'col has-suggest', style: { gap: '.6rem' } },
+          h('div', { class: 'row between wrap' }, h('div', { class: 'tiny faint' }, 'Everyone else watches and can request to speak.'), stepper),
+          h('div', { class: 'suggest-box' }, speakerInput, speakerSug),
+          speakerChips,
+        )),
+        field('Materials', 'folder', matPicker.el),
+        field('Certificates', 'graduation', certsEl)),
+      h('aside', { class: 'sticky col create-preview' },
+        h('div', { class: 'preview-label' },
+          h('span', { class: 'preview-eye', html: icon('eye', { size: 14 }) }),
+          h('span', null, 'Preview')),
+        prev,
+        h('div', { class: 'card pad layer small muted' }, h('strong', null, 'Just need a quick call? '), h('a', { href: '/create?instant=1', 'data-link': '', style: { color: 'var(--accent)', fontWeight: '700' } }, 'Start an instant meeting')))),
+    h('div', { class: 'row wrap create-actions', style: { gap: '.6rem' } }, submit, liveNow));
 
   view.append(
     h('div', { class: 'page-head' }, h('h1', { html: icon(editing ? 'pen' : 'calendarPlus', { size: 28 }) + (editing ? 'Edit event' : 'Create an event') })),
-    h('div', { class: 'split' }, form, h('aside', { class: 'sticky col' },
-      h('div', { class: 'preview-label' },
-        h('span', { class: 'preview-eye', html: icon('eye', { size: 14 }) }),
-        h('span', null, 'Preview')),
-      prev,
-      h('div', { class: 'card pad layer small muted' }, h('strong', null, 'Just need a quick call? '), h('a', { href: '/create?instant=1', 'data-link': '', style: { color: 'var(--accent)', fontWeight: '700' } }, 'Start an instant meeting')))));
+    form);
 }
 
 // /create?instant=1 opened directly (bookmark, shared link, old PWA shortcut): show the home page

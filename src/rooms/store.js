@@ -147,6 +147,7 @@ function serializeParticipant(meeting, p) {
     userId: p.userId || null,
     username: p.username || null,
     verified: !!p.verified,
+    ticket: p.ticket || null,
     device: p.device || 'desktop',
     mutedByHost: !!p.mutedByHost,
     handRaised: !!p.handRaisedAt,

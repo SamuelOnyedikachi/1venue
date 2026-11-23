@@ -3490,3 +3490,19 @@ html.room-fs .cmdbar {
 
 /* Feature-specific room styles now live in src/features/<id>/client/*.css and load right after
    this file as /features/features.css (same cascade order as before). */
+
+.paid-switch-scrim {
+  position: fixed; inset: 0; z-index: 80;
+  background: color-mix(in srgb, var(--bg, #0b1020) 55%, transparent);
+  display: grid; place-items: center; padding: 1.25rem;
+}
+.paid-switch-card {
+  width: min(28rem, 100%);
+  background: var(--card, #fff);
+  color: var(--text, #111);
+  border-radius: 1.1rem;
+  padding: 1.25rem 1.3rem 1.15rem;
+  box-shadow: 0 16px 50px rgba(0,0,0,.2);
+}
+.paid-switch-card h3 { margin: 0 0 .4rem; font-size: 1.15rem; }
+.paid-switch-time { font-variant-numeric: tabular-nums; font-weight: 600; margin: .4rem 0 .8rem; }

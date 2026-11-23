@@ -18,6 +18,11 @@ describe('out11 instant overlay and device picker', () => {
     assert.match(inst, /flag\('stage'/);
     assert.match(inst, /flag\('waitingRoom'/);
     assert.match(inst, /meetingAccessMode: opts\.accessMode/);
+    assert.match(inst, /Free Entry/);
+    assert.match(inst, /Paid Entry/);
+    assert.match(inst, /Need tickets\? Use ticketing/);
+    assert.doesNotMatch(inst, /Advertised duration/);
+    assert.doesNotMatch(inst, /Entry price/);
     assert.match(inst, /Start now/);
   });
 

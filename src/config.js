@@ -13,6 +13,10 @@ const bool = (k, d) => {
   if (v === '') return d;
   return !['0', 'false', 'off', 'no'].includes(String(v).toLowerCase());
 };
+const float = (k, d) => {
+  const n = parseFloat(env(k, ''));
+  return Number.isFinite(n) ? n : d;
+};
 
 const PORT = int('PORT', 3000);
 const PUBLIC = path.join(__dirname, '..', 'public');
@@ -146,12 +150,14 @@ const STT = {
   timeoutMs: int('STT_TIMEOUT_MS', 30_000),
 };
 
-// AI event covers: black-forest-labs/flux-schnell on Replicate (16:9, text-free).
+// AI event covers: ideogram-ai/ideogram-v3-turbo on Replicate (16:9, text-free). One image per generate.
 const COVERS = {
-  model: env('AI_COVER_MODEL', 'black-forest-labs/flux-schnell'),
+  model: env('AI_COVER_MODEL', 'ideogram-ai/ideogram-v3-turbo'),
   dailyLimit: int('AI_COVER_DAILY_LIMIT', 10), // generations ("Generate" / "Regenerate" clicks) per user per day; 0 = off
-  options: Math.min(4, Math.max(1, int('AI_COVER_OPTIONS', 2))), // images per generation
+  options: 1, // always one image; library reuse covers variety
   timeoutMs: int('AI_COVER_TIMEOUT_MS', 60_000),
+  embedModel: env('AI_EMBED_MODEL', 'nateraw/bge-large-en-v1.5'),
+  reuseMin: Math.min(0.99, Math.max(0.5, float('AI_COVER_REUSE_MIN', 0.85))),
 };
 
 // Whiteboard "Refine page" (visual AI on Replicate). Costs AI_WEIGHT_WHITEBOARD_AI points (default 3).
@@ -162,7 +168,7 @@ const WHITEBOARD_AI = {
 
 // Material analysis (/materials/:id → Analyse): Llama 3 70B Instruct on Replicate. Mock when AI_MOCK=true or no token.
 const MATERIALS = {
-  model: env('REPLICATE_MODEL', 'meta/meta-llama-3-70b-instruct'),
+  model: require('./lib/replicate').resolveLlm(env('REPLICATE_MODEL', require('./lib/replicate').DEFAULT_LLM)),
   timeoutMs: int('MATERIAL_ANALYSIS_TIMEOUT_MS', 90_000),
   maxChars: int('MATERIAL_ANALYSIS_MAX_CHARS', 12_000), // excerpt sent to the model
 };
@@ -250,7 +256,7 @@ const METRICS = {
 const NOTIFY = {
   emailEnabled: bool('NOTIFY_EMAIL_ENABLED', true),
   aiEnabled: bool('NOTIFY_AI_ENABLED', true),
-  aiModel: env('NOTIFY_AI_MODEL', '') || env('REPLICATE_MODEL', 'meta/meta-llama-3-70b-instruct'),
+  aiModel: require('./lib/replicate').resolveLlm(env('NOTIFY_AI_MODEL', '') || env('REPLICATE_MODEL', require('./lib/replicate').DEFAULT_LLM)),
   aiDaily: int('NOTIFY_AI_DAILY_LIMIT', 40),
   username: env('NOTIFY_USERNAME', 'notification'),
   callsEnabled: bool('AI_CALLS_ENABLED', false),
@@ -258,6 +264,7 @@ const NOTIFY = {
   callsPerHour: int('AI_CALLS_PER_HOUR', 1),
   callsPerDay: int('AI_CALLS_PER_DAY', 3),
   urgentWindowMin: int('AI_CALLS_URGENT_WINDOW_MIN', 120),
+  returnAfterDays: Math.max(0.01, Number(env('NOTIFY_RETURN_AFTER_DAYS', '3')) || 3),
 };
 
 const RATE_LIMIT_PER_MIN = int('RATE_LIMIT_PER_MIN', 240);
@@ -286,11 +293,18 @@ const MIME = {
   '.pdf': 'application/pdf',
 };
 
+const WALLET_USAGE = {
+  reconnectGraceMs: int('PAID_USAGE_RECONNECT_MS', 30_000),
+  lowBalanceGraceMs: int('PAID_USAGE_GRACE_MS', 120_000),
+  switchAcceptMs: int('PAID_SWITCH_ACCEPT_MS', 300_000),
+  guestInstantPerIpHour: int('GUEST_INSTANT_PER_IP_HOUR', 3),
+};
+
 module.exports = {
   env, int, bool, METRICS,
   PORT, PUBLIC, JWT_SECRET, DEFAULT_SECRET, PUBLIC_URL, siteUrl, APP_NAME,
   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
   AUTH, ALLOW_LOCAL_SIGNUP, ADMIN_EMAILS, CANONICAL_HOST,
   MEETING_INACTIVITY_MS, MEETING_CLEANUP_INTERVAL_MS, MAX_PARTICIPANTS, MAX_AUDIENCE, DEFAULT_SPEAKER_SEATS,
-  MEDIA, AI, STT, COVERS, WHITEBOARD_AI, MATERIALS, MESSAGES, NOTIFY, STORAGE, UPLOADS, BIBLE, MEMORY, RESTART, RATE_LIMIT_PER_MIN, TRUST_PROXY, MIME,
+  MEDIA, AI, STT, COVERS, WHITEBOARD_AI, MATERIALS, MESSAGES, NOTIFY, STORAGE, UPLOADS, BIBLE, MEMORY, RESTART, WALLET_USAGE, RATE_LIMIT_PER_MIN, TRUST_PROXY, MIME,
 };

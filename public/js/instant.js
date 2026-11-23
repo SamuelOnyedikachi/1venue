@@ -14,23 +14,16 @@ export function openInstant({ onClose } = {}) {
   const nameIn = h('input', { class: 'au-pill pj-field', type: 'text', maxlength: 120, autocomplete: 'off', placeholder: 'Meeting name', value: defName, enterkeyhint: 'go', 'data-voice': 'off', 'aria-label': 'Meeting name' });
   const opts = { stage: false, waitingRoom: false, accessMode: 'host_funded' };
 
-  const duration = h('input', { class: 'input', type: 'number', min: 1, max: 720, step: 1, value: '60', inputmode: 'numeric' });
-  const entryPrice = h('input', { class: 'input', type: 'number', min: 1, step: 1, value: '30', inputmode: 'numeric' });
-  const paidEntry = h('div', { class: 'col im-paid', hidden: true },
-    h('div', { class: 'grid2' },
-      h('label', { class: 'field' }, h('span', { class: 'field-lab' }, 'Advertised duration (minutes)'), duration),
-      h('label', { class: 'field' }, h('span', { class: 'field-lab' }, 'Entry price (credits)'), entryPrice)),
-    h('p', { class: 'tiny muted' }, 'Attendees sign in and pay when you accept them. You receive 80% of entry credits after refunds are settled.'));
+  const ticketLink = h('a', { class: 'im-tickets tiny', href: '/create', target: '_blank', rel: 'noopener' }, 'Need tickets? Use ticketing');
 
   const fundIc = h('span', { class: 'im-tog-ic' });
-  const fundLab = h('span', { class: 'im-tog-lab' }, 'Host funded');
-  const fundBtn = h('button', { class: 'im-tog on', type: 'button', 'aria-label': 'Host funded' }, fundIc);
+  const fundLab = h('span', { class: 'im-tog-lab' }, 'Free Entry');
+  const fundBtn = h('button', { class: 'im-tog on', type: 'button', 'aria-label': 'Free Entry' }, fundIc);
   const paintFund = () => {
     const paid = opts.accessMode === 'paid_entry';
     fundIc.innerHTML = icon(paid ? 'users' : 'user', { size: 22 });
-    fundLab.textContent = paid ? 'Participant funded' : 'Host funded';
+    fundLab.textContent = paid ? 'Paid Entry' : 'Free Entry';
     fundBtn.setAttribute('aria-label', fundLab.textContent);
-    paidEntry.hidden = !paid;
   };
   fundBtn.onclick = () => {
     opts.accessMode = opts.accessMode === 'host_funded' ? 'paid_entry' : 'host_funded';
@@ -59,15 +52,14 @@ export function openInstant({ onClose } = {}) {
   const form = h('form', { class: 'au-form', novalidate: true },
     nameIn,
     h('div', { class: 'im-togs' }, fund, flag('stage', 'stage', 'Stage mode'), flag('waitingRoom', 'door', 'Waiting room')),
-    paidEntry,
+    ticketLink,
     start);
   form.onsubmit = (e) => {
     e.preventDefault();
     const n = nameIn.value.trim();
     if (!n) { nameIn.focus(); return toast('Give your meeting a name.', { icon: 'alert' }); }
     if (opts.accessMode === 'paid_entry' && !requireLogin('Sign in to host a paid-entry meeting')) return;
-    if (opts.accessMode === 'paid_entry' && (!Number.isInteger(Number(duration.value)) || Number(duration.value) < 1 || Number(duration.value) > 720 || !Number.isSafeInteger(Number(entryPrice.value)) || Number(entryPrice.value) < 1)) return toast('Enter a duration from 1 to 720 minutes and a positive whole-credit entry price.', { icon: 'alert' });
-    sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, name: n, stage: opts.stage, waitingRoom: opts.waitingRoom, meetingAccessMode: opts.accessMode, meetingDurationMin: Number(duration.value), meetingEntryPriceCredits: Number(entryPrice.value) }));
+    sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, name: n, stage: opts.stage, waitingRoom: opts.waitingRoom, meetingAccessMode: opts.accessMode }));
     close({ starting: true });
     navigate('/new');
   };

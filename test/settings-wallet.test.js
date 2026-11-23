@@ -10,6 +10,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { boot, client, signupPayload } = require('./helpers/server');
+const WELCOME = 60; // credits granted on signup
 const skip = !process.env.DATABASE_URL && process.env.DB_DRIVER !== 'sqlite' ? 'set DATABASE_URL or DB_DRIVER=sqlite' : false;
 const money = require('../src/lib/money');
 const src = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
@@ -139,7 +140,7 @@ test('every checkout charges subtotal + 3% and records the split', { skip, timeo
   txs.get(co.body.reference).status = 'success';
   const v = await alice.post(`/api/wallet/payments/${co.body.reference}/verify`);
   assert.equal(v.body.status, 'paid'); assert.equal(v.body.feeKobo, 45000);
-  assert.equal(await balance(aliceId), 30, 'the fee buys no extra credits');
+  assert.equal(await balance(aliceId), WELCOME + 30, 'the fee buys no extra credits');
 
   const plans = (await alice.get('/api/plans')).body;
   const premium = plans.plans.find((p) => p.id === 'premium');
@@ -193,7 +194,7 @@ test('auto top-up: card saved through hosted checkout, then one charge of pack +
   assert.equal(a.enabled, true); assert.deepEqual(a.card, { last4: '4081', brand: 'visa', exp: '12/30' });
   const stored = (await db.q('SELECT * FROM auto_topups WHERE user_id=$1', [id])).rows[0];
   assert.match(stored.authorization_code, /^AUTH_/); assert.equal(Object.keys(stored).some((k) => /pan|cvv|card_number/i.test(k)), false);
-  assert.equal(await balance(id), 30);
+  assert.equal(await balance(id), WELCOME + 30);
   assert.equal(await autotopup.run(id), 'not_needed', 'balance 30 ≥ threshold 15');
   await db.q('UPDATE credit_wallets SET balance_units=$2 WHERE user_id=$1', [id, 5 * 60000]);
   const before = charges;
@@ -220,6 +221,7 @@ test('auto top-up: card saved through hosted checkout, then one charge of pack +
 test('auto top-up: failures back off, then turn it off after 3; subscribers are skipped; debit hook triggers it', { skip, timeout: 60000 }, async () => {
   const { c, id } = await newUser();
   await withCard(id);
+  await db.q('UPDATE credit_wallets SET balance_units=0 WHERE user_id=$1', [id]);
   decline = true;
   const t0 = Date.now();
   assert.equal(await autotopup.run(id, { now: t0 }), 'failed');
@@ -242,6 +244,7 @@ test('auto top-up: failures back off, then turn it off after 3; subscribers are 
 
   const hook = await newUser();
   await withCard(hook.id, { pack: 10, cap: 100 });
+  await db.q('UPDATE credit_wallets SET balance_units=0 WHERE user_id=$1', [hook.id]);
   const old = process.env.AUTO_TOPUP; delete process.env.AUTO_TOPUP;
   autotopup.maybeAfterDebit(hook.id, 0); autotopup.maybeAfterDebit(hook.id, 0);
   for (let i = 0; i < 100 && (await balance(hook.id)) === 0; i++) await new Promise((r) => setTimeout(r, 50));

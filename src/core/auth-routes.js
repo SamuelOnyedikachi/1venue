@@ -44,6 +44,7 @@ module.exports = async function handle(req, res, parsed) {
   if (urlPath === '/api/session' && req.method === 'GET') {
     const raw = await getAuthUser(req, res, { allowUnverified: true });
     const user = raw && (!config.AUTH.requireVerifiedEmail || raw.emailVerified) ? raw : null;
+    if (user) require('../features/messages/welcome').onReturn(user);
     return sendJSON(res, 200, {
       authenticated: !!user,
       user: user ? publicUser(user) : null,

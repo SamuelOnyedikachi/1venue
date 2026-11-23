@@ -4,7 +4,8 @@ import { state, navigate, requireLogin } from '../app.js';
 import { catOf, commentThread, shareLink, sectionHead, empty, followBtn, railSoonRow, railHostBlock, verifiedDot } from '../components.js';
 import { registerCommands, unregisterCommands } from '../commands.js';
 import { promoCompact, loadPromos } from '../promo.js';
-import { loadMoney, fmtMoney, checkoutSheet } from '../money.js';
+import { loadMoney, fmtMoney, checkoutSheet, currencyParts, majorToBaseMinor, moneyConfig, convert } from '../money.js';
+import { openBuySheet, priceLabel } from '../material-sale.js';
 
 export const roomPath = (code) => '/' + String(code || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -229,7 +230,24 @@ export async function mount(view, { slug }) {
       if (r.authorizationUrl) { location.assign(r.authorizationUrl); return; }
       toast('You have a ticket', { icon: 'ticket' }); paintTickets();
     };
-    const gift = h('input', { class: 'input', type: 'number', min: t.donationMinKobo / 100, step: 100, value: Math.max(1000, t.donationMinKobo / 100), style: { maxWidth: '8rem' }, 'aria-label': 'Gift amount in naira' });
+    const { symbol: giftSym, code: giftCode, digits: giftDigits } = currencyParts();
+    const toDisplayMajor = (baseMinor) => {
+      const v = convert(Number(baseMinor || 0));
+      return (v == null ? Number(baseMinor || 0) : v) / 10 ** giftDigits;
+    };
+    const minMajor = Math.max(0, toDisplayMajor(t.donationMinKobo));
+    const defMajor = Math.max(minMajor, toDisplayMajor(Math.max(t.donationMinKobo, 100000)));
+    const giftStep = giftDigits <= 0 ? 1 : (giftDigits <= 2 ? 1 : 1 / 10 ** Math.min(2, giftDigits));
+    const gift = h('input', { class: 'input gift-amount-input', type: 'number', min: String(minMajor), step: String(giftStep), value: String(Math.round(defMajor * 100) / 100), inputmode: 'decimal', 'aria-label': `Gift amount in ${giftCode}` });
+    const giftBox = h('div', { class: 'gift-box' },
+      h('div', { class: 'gift-amount' },
+        h('span', { class: 'gift-cur gift-cur-prefix', 'aria-hidden': 'true' }, giftSym),
+        gift,
+        h('span', { class: 'gift-cur gift-cur-suffix' }, giftCode));
+    const giftKobo = () => {
+      const base = majorToBaseMinor(Number(gift.value), moneyConfig().currency);
+      return Math.max(t.donationMinKobo, Math.round(base || 0));
+    };
     fillSlot(ticketSlot, h('div', { class: 'ev-card' }, sectionHead(t.tiers.length ? 'Tickets' : 'Support this event', 'ticket'),
       t.mine && t.mine.length ? h('p', { class: 'small' }, `You have ${t.mine.length} ticket${t.mine.length === 1 ? '' : 's'}${t.mine[0].tier ? ' · ' + t.mine[0].tier : ''}.`) : null,
       ...t.tiers.map((tier) => {
@@ -238,13 +256,13 @@ export async function mount(view, { slug }) {
         return h('div', { class: 'ev-meta-row' }, h('div', { class: 'grow min0' }, h('strong', null, tier.name), h('div', { class: 'tiny muted' }, `${tier.priceKobo ? naira(tier.priceKobo) : 'Free'}${tier.remaining != null ? ` · ${tier.remaining} left` : ''}`)),
           qty, h('button', { class: 'btn sm primary', type: 'button', disabled: soldOut || (!t.purchasesEnabled && tier.priceKobo > 0), onclick: () => buy(tier, Number(qty.value) || 1).catch(toastErr) }, soldOut ? 'Sold out' : tier.priceKobo ? 'Buy' : 'Get free ticket'));
       }),
-      t.donations && t.purchasesEnabled ? h('div', { class: 'ev-meta-row' }, h('span', { class: 'grow small' }, 'Send the host a gift'), gift,
-        h('button', { class: 'btn sm', type: 'button', onclick: async () => { if (!requireLogin('Sign in to send a gift')) return; const amountKobo = Math.round(Number(gift.value) * 100); checkoutSheet({ title: 'Send a gift', what: 'A gift to the host of this event.', subtotalKobo: amountKobo, start: () => api(`/api/events/${ev.id}/donate`, { method: 'POST', body: { amountKobo } }) }); } }, 'Give')) : null));
+      t.donations && t.purchasesEnabled ? h('div', { class: 'ev-meta-row' }, h('span', { class: 'grow small' }, 'Send the host a gift'), giftBox,
+        h('button', { class: 'btn sm', type: 'button', onclick: async () => { if (!requireLogin('Sign in to send a gift')) return; const amountKobo = giftKobo(); checkoutSheet({ title: 'Send a gift', what: 'A gift to the host of this event.', subtotalKobo: amountKobo, start: () => api(`/api/events/${ev.id}/donate`, { method: 'POST', body: { amountKobo } }) }); } }, 'Give')) : null));
   }
   const ref = new URLSearchParams(location.search).get('reference') || new URLSearchParams(location.search).get('trxref');
   if (ref && ref.startsWith('1vc-')) {
     api(`/api/commerce/payments/${encodeURIComponent(ref)}/verify`, { method: 'POST', body: {} })
-      .then((p) => { toast(p.status === 'paid' ? (p.kind === 'donation' ? 'Thank you for your gift!' : 'Payment confirmed. Your ticket is ready.') : `Payment ${p.status}`, { icon: 'ticket' }); history.replaceState(null, '', location.pathname); paintTickets(); })
+      .then((p) => { toast(p.status === 'paid' ? (p.kind === 'donation' ? 'Thank you for your gift!' : p.kind === 'material' ? 'Payment confirmed. You now have this material.' : 'Payment confirmed. Your ticket is ready.') : `Payment ${p.status}`, { icon: 'ticket' }); history.replaceState(null, '', location.pathname); paintTickets(); })
       .catch(toastErr);
   }
   paintTickets();
@@ -260,7 +278,9 @@ export async function mount(view, { slug }) {
     fillSlot(matsSlot, h('div', { class: 'ev-card' }, sectionHead('Materials', 'folder'),
       ...mats.map((m) => h('div', { class: 'ev-meta-row' },
         h('span', { html: icon(m.kind === 'video' ? 'video' : (m.kind === 'image' ? 'image' : 'file'), { size: 16 }) }),
-        h('div', { class: 'grow min0' }, h('strong', { class: 'ellipsis' }, m.title || 'Material'), h('div', { class: 'tiny muted' }, m.kind || ''))))));
+        h('div', { class: 'grow min0' }, h('strong', { class: 'ellipsis' }, m.title || 'Material'), h('div', { class: 'tiny muted' }, m.locked ? (priceLabel(m) || 'For sale') : (m.kind || ''))),
+        m.locked ? h('button', { class: 'btn xs primary', type: 'button', onclick: () => openBuySheet(m, { eventId: ev.id, returnPath: location.pathname }) }, 'Buy')
+          : h('a', { class: 'btn xs', href: `/materials/${m.id}`, 'data-link': '' }, 'Open')))));
   }).catch(() => {});
 
   Promise.all([

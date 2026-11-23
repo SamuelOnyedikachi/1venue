@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const http = require('node:http');
 const { spawnSync } = require('node:child_process');
 const { boot, client, signupPayload } = require('./helpers/server');
+const WELCOME = 60; // credits granted on signup
 const skip = !process.env.DATABASE_URL && process.env.DB_DRIVER !== 'sqlite' ? 'set DATABASE_URL or DB_DRIVER=sqlite' : false;
 const rules = require('../src/features/wallet/rules');
 const { verifyWebhook } = require('../src/features/wallet/paystack');
@@ -78,7 +79,7 @@ async function webhook(ref, headers) {
 test('wallet requires sign-in, starts empty, quotes bundles and custom credits without trusting a supplied amount', { skip }, async () => {
   assert.equal((await client(s.base).get('/api/wallet')).status, 401);
   const wallet = await alice.get('/api/wallet');
-  assert.equal(wallet.body.balanceCredits, 0);
+  assert.equal(wallet.body.balanceCredits, WELCOME);
   assert.equal(wallet.body.purchasesEnabled, true);
   const quote = await alice.post('/api/wallet/quote', { credits: 30, amount: 1 });
   assert.equal(quote.body.priceKobo, 1500000);
@@ -87,7 +88,7 @@ test('wallet requires sign-in, starts empty, quotes bundles and custom credits w
   assert.equal(r.status, 201, JSON.stringify(r.body));
   assert.equal(payments.get(r.body.reference).requested_amount, 150000);
   assert.match(r.body.authorizationUrl, /^https:\/\/checkout\.paystack\.com\//);
-  assert.equal((await alice.get('/api/wallet')).body.balanceCredits, 0);
+  assert.equal((await alice.get('/api/wallet')).body.balanceCredits, WELCOME);
 });
 
 test('pending and unsuccessful payments create no credits; another account cannot verify a purchase', { skip }, async () => {
@@ -98,7 +99,7 @@ test('pending and unsuccessful payments create no credits; another account canno
   assert.equal((await verify(ref)).body.status, 'pending');
   payments.get(ref).status = 'failed';
   assert.equal((await verify(ref)).body.status, 'failed');
-  assert.equal((await alice.get('/api/wallet')).body.balanceCredits, 0);
+  assert.equal((await alice.get('/api/wallet')).body.balanceCredits, WELCOME);
   assert.equal((await webhook(ref, { 'x-paystack-signature': 'forged' })).status, 401);
 });
 
@@ -107,14 +108,14 @@ test('verified payment posts exactly once across concurrent callbacks and signed
   payments.get(ref).status = 'success';
   const results = await Promise.all([verify(ref), verify(ref), webhook(ref), webhook(ref)]);
   assert.ok(results.every((r) => r.status === 200));
-  assert.equal((await alice.get('/api/wallet')).body.balanceCredits, 30);
-  assert.equal((await bob.get('/api/wallet')).body.balanceCredits, 0);
+  assert.equal((await alice.get('/api/wallet')).body.balanceCredits, WELCOME + 30);
+  assert.equal((await bob.get('/api/wallet')).body.balanceCredits, WELCOME);
   const history = (await alice.get('/api/wallet/transactions')).body.entries;
   assert.equal(history.filter((x) => x.reference === ref).length, 1);
   assert.equal(history[0].credits, 30);
-  assert.equal(history[0].balanceAfter, 30);
+  assert.equal(history[0].balanceAfter, WELCOME + 30);
   assert.equal((await webhook(ref)).status, 200);
-  assert.equal((await alice.get('/api/wallet')).body.balanceCredits, 30);
+  assert.equal((await alice.get('/api/wallet')).body.balanceCredits, WELCOME + 30);
   // The database itself must hold exactly one purchase entry for this payment.
   const rows = (await db.q('SELECT COUNT(*) AS n FROM credit_ledger l JOIN credit_payments p ON p.id=l.payment_id WHERE p.reference=$1', [ref])).rows;
   assert.equal(Number(rows[0].n), 1);
@@ -126,16 +127,16 @@ test('amount, net funding, currency, customer, metadata and mode mismatches neve
     Object.assign(payments.get(ref), { status: 'success' }, change);
     assert.equal((await verify(ref)).status, 409, JSON.stringify(change));
   }
-  assert.equal((await alice.get('/api/wallet')).body.balanceCredits, 30);
+  assert.equal((await alice.get('/api/wallet')).body.balanceCredits, WELCOME + 30);
 });
 
 test('transient errors remain recoverable, unknown notifications are harmless, and payment history is private', { skip }, async () => {
   const r = await checkout(10); const ref = r.body.reference;
   payments.get(ref).status = 'success'; verifyFailures = 1;
   assert.equal((await webhook(ref)).status, 502);
-  assert.equal((await alice.get('/api/wallet')).body.balanceCredits, 30);
+  assert.equal((await alice.get('/api/wallet')).body.balanceCredits, WELCOME + 30);
   assert.equal((await webhook(ref)).status, 200);
-  assert.equal((await alice.get('/api/wallet')).body.balanceCredits, 40);
+  assert.equal((await alice.get('/api/wallet')).body.balanceCredits, WELCOME + 40);
   assert.equal((await webhook('unknown-reference')).status, 200);
   assert.equal((await bob.get('/api/wallet/payments')).body.payments.length, 0);
   const entry = (await alice.get('/api/wallet/payments')).body.payments.find((p) => p.reference === ref);
@@ -152,7 +153,7 @@ test('interrupted initialization retains a reference that a later verified notif
   const ref = [...payments.keys()].pop();
   payments.get(ref).status = 'success';
   assert.equal((await webhook(ref)).status, 200);
-  assert.equal((await buyer.get('/api/wallet')).body.balanceCredits, 10);
+  assert.equal((await buyer.get('/api/wallet')).body.balanceCredits, WELCOME + 10);
 });
 
 test('the same provider transaction cannot credit two purchase references', { skip }, async () => {
@@ -164,8 +165,10 @@ test('the same provider transaction cannot credit two purchase references', { sk
   const duplicate = payments.get(second.body.reference);
   duplicate.status = 'success'; duplicate.id = payments.get(first.body.reference).id;
   assert.equal((await verify(second.body.reference, buyer)).status, 409);
-  assert.equal((await buyer.get('/api/wallet')).body.balanceCredits, 10);
-  assert.equal((await buyer.get('/api/wallet/transactions')).body.entries.length, 1);
+  assert.equal((await buyer.get('/api/wallet')).body.balanceCredits, WELCOME + 10);
+  const entries = (await buyer.get('/api/wallet/transactions')).body.entries;
+  assert.equal(entries.filter((e) => e.type === 'purchase').length, 1);
+  assert.equal(entries.filter((e) => e.type === 'welcome').length, 1);
 });
 
 test('deleting an account cannot silently discard purchased credits or an unfinished checkout', { skip }, async () => {
@@ -179,11 +182,11 @@ test('deleting an account cannot silently discard purchased credits or an unfini
   payments.get(r.body.reference).status = 'success';
   await verify(r.body.reference, buyer);
   await assert.rejects(deletion.deleteAccount(id), (e) => e.status === 409);
-  assert.equal(await walletData.balance(id), 10);
+  assert.equal(await walletData.balance(id), WELCOME + 10);
   await db.q('UPDATE users SET is_seed=true WHERE id=$1', [id]);
   try {
     await assert.rejects(require('../src/features/seed/seed').remove(), (e) => e.status === 409);
-    assert.equal(await walletData.balance(id), 10);
+    assert.equal(await walletData.balance(id), WELCOME + 10);
   } finally { await db.q('UPDATE users SET is_seed=false WHERE id=$1', [id]); }
 });
 
@@ -203,7 +206,7 @@ test('without gateway credentials wallets remain readable and purchases stay dis
     const buyer = client(disabled.base);
     assert.equal((await buyer.post('/api/signup', signupPayload())).status, 201);
     const summary = (await buyer.get('/api/wallet')).body;
-    assert.equal(summary.balanceCredits, 0);
+    assert.equal(summary.balanceCredits, WELCOME);
     assert.equal(summary.purchasesEnabled, false);
     assert.equal((await buyer.post('/api/wallet/checkout', { credits: 10 })).status, 503);
     assert.equal((await buyer.get('/api/wallet/payments')).body.payments.length, 0);
