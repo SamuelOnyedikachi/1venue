@@ -59,10 +59,14 @@ function connect() {
     let m; try { m = JSON.parse(e.data); } catch { return; }
     if (m.type === 'message') {
       const mine = m.message && m.message.fromUserId === userId;
+      // Play the incoming tone even when this chat is already open (main or PiP). Muted
+      // chats, system/call kinds, and our own sends stay silent. playMessageTone throttles bursts.
+      if (!mine && m.message && m.message.kind !== 'call' && m.message.kind !== 'system' && !m.muted) {
+        import('./tones.js').then((t) => t.playMessageTone()).catch(() => {});
+      }
       if (!mine && !(surfaceVisible() && watching(m.conversationId))) {
         refreshUnread();
         if (m.message.kind !== 'call' && m.message.kind !== 'system' && !m.muted) {
-          import('./tones.js').then((t) => t.playMessageTone()).catch(() => {});
           if (document.visibilityState !== 'visible') import('./notify.js').then((n) => n.localNotify({ title: m.message.fromName, body: m.message.text || 'Sent an attachment', url: `/messages/${m.conversationId}`, tag: `conv-${m.conversationId}` })).catch(() => {});
         }
         if (!location.pathname.startsWith('/messages') && !watching(m.conversationId) && m.message.kind !== 'call') toast(`${m.message.fromName}: ${m.message.text || 'sent an attachment'}`.slice(0, 120), { icon: 'chat', group: 'people', action: { label: 'Open', run: () => import('../app.js').then((a) => a.navigate(`/messages/${m.conversationId}`)) } });

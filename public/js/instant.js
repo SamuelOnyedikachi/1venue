@@ -4,13 +4,17 @@
 import { icon } from './icons.js';
 import { h, toast } from './ui.js';
 import { state, navigate, requireLogin } from './app.js';
+import { bringMainToFront } from './bring-main.js';
 
 let open = null;
 
-export function openInstant({ onClose } = {}) {
-  if (open) { open.focus(); return open; }
-  const prevFocus = document.activeElement;
-  const defName = state.user ? `${(state.user.displayName || state.user.username || 'My').split(' ')[0]}’s meeting` : 'Quick meeting';
+export function openInstant({ onClose, doc, name, thread } = {}) {
+  if (open) { try { open.close(); } catch { /* reopen in the requested document */ } }
+  const owner = (doc && doc.nodeType === 9) ? doc : (doc && doc.ownerDocument) || document;
+  const win = owner.defaultView || window;
+  const mount = owner.body;
+  const prevFocus = owner.activeElement;
+  const defName = name || (state.user ? `${(state.user.displayName || state.user.username || 'My').split(' ')[0]}’s meeting` : 'Quick meeting');
   const nameIn = h('input', { class: 'au-pill pj-field', type: 'text', maxlength: 120, autocomplete: 'off', placeholder: 'Meeting name', value: defName, enterkeyhint: 'go', 'data-voice': 'off', 'aria-label': 'Meeting name' });
   const opts = { stage: false, waitingRoom: false, accessMode: 'host_funded' };
 
@@ -58,10 +62,16 @@ export function openInstant({ onClose } = {}) {
     e.preventDefault();
     const n = nameIn.value.trim();
     if (!n) { nameIn.focus(); return toast('Give your meeting a name.', { icon: 'alert' }); }
-    if (opts.accessMode === 'paid_entry' && !requireLogin('Sign in to host a paid-entry meeting')) return;
-    sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, name: n, stage: opts.stage, waitingRoom: opts.waitingRoom, meetingAccessMode: opts.accessMode }));
+    if (opts.accessMode === 'paid_entry' && !requireLogin('Sign in to host a paid-entry meeting')) {
+      if (owner !== document) bringMainToFront(owner);
+      return;
+    }
+    const intent = { create: true, name: n, stage: opts.stage, waitingRoom: opts.waitingRoom, meetingAccessMode: opts.accessMode };
+    if (thread) intent.thread = thread;
+    sessionStorage.setItem('venue.intent', JSON.stringify(intent));
     close({ starting: true });
     navigate('/new');
+    if (owner !== document) bringMainToFront(owner);
   };
 
   const scrim = h('div', { class: 'au-scrim im-scrim' });
@@ -76,11 +86,11 @@ export function openInstant({ onClose } = {}) {
   function close({ starting = false } = {}) {
     if (!open) return;
     open = null;
-    document.removeEventListener('keydown', onKey, true);
-    window.removeEventListener('popstate', onPop);
+    owner.removeEventListener('keydown', onKey, true);
+    win.removeEventListener('popstate', onPop);
     modal.classList.add('out'); scrim.classList.add('out');
     setTimeout(() => { modal.remove(); scrim.remove(); }, 200);
-    document.documentElement.classList.remove('au-lock');
+    owner.documentElement.classList.remove('au-lock');
     if (!starting) prevFocus?.focus?.();
     onClose?.({ starting });
   }
@@ -90,16 +100,16 @@ export function openInstant({ onClose } = {}) {
     if (e.key === 'Tab') {
       const f = [...modal.querySelectorAll('a[href],button:not([disabled]),input:not([type=hidden]),select,textarea')].filter((x) => x.offsetParent || x.closest('.switch'));
       if (!f.length) return;
-      const i = f.indexOf(document.activeElement);
+      const i = f.indexOf(owner.activeElement);
       if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); } else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); }
     }
   };
   scrim.onclick = () => close();
   closeBtn.onclick = () => close();
-  document.body.append(scrim, modal);
-  document.documentElement.classList.add('au-lock');
-  document.addEventListener('keydown', onKey, true);
-  window.addEventListener('popstate', onPop);
+  mount.append(scrim, modal);
+  owner.documentElement.classList.add('au-lock');
+  owner.addEventListener('keydown', onKey, true);
+  win.addEventListener('popstate', onPop);
   setTimeout(() => { nameIn.focus(); nameIn.select(); }, 40);
   open = { close, el: modal, focus: () => nameIn.focus() };
   return open;

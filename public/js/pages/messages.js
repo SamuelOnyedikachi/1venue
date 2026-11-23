@@ -95,7 +95,7 @@ export async function mount(view, params) {
     return h('a', { class: `msg-item${S.conv && S.conv.id === c.id ? ' on' : ''}${c.unread ? ' unread' : ''}`, href: `/messages/${c.id}`, 'data-link': '', role: 'listitem' },
       av,
       h('span', { class: 'msg-item-main' },
-        h('span', { class: 'msg-item-top' }, c.starred ? h('span', { class: 'msg-star', html: icon('star', { size: 13 }) }) : null, h('span', { class: 'msg-item-who' }, h('b', { class: 'ellipsis' }, c.title), vMark(c.peer && c.peer.verified)),
+        h('span', { class: 'msg-item-top' }, c.starred ? h('span', { class: 'msg-star', html: icon('star', { size: 13 }) }) : null, h('span', { class: 'msg-item-who who-name' }, h('b', { class: 'ellipsis' }, c.title), vMark(c.peer && c.peer.verified)),
           c.labels && c.labels.length ? h('span', { class: 'msg-labels' }, c.labels.slice(0, 2).map((l) => h('span', { class: 'msg-label', style: { '--lc': l.color } }, l.name)), c.labels.length > 2 ? h('span', { class: 'msg-label more' }, `+${c.labels.length - 2}`) : null) : null,
           c.pinned ? I('pin', 14) : null, c.muted ? I('volumeX', 14) : null, h('time', null, timeAgo(c.lastMessageAt))),
         h('span', { class: 'msg-item-bot' }, c.followUp ? h('span', { class: 'msg-flag', 'data-tip': 'Follow up', html: icon('flag', { size: 12 }) }) : null,
@@ -199,12 +199,12 @@ export async function mount(view, params) {
     const c = S.conv;
     const back = h('a', { class: 'icon-btn msg-back', href: '/messages', 'data-link': '', 'aria-label': 'Back to chats', html: icon('chevronLeft', { size: 22 }) });
     const av = c.type === 'dm' ? avatar(c.title, c.avatarUrl, 'md') : h('span', { class: `av md msg-av-ic ${c.type}`, html: icon(c.type === 'meeting' ? 'video' : 'users', { size: 20 }) });
-    const titleEl = h('span', { class: 'row', style: { alignItems: 'center', gap: '.2rem', minWidth: 0 } },
+    const titleEl = h('span', { class: 'who-name' },
       c.type === 'dm' && c.peer && c.peer.username ? h('a', { href: `/u/${c.peer.username}`, 'data-link': '', class: 'ellipsis' }, c.title) : h('span', { class: 'ellipsis' }, c.title),
       vMark(c.peer && c.peer.verified));
     const canCall = c.canSend && c.type !== 'meeting';
     const head = h('header', { class: 'msg-thread-head' }, back, h('button', { class: 'msg-head-who', type: 'button', 'aria-label': 'Contact details', onclick: () => toggleSide() }, av,
-      h('div', { class: 'msg-thread-title' }, h('b', null, titleEl), h('span', { class: 'muted tiny msg-presence' }, presenceText(c)))),
+      h('div', { class: 'msg-thread-title' }, h('b', { class: 'who-title' }, titleEl), h('span', { class: 'muted tiny msg-presence' }, presenceText(c)))),
       ib('star', c.starred ? 'Unstar' : 'Star', () => patch({ starred: !c.starred }, c.starred ? 'Unstarred' : 'Starred').then(paintThread), `msg-star-btn${c.starred ? ' on' : ''}`),
       ib('pip', 'Float this chat', () => {
         openMini(c.id).then((mode) => {

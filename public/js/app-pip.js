@@ -74,22 +74,45 @@ function watchTheme(doc, win) {
   win.addEventListener('pagehide', stop);
 }
 
-async function startCallFor(conv, kind) {
+async function startCallFor(conv, kind, pipDoc) {
   try {
     const cm = await import('./messages/call.js');
     await cm.startCall(conv.id, kind, conv.title);
   } catch (e) {
-    if (e.data && e.data.upgrade) toast(e.message, { icon: 'zap', action: { label: 'Upgrade', run: () => navigate('/upgrade') } });
-    else toastErr(e);
+    if (e.data && e.data.upgrade) {
+      toast(e.message, { icon: 'zap', action: { label: 'Upgrade', run: () => {
+        navigate('/upgrade');
+        import('./bring-main.js').then((b) => b.bringMainToFront(pipDoc)).catch(() => {});
+      } } });
+    } else toastErr(e);
   }
 }
 
-function startMeetingFor(conv) {
+function startMeetingFor(conv, pipDoc) {
   const name = conv.type === 'dm' && state.user
     ? `${state.user.displayName} & ${conv.title}`
     : (conv.title || 'Meeting');
   sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, name, thread: conv.id }));
-  navigate('/new');
+  import('./instant.js').then((m) => m.openInstant({ doc: pipDoc, name, thread: conv.id }))
+    .catch(() => {
+      navigate('/new');
+      import('./bring-main.js').then((b) => b.bringMainToFront(pipDoc)).catch(() => {});
+    });
+}
+
+function isNotifyConv(c) {
+  const peer = c && (c.peer || c.other);
+  const user = String((peer && (peer.username || peer.handle)) || '').replace(/^@/, '').toLowerCase();
+  return !!(peer && (peer.system || peer.isSystem || peer.is_system)) || user === 'notification';
+}
+function pinFirst(list) {
+  const pinned = [], rest = [];
+  for (const c of list || []) (isNotifyConv(c) ? pinned : rest).push(c);
+  return [...pinned, ...rest];
+}
+function pinMark(c) {
+  if (!isNotifyConv(c)) return null;
+  return h('span', { class: 'app-pip-pin', title: 'Pinned', 'aria-label': 'Pinned', html: icon('pin', { size: 12 }) });
 }
 
 function pipAvatar(name, url, cls = 'md') {
@@ -195,7 +218,7 @@ export async function popOut() {
     async function loadList() {
       try {
         const r = await api('/api/messages/conversations').catch(() => ({ conversations: [] }));
-        convList = r.conversations || r.threads || r.items || [];
+        convList = pinFirst(r.conversations || r.threads || r.items || []);
       } catch { /* keep previous */ }
     }
 
@@ -212,8 +235,10 @@ export async function popOut() {
         convAvatar(c, 'md'),
         h('div', { class: 'app-pip-row-main min-w-0 grow' },
           h('div', { class: 'app-pip-row-top' },
-            h('b', { class: 'ellipsis' }, title),
-            verifiedDot(c.peer, { title: 'Verified' }),
+            h('span', { class: 'who-name' },
+              h('b', { class: 'ellipsis' }, title),
+              verifiedDot(c.peer, { title: 'Verified' }),
+              pinMark(c)),
             c.lastMessageAt ? h('span', { class: 'tiny muted app-pip-when' }, timeAgo(c.lastMessageAt)) : null),
           h('div', { class: 'app-pip-row-sub' },
             h('span', { class: 'tiny muted ellipsis' }, preview || 'No messages yet'),
@@ -259,7 +284,7 @@ export async function popOut() {
           } },
             pipAvatar(name, u.avatarUrl || u.avatar_url, 'md'),
             h('div', { class: 'grow min-w-0' },
-              h('div', { class: 'app-pip-row-top' }, h('b', { class: 'ellipsis', html: hilite(name, term) }), verifiedDot(u, { title: 'Verified' })),
+              h('div', { class: 'app-pip-row-top' }, h('span', { class: 'who-name' }, h('b', { class: 'ellipsis', html: hilite(name, term) }), verifiedDot(u, { title: 'Verified' }))),
               h('span', { class: 'tiny muted' }, u.username ? '@' + u.username : ''))));
         }
       }
@@ -330,8 +355,9 @@ export async function popOut() {
             const name = u.displayName || u.display_name || u.name || u.username;
             return h('button', { class: 'app-pip-row', type: 'button', onclick: () => go(u.username) },
               pipAvatar(name, u.avatarUrl || u.avatar_url, 'sm'),
-              h('span', { class: 'grow ellipsis' }, name),
-              verifiedDot(u, { title: 'Verified' }),
+              h('span', { class: 'who-name grow' },
+                h('span', { class: 'ellipsis' }, name),
+                verifiedDot(u, { title: 'Verified' })),
               h('span', { class: 'tiny muted' }, '@' + u.username));
           }));
         } catch { sugg.replaceChildren(); }
@@ -422,11 +448,12 @@ export async function popOut() {
           softBtn('chevronLeft', 'Back to chats', () => { sub = null; thread = null; paint(); }, { size: 20 }),
           convAvatar(c, 'sm'),
           h('div', { class: 'app-pip-head-name grow min-w-0' },
-            h('b', { class: 'ellipsis' }, c.title || 'Chat'),
-            verifiedDot(c.peer, { title: 'Verified' })),
-          canCall ? softBtn('phone', 'Start a call', () => startCallFor(c, 'audio')) : null,
-          canCall && c.type === 'dm' ? softBtn('video', 'Start a video call', () => startCallFor(c, 'video')) : null,
-          canMeet ? softBtn('calendarPlus', 'Start a meeting', () => startMeetingFor(c)) : null,
+            h('span', { class: 'who-name' },
+              h('b', { class: 'ellipsis' }, c.title || 'Chat'),
+              verifiedDot(c.peer, { title: 'Verified' }))),
+          canCall ? softBtn('phone', 'Start a call', () => startCallFor(c, 'audio', win.document)) : null,
+          canCall && c.type === 'dm' ? softBtn('video', 'Start a video call', () => startCallFor(c, 'video', win.document)) : null,
+          canMeet ? softBtn('calendarPlus', 'Start a meeting', () => startMeetingFor(c, win.document)) : null,
         );
         const msgsEl = h('div', { class: 'app-pip-msgs' });
         const typingEl = h('div', { class: 'app-pip-typing', hidden: true });
@@ -467,7 +494,7 @@ export async function popOut() {
     }
 
     function meetingView() {
-      const start = h('button', { class: 'btn primary', type: 'button', onclick: () => openInstantOverlay() }, 'Start instant meeting');
+      const start = h('button', { class: 'btn primary', type: 'button', onclick: () => openInstantOverlay({ doc: win.document }) }, 'Start instant meeting');
       if (!state.inRoom) {
         return h('div', { class: 'app-pip-meeting app-pip-scroll', style: { padding: '.8rem' } },
           h('div', { class: 'col', style: { gap: '.6rem' } },
@@ -506,7 +533,7 @@ export async function popOut() {
         c.lastMessageAt = (m.message && m.message.createdAt) || new Date().toISOString();
         if (!mine && !open) c.unread = (Number(c.unread) || 0) + 1;
         if (open) c.unread = 0;
-        convList = [c, ...convList.filter((x) => x !== c)];
+        convList = pinFirst([c, ...convList.filter((x) => x !== c)]);
       } else {
         loadList().then(() => { if (current === 'chats' && !sub) paint(); });
         return;
@@ -551,6 +578,11 @@ export async function popOut() {
 
     await loadList();
     await paint();
+    import('./messages/tones.js').then((tn) => {
+      if (!tn.unlockTones) return;
+      win.addEventListener('pointerdown', tn.unlockTones, { capture: true });
+      win.addEventListener('keydown', tn.unlockTones, { capture: true });
+    }).catch(() => {});
     const syncCall = () => import('./messages/call.js').then((cm) => cm.placeAllCallUi && cm.placeAllCallUi()).catch(() => {});
     syncCall();
     const leave = () => {

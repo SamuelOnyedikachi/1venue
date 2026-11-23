@@ -20,8 +20,8 @@ describe('out21 Google button: one app.js module instance', () => {
   });
 
   it('bumps the cache versions', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v72-2026-11-23'/);
-    assert.match(read('public/index.html'), /app\.css\?v=58/);
-    assert.match(read('public/index.html'), /app\.js\?v=58/);
+    assert.match(read('public/sw.js'), /VERSION = 'v73-2026-11-23'/);
+    assert.match(read('public/index.html'), /app\.css\?v=59/);
+    assert.match(read('public/index.html'), /app\.js\?v=59/);
   });
 });

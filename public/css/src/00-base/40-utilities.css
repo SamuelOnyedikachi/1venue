@@ -180,3 +180,27 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Name + verified badge (and optional pin) stay together; the name truncates. */
+.who-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  max-width: 100%;
+  font-family: inherit;
+}
+.who-name > .ellipsis,
+.who-name > b,
+.who-name > a {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.who-name .verified-dot,
+.who-name .app-pip-pin {
+  flex: none;
+}

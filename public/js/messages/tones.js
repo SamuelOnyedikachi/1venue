@@ -9,7 +9,7 @@ export const setToneMuted = (k, v) => { try { localStorage.setItem(KEYS[k], v ? 
 const cache = {};
 function audio(name) { if (!cache[name]) { cache[name] = new Audio(`/sounds/${name}.mp3`); cache[name].preload = 'auto'; } return cache[name]; }
 let unlocked = false, unlocking = false, ringing = false;
-function unlock() {
+export function unlockTones() {
   const ring = audio('ringtone');
   // If autoplay rejected the active ringtone, retry the same element while this gesture is active.
   if (ringing && !toneMuted('ring')) {
@@ -37,17 +37,39 @@ function unlock() {
   Promise.all(warm).then((ok) => { if (ok.every(Boolean)) unlocked = true; }).finally(() => { unlocking = false; });
 }
 if (typeof window !== 'undefined') {
-  window.addEventListener('pointerdown', unlock, { capture: true });
-  window.addEventListener('keydown', unlock, { capture: true });
+  window.addEventListener('pointerdown', unlockTones, { capture: true });
+  window.addEventListener('keydown', unlockTones, { capture: true });
 }
 
 let lastMsg = 0;
 /** Short two-note chime for an incoming message (throttled so a burst plays once). */
+let toneCtx = null;
+function resumeToneCtx() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    if (!toneCtx) toneCtx = new AC();
+    if (toneCtx.state === 'suspended') toneCtx.resume().catch(() => {});
+  } catch { /* no audio context */ }
+}
+
 export function playMessageTone() {
   if (toneMuted('message') || Date.now() - lastMsg < 1500) return;
   lastMsg = Date.now();
+  resumeToneCtx();
   const a = audio('message'); a.muted = false; a.volume = 0.85; a.currentTime = 0;
-  a.play().catch(() => {});
+  a.play().catch(() => {
+    // Main tab may be hidden while the PiP is focused; try a one-shot in the PiP document.
+    try {
+      const pip = window.documentPictureInPicture && window.documentPictureInPicture.window;
+      if (pip && !pip.closed) {
+        const b = pip.document.createElement('audio');
+        b.src = '/sounds/message.mp3';
+        b.volume = 0.85;
+        b.play().catch(() => {});
+      }
+    } catch { /* ignore */ }
+  });
 }
 
 /** Start the looping ringtone (plus vibration on phones). Returns stop(). */

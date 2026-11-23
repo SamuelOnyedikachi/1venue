@@ -73,7 +73,10 @@ export function signupUrl(nextPath) {
 }
 /** Instant meeting setup = an overlay over whatever page you are on (blurred underneath). */
 export function openInstantOverlay(opts) {
-  return import('./instant.js').then((m) => m.openInstant(opts)).catch(() => navigate('/create?instant=1'));
+  return import('./instant.js').then((m) => m.openInstant(opts)).catch(() => {
+    navigate('/create?instant=1');
+    if (opts && opts.doc) import('./bring-main.js').then((b) => b.bringMainToFront(opts.doc)).catch(() => {});
+  });
 }
 /** Log in = an overlay over the current (blurred) page; sign up = its own page. */
 export function goLogin(nextPath, { signup = false, mode } = {}) {

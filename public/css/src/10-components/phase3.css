@@ -45,16 +45,22 @@
 .app-pip-sec { padding: .55rem .8rem .2rem; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
 .app-pip-row { display: flex; align-items: center; gap: .55rem; width: 100%; text-align: left; border: 0; background: transparent; color: inherit; padding: .65rem .8rem; border-bottom: 1px solid var(--line); cursor: pointer; }
 .app-pip-row:hover { background: var(--s2); }
-.app-pip-row.unread b { font-weight: 800; }
+.app-pip-row.unread, .app-pip-row.unread b, .app-pip-row.unread .app-pip-row-sub { font-family: inherit; }
+.app-pip-row.unread b { font-weight: 600; }
+.app-pip-row.unread .app-pip-row-sub { font-weight: 500; }
 .app-pip-row-main { display: flex; flex-direction: column; gap: .12rem; min-width: 0; }
 .app-pip-row-top, .app-pip-row-sub { display: flex; align-items: center; gap: .35rem; min-width: 0; }
-.app-pip-row-top .ellipsis { flex: 1; min-width: 0; }
+.app-pip-row-top .who-name { flex: 1 1 auto; display: flex; min-width: 0; }
+.app-pip-row-top .ellipsis { flex: 0 1 auto; min-width: 0; }
 .app-pip-row-sub .ellipsis { flex: 1; min-width: 0; }
 .app-pip-when { flex: none; }
 .app-pip-count { flex: none; min-width: 1.15rem; padding: 0 .3rem; border-radius: 999px; background: var(--accent); color: var(--accent-ink, #fff); font-size: .68rem; font-style: normal; font-weight: 700; text-align: center; line-height: 1.3rem; }
 .app-pip-people { margin: 0; padding-left: 1.1rem; }
 .app-pip-thread-head { display: flex; align-items: center; gap: .35rem; flex: none; padding: .3rem .4rem; border-bottom: 1px solid var(--line); background: var(--s1); }
 .app-pip-head-name { display: flex; align-items: center; gap: .3rem; min-width: 0; }
+.app-pip-head-name .who-name { flex: 1 1 auto; display: flex; min-width: 0; }
+.app-pip-pin { display: inline-flex; color: var(--muted); opacity: .8; }
+.app-pip-continue { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .45rem; padding: .5rem .7rem; border-top: 1px solid var(--line); background: var(--s1); font-size: .8rem; z-index: 20; }
 .app-pip-msgs { padding: .55rem .7rem .4rem; display: flex; flex-direction: column; gap: .35rem; }
 .app-pip-msg { display: flex; align-items: flex-end; gap: .35rem; max-width: 92%; align-self: flex-start; }
 .app-pip-msg.mine { align-self: flex-end; }

@@ -71,7 +71,9 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
 .page-messages .msg-star { color: #f5b301; display: inline-flex; flex: none; }
 .page-messages .msg-star svg { fill: currentColor; }
 .page-messages .msg-item-bot > span.ellipsis { flex: 1; font-size: .84rem; color: var(--muted); }
-.page-messages .msg-item.unread .msg-item-top b, .page-messages .msg-item.unread .msg-item-bot > span.ellipsis { color: var(--text); font-weight: 600; }
+.page-messages .msg-item.unread, .page-messages .msg-item.unread b, .page-messages .msg-item.unread .msg-item-bot > span.ellipsis { font-family: inherit; }
+.page-messages .msg-item.unread .msg-item-top b { color: var(--text); font-weight: 600; }
+.page-messages .msg-item.unread .msg-item-bot > span.ellipsis { color: var(--text); font-weight: 500; }
 .page-messages .msg-item.unread time { color: var(--accent); }
 .page-messages .msg-count { font-style: normal; min-width: 20px; height: 20px; padding: 0 6px; border-radius: var(--r-pill); background: var(--accent-action, var(--accent)); color: #fff; font-size: .7rem; font-weight: 600; display: grid; place-items: center; flex: none; }
 .msg-labels { display: inline-flex; gap: .2rem; flex: none; min-width: 0; overflow: hidden; }
@@ -113,7 +115,8 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
 .page-messages .msg-head-who { display: flex; align-items: center; gap: .65rem; min-width: 0; flex: 1; text-align: left; padding: .2rem .35rem; border-radius: var(--r-md); color: var(--text); }
 .page-messages .msg-head-who:hover { background: var(--s2); }
 .page-messages .msg-thread-title { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.25; }
-.page-messages .msg-thread-title b { display: flex; min-width: 0; }
+.page-messages .msg-thread-title b, .page-messages .msg-thread-title b.who-title { display: flex; min-width: 0; max-width: 100%; }
+.page-messages .msg-thread-title .who-name { max-width: 100%; }
 .page-messages .msg-thread-title a { color: var(--text); }
 .page-messages .msg-star-btn.on { color: #f5b301; }
 .page-messages .msg-star-btn.on svg { fill: currentColor; }

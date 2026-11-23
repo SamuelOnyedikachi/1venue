@@ -188,6 +188,9 @@ async function toMeeting() {
   sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, name: title ? `Call with ${title}` : 'Meeting', thread: call.conversationId }));
   await hangUp();
   (await import('../app.js')).navigate('/new');
+  const pip = (() => { try { return window.documentPictureInPicture && window.documentPictureInPicture.window; } catch { return null; } })();
+  const { bringMainToFront } = await import('../bring-main.js');
+  bringMainToFront(pip && !pip.closed ? pip.document : null);
 }
 async function hangUp() {
   if (!cur) return;
