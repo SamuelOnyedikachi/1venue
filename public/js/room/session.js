@@ -228,6 +228,7 @@ function currentPip() {
 
 export function startAutoPip(room, reason = 'start') {
   if (!room || !room.alive) return Promise.resolve('none');
+  if (hasPip()) { dbg('already-open', reason); return Promise.resolve('auto'); }
   if (reason === 'popstate' || noGesture) {
     noGesture = false;
     showMini(room);
@@ -335,6 +336,7 @@ function fillAutoPip(win, room) {
     slot.className = 'meet-pip-bar';
     root.append(stageHost, slot);
     doc.body.append(root);
+    import('../pip-hotkey.js').then((m) => m.installPipHotkey(doc, { inPip: true })).catch(() => {});
   }
   const slot = doc.body.querySelector('.meet-pip-bar') || doc.body.querySelector('.meet-pip');
   mountBar(slot, room, doc);
@@ -487,6 +489,9 @@ export function returnToMeeting(pipDoc) {
   try { window.focus(); focused = !!(document.hasFocus && document.hasFocus()); } catch { focused = false; }
   if (url && (location.pathname.replace(/\/$/, '') !== url)) {
     import('../app.js').then((m) => m.navigate(url)).catch(() => {});
+  } else {
+    restoreStage(live && live.room);
+    closeAutoPip();
   }
   if (!focused) import('../bring-main.js').then((b) => b.bringMainToFront(pipDoc && pipDoc.defaultView ? pipDoc : (pipDoc || null), { url })).catch(() => {});
 }

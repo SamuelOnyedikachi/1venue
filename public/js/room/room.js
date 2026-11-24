@@ -18,7 +18,7 @@ import { maybeShowBanner } from '../pwa.js';
 import { setRoomBridge, roomMicChanged } from '../voice.js';
 import { fmtCode, wantsCreate } from './intent.js';
 import { surahCommands, loadSurahs, looksLikeQuran } from '../quran-cmd.js';
-import { pageApi, bindMediaSession, release as releaseSession, syncChrome } from './session.js';
+import { pageApi, bindMediaSession, release as releaseSession, syncChrome, startAutoPip } from './session.js';
 
 export const isRoom = true;
 const roomsStore = () => { try { return JSON.parse(localStorage.getItem('venue.rooms')) || {}; } catch { return {}; } };
@@ -26,7 +26,7 @@ const saveRoom = (code, v) => { const s = roomsStore(); s[code] = { ...v, at: Da
 const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } };
 const lsSet = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 const deviceKind = () => (/iPhone|Android.+Mobile/.test(navigator.userAgent) ? 'mobile' : /iPad|Android/.test(navigator.userAgent) ? 'tablet' : 'desktop');
-const ibtn = (ic, tip, run, { group = '', cls = '' } = {}) => h('button', { class: `icon-btn ${cls}`, 'data-group': group, 'data-tip': tip, 'aria-label': tip, type: 'button', onclick: run, html: icon(ic, { size: 18 }) });
+const ibtn = (ic, tip, run, { group = '', cls = '', kbd = '' } = {}) => h('button', { class: `icon-btn ${cls}`, 'data-group': group, 'data-tip': tip, 'data-kbd': kbd || null, 'aria-label': tip, type: 'button', onclick: run, html: icon(ic, { size: 18 }) });
 
 export async function mount(view, params) {
   const room = new Room(view, params);
@@ -923,7 +923,7 @@ Object.assign(Room.prototype, {
       ibtn(this.callMuted ? 'volumeOff' : 'volume', this.callMuted ? 'Unmute call audio' : 'Mute call audio', () => this.toggleCallAudio(), { group: 'media', cls: 'rh-spk' + (this.callMuted ? ' off' : '') }),
       ibtn('userPlus', 'Invite', () => this.invite(), { group: 'people', cls: 'rh-invite hide-xs' }),
       this.bellBtn = h('button', { class: 'icon-btn rh-bell', 'data-tip': 'Activity', type: 'button', onclick: () => this.openActivity(), html: icon('bell', { size: 16 }) + '<em class="badge rh-bell-badge"></em>' }),
-      ibtn('pip', 'Picture-in-picture', () => this.pip(), { group: 'media', cls: 'rh-pip hide-xs' }),
+      ibtn('pip', 'Pop out', () => this.popOutMeeting(), { group: 'media', cls: 'rh-pip hide-xs', kbd: 'O' }),
       this.menuBtn = h('button', { class: 'icon-btn rh-menu', 'data-group': 'nav', 'data-tip': 'Meeting menu', 'aria-label': 'Meeting menu', 'aria-haspopup': 'menu', type: 'button', onclick: () => this.openRoomMenu(), html: icon('menu', { size: 19 }) }),
       ibtn('phoneOff', 'Leave', () => this.leaveMenu(), { group: 'danger', cls: 'danger' }));
     this.paintHead(); this.updateBell && this.updateBell();
@@ -953,7 +953,7 @@ Object.assign(Room.prototype, {
       { label: `People (${this.peopleMap.size})`, icon: 'users', group: 'people', run: () => this.panel.toggle('people') },
       { label: 'Invite people', icon: 'userPlus', group: 'people', run: () => this.invite() },
       { label: this.callMuted ? 'Unmute call audio' : 'Mute call audio', icon: this.callMuted ? 'volumeOff' : 'volume', group: 'media', run: () => this.toggleCallAudio() },
-      { label: 'Picture-in-picture', icon: 'pip', group: 'media', run: () => this.pip() },
+      { label: 'Pop out', icon: 'pip', group: 'media', kbd: 'O', run: () => this.popOutMeeting() },
       { label: 'Fullscreen', icon: 'maximize', group: 'media', run: () => this.fullscreen() },
     ].filter(Boolean));
   },
@@ -1143,8 +1143,14 @@ Object.assign(Room.prototype, {
   shortcut(e) {
     const tag = document.activeElement?.tagName; if (/INPUT|TEXTAREA|SELECT/.test(tag) || document.activeElement?.isContentEditable || e.metaKey || e.ctrlKey || e.altKey) return;
     const k = e.key.toLowerCase();
+    // O is the site-wide pop-out key (see pip-hotkey.js). Leave it alone so it never clashes with People (P).
+    if (k === 'o') return;
     const map = { m: () => this.toggleMic(), v: () => this.toggleCam(), s: () => this.toggleShare(), h: () => this.raiseHand(), c: () => this.panel.toggle('chat'), p: () => this.panel.toggle('people'), e: () => this.panel.toggle('engage'), t: () => this.panel.toggle('tools'), g: () => this.cycleLayout(1), f: () => this.fullscreen(), i: () => this.invite() };
     if (map[k]) { e.preventDefault(); map[k](); }
+  },
+  popOutMeeting() {
+    if (typeof documentPictureInPicture !== 'undefined') return startAutoPip(this, 'command');
+    return this.pip();
   },
   // Fullscreen the whole page (not just .room): keeps the soft site background, the top rail and the
   // dynamic search / command bar, plus menus & toasts that live on <body>. CSS pads it (html.room-fs).
@@ -1246,7 +1252,7 @@ Object.assign(Room.prototype, {
       { id: 'r-captions', label: 'Live captions & transcript', icon: 'captions', group: 'content', keywords: 'subtitles cc transcript speech text stt transcription yoruba igbo hausa pidgin', run: () => { if (!R.captioner.on) R.captioner.start(); R.panel.open('tools', 'captions'); } },
       { id: 'r-cc-toggle', label: 'Show/hide captions overlay', icon: 'captions', group: 'content', keywords: 'subtitles hide show', run: () => R.setShowCaptions(!R.showCaptions) },
       { id: 'r-record', label: 'Record on this device', icon: 'record', group: 'media', keywords: 'record recording save video audio capture', run: tool('record') },
-      { id: 'r-pip', label: 'Picture-in-picture', icon: 'pip', group: 'media', keywords: 'pip float mini window popout', run: () => R.pip() },
+      { id: 'r-pip', label: 'Pop out', short: 'Pop out', icon: 'pip', group: 'media', kbd: 'O', keywords: 'pip float mini window popout', run: () => R.popOutMeeting() },
       { id: 'r-invite', label: 'Invite people / QR code', icon: 'qr', group: 'people', kbd: 'I', keywords: 'invite link share qr code add people', run: () => R.invite() },
       { id: 'r-copy', label: 'Copy room link', icon: 'link', group: 'people', keywords: 'copy link url code', run: () => copy(location.origin + '/' + fmtCode(R.code)).then(() => toast('Link copied', { icon: 'link' })) },
       { id: 'r-bible', label: 'Bible', icon: 'bookOpen', group: 'faith', keywords: 'bible scripture verse kjv web passage sermon john psalm', run: tool('bible') },
@@ -1311,7 +1317,7 @@ Object.assign(Room.prototype, {
       it('captions', R.showCaptions ? 'Hide captions overlay' : 'Show captions overlay', 'content', () => { R.setShowCaptions(!R.showCaptions); R.changed(); }),
       R.isMod() && R.recorder.state !== 'idle' ? it('download', 'Stop & save recording', 'media', () => { R.announceRecording(false); R.recorder.stop(); }) : null,
       it('record', 'Record', 'media', () => R.panel.open('tools', 'record')),
-      it('pip', 'Mini window', 'media', () => R.pip()),
+      it('pip', 'Pop out', 'media', () => R.popOutMeeting()),
       it('qr', 'Invite & QR', 'people', () => R.invite()),
       it('pen', 'My board', 'content', () => R.openMyBoard()),
       it('board', 'Team board', 'content', () => R.openTeamBoard()),

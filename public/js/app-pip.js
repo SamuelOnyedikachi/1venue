@@ -164,22 +164,30 @@ function matchesQuery(c, toks) {
   return toks.some((t) => hay.includes(t));
 }
 
-export async function popOut() {
+export async function popOut(existing) {
   if (!pipSupported()) {
     toast('Picture-in-picture for the whole app needs Chrome or Edge on a computer. You can still pop out a meeting or a single chat from inside the room or Messages.', { icon: 'pip' });
     return;
   }
   try {
-    if (window.documentPictureInPicture.window) {
-      window.documentPictureInPicture.window.close();
+    let win = null;
+    if (existing && typeof existing.then === 'function') win = await existing;
+    else if (existing && existing.document) win = existing;
+    if (win && win.closed) win = null;
+    if (win && win.document && win.document.body && win.document.body.querySelector('.app-pip')) return win;
+    if (!win) {
+      const cur = window.documentPictureInPicture.window;
+      if (cur && !cur.closed) return cur;
+      win = await window.documentPictureInPicture.requestWindow({ width: 380, height: 640, disallowReturnToOpener: false });
     }
-    const win = await window.documentPictureInPicture.requestWindow({ width: 380, height: 640, disallowReturnToOpener: false });
+    if (!win || win.closed) return;
     copyStyles(win.document);
     win.document.title = '1venue';
     watchTheme(win.document, win);
     initLightbox(win.document);
     const root = h('div', { class: 'app-pip' });
     win.document.body.append(root);
+    import('./pip-hotkey.js').then((m) => m.installPipHotkey(win.document, { inPip: true })).catch(() => {});
     let current = 'chats';
     let sub = null; // { type: 'compose' } | { type: 'thread', id, messageId? }
     const tab = (id) => { if (id) { current = id; sub = null; } return current; };

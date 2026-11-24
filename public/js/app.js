@@ -8,6 +8,7 @@ import { initPwa, promptInstall } from './pwa.js';
 import { accentButtonColors, accentInk } from './appearance.mjs';
 import './messages/tones.js'; // install audio-unlock handlers before any incoming call or message arrives
 import { installAutoPipGuards, bindShell, primeAutoPip } from './room/session.js';
+import { installPipHotkey, openPopOut } from './pip-hotkey.js';
 
 export const state = { config: null, user: null, session: null, prefs: null, route: null, inRoom: false };
 const LS_PREFS = 'venue.prefs';
@@ -350,7 +351,7 @@ function renderUserSlot() {
       { label: 'My whiteboard', icon: 'board', group: 'content', run: () => navigate('/whiteboard') },
       { label: 'Settings', icon: 'settings', group: 'settings', run: () => navigate('/settings') },
       { label: document.fullscreenElement ? 'Exit fullscreen' : 'Fullscreen', icon: 'maximize', group: 'settings', run: () => import('./app-pip.js').then((m) => m.toggleFullscreen()) },
-      { label: 'Pop out 1venue', icon: 'pip', group: 'settings', run: () => import('./app-pip.js').then((m) => m.popOut()) },
+      { label: 'Pop out 1venue', icon: 'pip', group: 'settings', kbd: 'O', run: () => openPopOut() },
       state.user.isAdmin ? { label: 'Admin', icon: 'shield', group: 'admin', run: () => navigate('/admin') } : null, '-',
       { label: 'Sign out', icon: 'logout', group: 'admin', run: logout },
     ]);
@@ -482,6 +483,7 @@ function registerGlobal() {
     { id: 'motion', label: 'Reduce motion', icon: 'activity', group: 'settings', keywords: ['animations', 'accessibility'], active: () => !!state.prefs.reduceMotion, run: () => setPrefs({ reduceMotion: !state.prefs.reduceMotion }) },
     { id: 'captions-lang', label: 'Caption language', icon: 'captions', group: 'settings', keywords: ['transcript language', 'yoruba', 'igbo', 'hausa', 'pidgin'], run: go('/settings#captions'), when: () => !state.inRoom },
     { id: 'install', label: 'Install 1venue app', short: 'Install', icon: 'install', group: 'nav', keywords: ['pwa', 'add to home screen'], run: promptInstall },
+    { id: 'popout', label: 'Pop out 1venue', short: 'Pop out', icon: 'pip', group: 'settings', kbd: 'O', keywords: ['pip', 'picture in picture', 'float', 'mini', 'popout', 'back to tab'], run: () => openPopOut() },
     { id: 'shortcuts', label: 'Keyboard shortcuts', icon: 'keyboard', group: 'nav', keywords: ['hotkeys', 'keys', 'help'], run: showShortcuts },
     { id: 'login', label: 'Sign in', icon: 'login', group: 'nav', keywords: ['log in', 'account', 'google'], when: () => !state.user, run: () => goLogin() },
     { id: 'signup', label: 'Create account', icon: 'user', group: 'nav', keywords: ['sign up', 'register', 'join'], when: () => !state.user, run: () => goLogin(undefined, { signup: true }) },
@@ -498,7 +500,7 @@ export function joinPrompt() {
   s.body.append(h('p', { class: 'muted small', style: { marginBottom: '.8rem' } }, 'Enter the 6-character room code (letters and numbers, any case).'), inp, h('button', { class: 'btn primary block', style: { marginTop: '1rem' }, onclick: go }, 'Continue'));
 }
 function showShortcuts() {
-  const rows = [['/ or Ctrl K', 'Focus the command bar'], ['↑ ↓ ← →', 'Move between suggested actions'], ['Enter', 'Run action / search everything'], ['Esc', 'Close sheet or clear the bar'], ['In a room: M', 'Mute / unmute'], ['In a room: V', 'Camera on / off'], ['In a room: H', 'Raise / lower hand'], ['In a room: C', 'Chat']];
+  const rows = [['/ or Ctrl K', 'Focus the command bar'], ['↑ ↓ ← →', 'Move between suggested actions'], ['Enter', 'Run action / search everything'], ['Esc', 'Close sheet or clear the bar'], ['O', 'Pop out / back to tab'], ['In a room: M', 'Mute / unmute'], ['In a room: V', 'Camera on / off'], ['In a room: H', 'Raise / lower hand'], ['In a room: C', 'Chat']];
   const s = sheet({ title: 'Keyboard shortcuts', icon: 'keyboard' });
   s.body.append(h('div', { class: 'layer' }, rows.map(([k, d]) => h('div', { class: 'set-row' }, h('span', { class: 'kbd' }, k), h('span', { class: 'grow muted' }, d)))));
 }
@@ -509,6 +511,7 @@ async function boot() {
   buildShell(); initTooltips(); registerGlobal();
   bindShell({ setRoomMode });
   installAutoPipGuards();
+  installPipHotkey(document);
   document.addEventListener('click', (e) => {
     const a = e.target.closest('a[href]');
     if (!a || a.target || a.hasAttribute('download') || e.metaKey || e.ctrlKey || e.shiftKey) return;
