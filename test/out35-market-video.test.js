@@ -12,7 +12,7 @@ if (process.env.DB_DRIVER === 'sqlite') require('./helpers/server');
 describe('out35 marketplace and 15-minute videos', () => {
   it('adds a marketplace page, Explore command, and list-on-marketplace editor', () => {
     assert.match(read('public/js/app.js'), /pages\/market\.js/);
-    assert.match(read('public/js/app.js'), /Explore marketplace/);
+    assert.match(read('public/js/app.js'), /short: 'Marketplace'/);
     assert.match(read('public/js/pages/market.js'), /\/api\/market/);
     assert.match(read('public/js/material-sale.js'), /List on marketplace/);
     assert.match(read('public/js/material-sale.js'), /MARKET_CATEGORIES/);
@@ -36,9 +36,9 @@ describe('out35 marketplace and 15-minute videos', () => {
   });
 
   it('bumps the cache versions', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v84-2026-11-23'/);
-    assert.match(read('public/index.html'), /app\.css\?v=70/);
-    assert.match(read('public/index.html'), /app\.js\?v=70/);
+    assert.match(read('public/sw.js'), /VERSION = 'v85-2026-11-23'/);
+    assert.match(read('public/index.html'), /app\.css\?v=71/);
+    assert.match(read('public/index.html'), /app\.js\?v=71/);
   });
 });
 

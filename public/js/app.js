@@ -189,6 +189,54 @@ export function navigate(to, { replace = false } = {}) {
   history[replace ? 'replaceState' : 'pushState']({}, '', to);
   route();
 }
+export function setPageTitle(name) {
+  if (name == null) return;
+  const raw = String(name).trim();
+  document.title = !raw || raw === '1venue' ? '1venue' : (/[·-]\s*1venue\s*$/i.test(raw) ? raw : raw + ' · 1venue');
+}
+const PAGE_TITLES = [
+  [/^\/$/, '1venue'],
+  [/^\/discover\/?$/, 'Discover'],
+  [/^\/search\/?$/, 'Search'],
+  [/^\/e\/[A-Za-z0-9]+\/?$/, 'Event'],
+  [/^\/create\/?$/, 'Create event'],
+  [/^\/market\/?$/, 'Marketplace'],
+  [/^\/materials\/[0-9]+\/?$/, 'Material'],
+  [/^\/materials\/?$/, 'Materials'],
+  [/^\/dashboard\/?$/, 'Dashboard'],
+  [/^\/attendance\/?$/, 'Attendance'],
+  [/^\/cert\/?$/, 'Certificate'],
+  [/^\/feed\/?$/, 'Feed'],
+  [/^\/messages(?:\/.*)?$/, 'Messages'],
+  [/^\/u\/[^/]+\/?$/, 'Profile'],
+  [/^\/wallet\/?$/, 'Credit wallet'],
+  [/^\/upgrade\/?$/, 'Plans'],
+  [/^\/billing\/?$/, 'Billing'],
+  [/^\/host\/?$/, 'Host tools'],
+  [/^\/replay\/[^/]+\/?$/, 'Replay'],
+  [/^\/settings\/?$/, 'Settings'],
+  [/^\/(?:books|bible)\/?$/, 'Books'],
+  [/^\/sessions\/?$/, 'Sessions'],
+  [/^\/whiteboard\/?$/, 'Whiteboard'],
+  [/^\/login\/?$/, 'Log in'],
+  [/^\/signup\/?$/, 'Create your account'],
+  [/^\/forgot-password\/?$/, 'Forgot password'],
+  [/^\/reset-password\/?$/, 'Reset password'],
+  [/^\/verify-email\/?$/, 'Verify email'],
+  [/^\/venues\/?$/, 'Venues'],
+  [/^\/[A-Za-z][A-Za-z0-9]{7}\/?$/, 'Venue'],
+  [/^\/[A-Za-z0-9]{5,16}-venue\/?$/, 'Venue'],
+  [/^\/new\/?$/, 'Instant meeting'],
+  [/^\/admin\/?$/, 'Admin'],
+];
+export function titleForPath(path) {
+  const p = path || '/';
+  for (const [re, title] of PAGE_TITLES) if (re.test(p)) return title;
+  // Six-character meeting codes. Named routes above win, since /market and /create
+  // also match the 6-character pattern but are reserved pages, not rooms.
+  if (/^\/(?:r\/|j\/)?[A-Za-z0-9]{3}-?[A-Za-z0-9]{3}\/?$/.test(p)) return '1venue';
+  return '1venue';
+}
 async function route() {
   const path = location.pathname;
   closeTopSheet();
@@ -203,6 +251,7 @@ async function route() {
       try { await currentPage.update(params); } catch (e) { console.error(e); }
       return;
     }
+    setPageTitle(titleForPath(path));
     if (currentPage && currentPage.parkLive && currentPage.canParkLive && currentPage.canParkLive()) {
       try { currentPage.parkLive(); } catch (e) { try { currentPage.unmount && currentPage.unmount(); } catch { /* ignore */ } }
     } else {
@@ -248,7 +297,7 @@ async function route() {
     } catch (e) {
       if (seq !== routeSeq) return;
       view.replaceChildren();
-      if (e?.status === 404) { view.append(h('div', { class: 'empty' }, frag404())); window.scrollTo(0, 0); return; }
+      if (e?.status === 404) { setPageTitle('Page not found'); view.append(h('div', { class: 'empty' }, frag404())); window.scrollTo(0, 0); return; }
       if (e?.status === 401) {
         const a = h('a', { class: 'btn primary', href: loginUrl(location.pathname), 'data-link': '', style: { margin: '1rem auto 0', width: 'fit-content' } }, 'Sign in');
         view.append(h('div', { class: 'empty' }, h('h2', null, 'Sign in to continue'), h('p', { class: 'muted' }, 'This page needs an account.'), a));
@@ -262,6 +311,7 @@ async function route() {
   }
   ++routeSeq;
   setRoomMode(false);
+  setPageTitle('Page not found');
   $('#view').innerHTML = '';
   $('#view').append(h('div', { class: 'empty' }, frag404()));
 }
@@ -463,7 +513,7 @@ function registerGlobal() {
     { id: 'billing', label: 'Plan & billing', short: 'Billing', icon: 'crown', group: 'settings', keywords: ['upgrade', 'premium', 'organisation', 'subscription', 'plan', 'pricing'], when: () => !!state.user, run: go('/billing') },
     { id: 'upgrade', label: 'Plans and pricing', icon: 'crown', group: 'settings', keywords: ['upgrade', 'premium', 'price'], when: () => true, run: go('/upgrade') },
     { id: 'wallet', label: 'Credit wallet', short: 'Credits', icon: 'creditCard', group: 'settings', keywords: ['credits', 'balance', 'payments', 'paystack', 'top up', 'buy credits'], when: () => !!state.user, run: go('/wallet') },
-    { id: 'market', label: 'Explore marketplace', short: 'Explore', icon: 'grid', group: 'content', keywords: ['marketplace', 'browse', 'materials', 'store', 'shop', 'free', 'buy'], run: go('/market') },
+    { id: 'market', label: 'Marketplace', short: 'Marketplace', icon: 'grid', group: 'content', keywords: ['marketplace', 'explore', 'browse', 'materials', 'store', 'shop', 'free', 'buy'], run: go('/market') },
     { id: 'materials', label: 'Materials library', short: 'Materials', icon: 'folder', group: 'content', keywords: ['decks', 'slides', 'pdf', 'pptx', 'present', 'library', 'uploads'], when: () => !!state.user, run: go('/materials') },
     { id: 'profile', label: 'My profile', icon: 'user', group: 'people', keywords: ['me', 'account', 'timeline', 'public page'], run: () => navigate(state.user ? profilePath(state.user) : '/me') },
     { id: 'edit-profile', label: 'Edit profile', icon: 'pen', group: 'people', keywords: ['bio', 'avatar', 'name', 'handle'], run: go('/me?edit=1') },

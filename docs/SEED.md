@@ -23,7 +23,7 @@ phone, theme/accent/Bible preferences.
 ## What is created
 
 14 events (10 upcoming, 4 past, with covers, speakers and RSVPs), 19 posts (images, scripture,
-recaps), ~60 comments with replies and likes, follows, 5 YouTube materials, 3 venues with co-admins,
+recaps), ~60 comments with replies and likes, follows, 5 YouTube materials plus 12 listed marketplace items (slides, images, free and paid) owned by the demo accounts, 3 venues with co-admins,
 3 whiteboards, 5 DM threads, scheduled meetings, and 7 past sessions with attendance, chat, a
 poll with votes, answered Q&A, transcript, AI summary and attendance shares.
 

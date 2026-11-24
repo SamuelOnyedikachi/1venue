@@ -60,6 +60,56 @@ export function filterPicker({ status, category, onPick }) {
   return wrap;
 }
 
+/** Multi-field Discover-style filter chips: animated labels, .dz-dd menus. */
+export function filterBar({ fields, values, onChange, extra } = {}) {
+  const row = h('div', { class: 'dz-filters mk-filters' });
+  function paint() {
+    row.replaceChildren();
+    for (const f of fields) {
+      const opts = f.options || [];
+      const cur = values[f.key];
+      const always = !!f.alwaysSet;
+      const set = always || (cur != null && cur !== '');
+      const hit = opts.find(([v]) => v === cur) || [];
+      const curLab = hit[1] || f.title;
+      const samples = (f.samples || opts.filter(([v]) => v !== '' && v != null).map(([, l]) => l)).filter(Boolean);
+      const ico = hit[2] || f.icon;
+      const lab = h('span', { class: 'dz-txt' + (set ? ' set' : '') }, set ? curLab : (samples[0] || f.title));
+      if (!set && samples.length > 1 && !reduceMotion()) {
+        let i = 0;
+        const tick = () => {
+          if (!lab.isConnected) return;
+          lab.classList.add('out');
+          setTimeout(() => { lab.textContent = samples[++i % samples.length]; lab.classList.remove('out'); lab.classList.add('in'); }, 180);
+          setTimeout(() => lab.classList.remove('in'), 500);
+          setTimeout(tick, 2600);
+        };
+        setTimeout(tick, 1200);
+      }
+      const btn = h('button', {
+        type: 'button', class: 'dz-dd' + (set ? ' on' : ''),
+        'aria-haspopup': 'listbox', 'aria-label': f.title,
+      }, ico ? icon(ico, 14) : null, lab, icon('chevronDown', { size: 12 }));
+      btn.onclick = (ev) => {
+        ev.stopPropagation();
+        const m = menu(btn, opts.map(([v, l, ic]) => ({
+          label: l, icon: ic || f.icon, hint: v === cur ? '✓' : '',
+          run: () => { values[f.key] = v; paint(); onChange && onChange(values); },
+        })));
+        if (m) m.classList.add('dz-menu');
+      };
+      row.append(btn);
+    }
+    if (extra) {
+      const nodes = Array.isArray(extra) ? extra : [extra];
+      for (const n of nodes) if (n) row.append(n);
+    }
+  }
+  paint();
+  row.repaint = paint;
+  return row;
+}
+
 export async function mount(view, params) {
   const isSearch = !!params.search;
   document.body.dataset.page = 'discover';

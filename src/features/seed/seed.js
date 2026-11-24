@@ -168,12 +168,18 @@ async function load({ now = Date.now() } = {}) {
         comment_count=(SELECT COUNT(*) FROM comments WHERE target_type='post' AND target_key=$1::text) WHERE id=$1`, [p.id]);
     }
 
-    // ---- materials (YouTube talks) attached to events
-    for (const [owner, title, videoId, eventPrefix] of F.MATERIALS) {
-      const m = await ins(`INSERT INTO materials (owner_user_id, title, kind, payload) VALUES ($1,$2,'youtube',$3) RETURNING id`,
-        [uid(owner), title, JSON.stringify({ videoId, url: `https://www.youtube.com/watch?v=${videoId}` })]);
+    // ---- materials (YouTube talks) attached to events, listed on the marketplace
+    for (const [i, [owner, title, videoId, eventPrefix]] of F.MATERIALS.entries()) {
+      const paid = i === 3;
+      const m = await ins(`INSERT INTO materials (owner_user_id, title, kind, payload, listed, category, for_sale, price_kobo) VALUES ($1,$2,'youtube',$3,true,'Teaching',$4,$5) RETURNING id`,
+        [uid(owner), title, JSON.stringify({ videoId, url: `https://www.youtube.com/watch?v=${videoId}` }), paid, paid ? 150000 : null]);
       const ev = E.find((e) => e.title.startsWith(eventPrefix) && e.hostKey === owner);
       if (ev) await c.query('INSERT INTO event_materials (event_id, material_id, sort_order) VALUES ($1,$2,0) ON CONFLICT DO NOTHING', [ev.id, m.id]);
+    }
+    for (const [owner, title, kind, category, priceKobo, payload] of F.MARKET) {
+      const forSale = priceKobo != null && priceKobo > 0;
+      await ins(`INSERT INTO materials (owner_user_id, title, kind, payload, listed, category, for_sale, price_kobo) VALUES ($1,$2,$3,$4,true,$5,$6,$7) RETURNING id`,
+        [uid(owner), title, kind, JSON.stringify(payload), category, forSale, forSale ? priceKobo : null]);
     }
 
     // ---- venues (permanent rooms) with co-admins and an audit line

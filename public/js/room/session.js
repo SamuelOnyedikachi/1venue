@@ -152,6 +152,7 @@ export async function resume(view, params) {
   closeAutoPip();
   try { shell.setRoomMode && shell.setRoomMode(true); } catch { /* ignore */ }
   try { room.renderStage(true); room.paintHead(true); } catch { /* ignore */ }
+  try { document.title = (room.code ? fmtCode(room.code) : 'New room') + ' · 1venue'; } catch { /* ignore */ }
   return pageApi(room);
 }
 

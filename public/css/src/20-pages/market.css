@@ -1,0 +1,73 @@
+/* Marketplace: search on line 1, Discover-style filters + min/max on line 2. */
+body[data-page="market"] .mk-head {
+  display: grid;
+  gap: 0.7rem 1rem;
+  align-items: center;
+  margin-bottom: 1.1rem;
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "title"
+    "search"
+    "filters";
+}
+body[data-page="market"] .mk-head .dz-title { grid-area: title; }
+body[data-page="market"] .mk-head .search-line { grid-area: search; }
+body[data-page="market"] .mk-head .mk-filters,
+body[data-page="market"] .mk-head .dz-filters { grid-area: filters; }
+@media (min-width: 821px) {
+  body[data-page="market"] .mk-head {
+    grid-template-columns: auto minmax(16rem, 1fr);
+    grid-template-areas:
+      "title search"
+      "filters filters";
+  }
+}
+body[data-page="market"] .mk-filters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-self: stretch;
+  gap: 0.3rem;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  max-width: none;
+  overflow: visible;
+}
+body[data-page="market"] .mk-filters .dz-dd {
+  background: color-mix(in srgb, var(--bg-2) 88%, var(--bg));
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.dz-num-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 34px;
+  padding: 0 0.7rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-2) 88%, var(--bg));
+  border: 1px solid var(--line);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.dz-num-wrap::before {
+  content: attr(data-lab);
+  font-weight: 650;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+}
+.dz-num {
+  width: 4.6rem;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 650;
+  padding: 0;
+  outline: none;
+}
+.dz-num::-webkit-outer-spin-button,
+.dz-num::-webkit-inner-spin-button { appearance: none; margin: 0; }
+.dz-num[type="number"] { appearance: textfield; -moz-appearance: textfield; }

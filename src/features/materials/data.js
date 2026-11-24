@@ -234,10 +234,12 @@ async function listMarket(userId, q = {}) {
   const price = String(q.price || '').toLowerCase();
   if (price === 'free') where.push('(m.for_sale IS NOT TRUE OR m.price_kobo IS NULL OR m.price_kobo = 0)');
   else if (price === 'paid') where.push('(m.for_sale IS TRUE AND m.price_kobo > 0)');
-  const minP = q.minPrice != null && q.minPrice !== '' ? Number(q.minPrice) : null;
-  const maxP = q.maxPrice != null && q.maxPrice !== '' ? Number(q.maxPrice) : null;
-  if (Number.isFinite(minP)) add('m.price_kobo >= ?', Math.round(minP));
-  if (Number.isFinite(maxP)) add('m.price_kobo <= ?', Math.round(maxP));
+  const minRaw = (q.minPrice != null && q.minPrice !== '') ? q.minPrice : q.min;
+  const maxRaw = (q.maxPrice != null && q.maxPrice !== '') ? q.maxPrice : q.max;
+  const minP = minRaw != null && minRaw !== '' ? Number(minRaw) : null;
+  const maxP = maxRaw != null && maxRaw !== '' ? Number(maxRaw) : null;
+  if (Number.isFinite(minP)) add('(m.for_sale IS TRUE AND m.price_kobo >= ?)', Math.round(minP));
+  if (Number.isFinite(maxP)) add('(m.price_kobo IS NULL OR m.price_kobo = 0 OR m.price_kobo <= ?)', Math.round(maxP));
   if (q.category) add('m.category = ?', String(q.category).slice(0, 40));
   if (q.host || q.hostId) add('m.owner_user_id = ?', Number(q.host || q.hostId));
   if (q.org || q.orgId) add('m.org_id = ?', Number(q.org || q.orgId));

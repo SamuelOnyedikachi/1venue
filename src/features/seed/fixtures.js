@@ -137,4 +137,20 @@ const WHITEBOARDS = [
   ['sarah', 'Roadmap trade-offs', 'Impact ↑  Effort →'],
 ];
 
-module.exports = { PASSWORD, EMAIL_DOMAIN, USERS, COVERS, EVENTS, POSTS, COMMENTS, MATERIALS, SESSIONS, DMS, VENUES, WHITEBOARDS, img };
+// owner, title, kind, category, priceKobo (null = free), payload — listed on /market
+const MARKET = [
+  ['adaeze', 'Sunday Worship Chord Charts', 'slides', 'Worship', 50000, { pages: [COVERS.worship, COVERS.praise] }],
+  ['adaeze', 'Psalm 23 Study Notes', 'slides', 'Study', null, { pages: [COVERS.reading, COVERS.study] }],
+  ['emeka', 'Studio Lighting Moodboard', 'image', 'Music', 10000, { url: COVERS.lights }],
+  ['sarah', 'Product Strategy One-Pager', 'slides', 'Business', 250000, { pages: [COVERS.presentation, COVERS.notes] }],
+  ['ngozi', 'Python Week 4 Slides', 'slides', 'Teaching', null, { pages: [COVERS.students, COVERS.laptop] }],
+  ['chinedu', 'Lagos Design Moodboard', 'image', 'Training', 150000, { url: COVERS.workshop }],
+  ['funke', 'Pitch Deck Checklist', 'slides', 'Business', null, { pages: [COVERS.seminar, COVERS.desks] }],
+  ['aisha', 'Women in Business Workbook', 'slides', 'Business', 200000, { pages: [COVERS.team, COVERS.notes] }],
+  ['ibrahim', 'Tafsir Reading Guide', 'slides', 'Study', null, { pages: [COVERS.quran, COVERS.reading] }],
+  ['tobi', 'Naija Tech Talk: Opening Slides', 'slides', 'Teaching', 75000, { pages: [COVERS.mic, COVERS.webinar] }],
+  ['yusuf', 'Kids Friday Circle Pictures', 'image', 'Kids', null, { url: COVERS.friends }],
+  ['emeka', 'Afrobeats Session Stills', 'image', 'Music', 100000, { url: COVERS.concert }],
+];
+
+module.exports = { PASSWORD, EMAIL_DOMAIN, USERS, COVERS, EVENTS, POSTS, COMMENTS, MATERIALS, MARKET, SESSIONS, DMS, VENUES, WHITEBOARDS, img };
