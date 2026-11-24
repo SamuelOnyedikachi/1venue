@@ -183,9 +183,10 @@ export async function popOut() {
     let current = 'chats';
     let sub = null; // { type: 'compose' } | { type: 'thread', id, messageId? }
     const tab = (id) => { if (id) { current = id; sub = null; } return current; };
+    const callSlot = h('div', { class: 'app-pip-call' });
     const bar = h('div', { class: 'app-pip-bar' });
     const body = h('div', { class: 'app-pip-body' });
-    root.append(bar, body);
+    root.append(callSlot, bar, body);
 
     let convList = [];
     let thread = null; // { id, conv, msgs, msgsEl, typingEl, typing: Map, composer }
@@ -201,22 +202,47 @@ export async function popOut() {
       paint();
     }
 
-    function tabBtn(id, label, ic) {
-      return h('button', {
+    function tabBtn(id, label, ic, badge) {
+      const n = pipUnreadTotal();
+      const btn = h('button', {
         class: 'pip-tab pip-soft' + (current === id && !sub ? ' on' : ''),
-        type: 'button', 'aria-label': label, title: label, 'data-tip': label,
+        type: 'button', 'aria-label': id === 'chats' && n ? `${label}, ${n} unread` : label, title: label, 'data-tip': label,
         onclick: () => { tab(id); paint(); },
         html: icon(ic, { size: 18 }),
       });
+      if (badge) btn.append(badge);
+      return btn;
+    }
+
+    function pipUnreadTotal() {
+      const openId = sub && sub.type === 'thread' ? Number(sub.id) : null;
+      let n = 0;
+      for (const c of convList) {
+        if (c.muted || c.archived) continue;
+        if (openId != null && Number(c.id) === openId) continue;
+        n += Number(c.unread) || 0;
+      }
+      return n;
+    }
+    function unreadBadge(n) {
+      if (!n) return null;
+      return h('em', { class: 'app-pip-tab-count', 'aria-label': `${n} unread` }, n > 99 ? '99+' : String(n));
     }
 
     function paintBar() {
       bar.replaceChildren(
         h('div', { class: 'app-pip-tabs' },
-          tabBtn('chats', 'Chats', 'messages'),
+          tabBtn('chats', 'Chats', 'messages', unreadBadge(pipUnreadTotal())),
           tabBtn('meeting', 'Meeting', 'video')),
         softBtn('plus', 'New message', plusAction, { size: 18 }),
       );
+    }
+    function applyUnreadMap(byId) {
+      if (!byId) return;
+      for (const c of convList) {
+        const n = byId[c.id] ?? byId[String(c.id)];
+        if (n != null) c.unread = Number(n) || 0;
+      }
     }
 
     async function loadList() {
@@ -554,6 +580,7 @@ export async function popOut() {
       api(`/api/messages/conversations/${th.conv.id}/read`, { method: 'POST', body: { messageId: last } }).then(() => {
         const c = convList.find((x) => Number(x.id) === Number(th.conv.id));
         if (c) c.unread = 0;
+        paintBar();
         refreshUnread();
       }).catch(() => {});
     }
@@ -658,13 +685,14 @@ export async function popOut() {
       if (c) {
         c.lastPreview = preview || c.lastPreview;
         c.lastMessageAt = (m.message && m.message.createdAt) || new Date().toISOString();
-        if (!mine && !open) c.unread = (Number(c.unread) || 0) + 1;
+        if (!mine && !open && !m.muted && !c.muted && !c.archived) c.unread = (Number(c.unread) || 0) + 1;
         if (open) c.unread = 0;
         convList = pinFirst([c, ...convList.filter((x) => x !== c)]);
       } else {
-        loadList().then(() => { if (current === 'chats' && !sub) paint(); });
+        loadList().then(() => { paintBar(); if (current === 'chats' && !sub) paint(); });
         return;
       }
+      paintBar();
       if (current === 'chats' && !sub) {
         const listEl = body.querySelector('.app-pip-list .app-pip-scroll:not(.app-pip-hits)');
         if (listEl && !listEl.hidden) listEl.replaceChildren(...convList.slice(0, 60).map(rowEl));
@@ -698,15 +726,15 @@ export async function popOut() {
       const row = thread.msgs.find((x) => x.id === m.messageId);
       if (row) { row.deleted = true; row.text = ''; row.attachment = null; paintMsgs(thread, {}); }
     });
-    on('conversation-updated', () => { loadList().then(() => { if (current === 'chats' && !sub) paint(); }); });
-    on('unread', () => { /* list badges come from bumpList / loadList */ });
+    on('conversation-updated', () => { loadList().then(() => { paintBar(); if (current === 'chats' && !sub) paint(); }); });
+    on('unread', (r) => { applyUnreadMap(r && r.conversations); paintBar(); });
     on('typing', (m) => {
       if (!thread || Number(m.conversationId) !== Number(thread.conv.id)) return;
       thread.typing.set(m.userId, { name: m.name, at: Date.now(), state: m.state === 'recording' ? 'recording' : 'typing' });
       paintThreadTyping(thread);
       setTimeout(() => thread && paintThreadTyping(thread), 4200);
     });
-    on('open', () => { loadList().then(() => { if (current === 'chats' && !sub) paint(); }); });
+    on('open', () => { loadList().then(() => { paintBar(); if (current === 'chats' && !sub) paint(); }); });
 
     await loadList();
     await paint();

@@ -18,15 +18,27 @@
 .perk-list { display: flex; flex-direction: column; gap: .25rem; padding: .35rem 0 .2rem; }
 .perk-list label { display: flex; gap: .45rem; align-items: center; font-size: .85rem; }
 .app-pip { display: flex; flex-direction: column; height: 100%; max-height: 100%; margin: 0; overflow: hidden; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; }
+.app-pip-call { flex: none; display: flex; flex-direction: column; min-width: 0; background: var(--s1); }
+.app-pip-call:empty { display: none; }
 .app-pip-bar { display: flex; align-items: center; gap: .35rem; flex: none; padding: .35rem .4rem; border-bottom: 1px solid var(--line); background: var(--s1); }
 .app-pip-tabs { display: flex; gap: .3rem; flex: 1; min-width: 0; }
 .app-pip .pip-soft,
 .app-pip .icon-btn.pip-soft,
 .app-pip .pip-tab {
   display: grid; place-items: center;
+  position: relative;
   width: 36px; height: 36px; padding: 0; flex: none;
   border: 0; border-radius: 11px; cursor: pointer; color: inherit;
   background: color-mix(in srgb, var(--text) 8%, var(--s2));
+  overflow: visible;
+}
+.app-pip-tab-count {
+  position: absolute; top: -3px; right: -3px;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent-action, var(--admin, var(--accent)));
+  color: #fff; font-size: .62rem; font-weight: 700; font-style: normal;
+  line-height: 16px; text-align: center; pointer-events: none;
 }
 .app-pip .pip-soft:hover,
 .app-pip .pip-tab:hover { background: color-mix(in srgb, var(--text) 14%, var(--s2)); }

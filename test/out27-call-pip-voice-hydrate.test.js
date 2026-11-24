@@ -178,9 +178,9 @@ describe('out27 incoming call keeps the app pop-out, STT alignment, voice hydrat
   });
 
   it('bumps the service worker and cache-bust query', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v77-2026-11-23'/);
-    assert.match(read('public/index.html'), /app\.css\?v=63/);
-    assert.match(read('public/index.html'), /app\.js\?v=63/);
+    assert.match(read('public/sw.js'), /VERSION = 'v78-2026-11-23'/);
+    assert.match(read('public/index.html'), /app\.css\?v=64/);
+    assert.match(read('public/index.html'), /app\.js\?v=64/);
   });
 
   it('never opens a second Document PiP when the app pop-out is already open', () => {
@@ -195,8 +195,8 @@ describe('out27 incoming call keeps the app pop-out, STT alignment, voice hydrat
     assert.match(call, /call-btn decline/);
     assert.match(call, /call-btn accept/);
     const css = read('public/css/src/10-components/call.css');
-    assert.match(css, /\.call-ring\.in-pip \{/);
-    assert.match(css, /top: 8px/);
+    assert.match(css, /\.call-ring\.in-pip/);
+    assert.match(css, /position: relative/);
     const tones = read('public/js/messages/tones.js');
     assert.match(tones, /documentPictureInPicture/);
     assert.match(tones, /ringtone\.mp3/);

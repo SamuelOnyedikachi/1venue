@@ -71,20 +71,20 @@
 .call-bar[data-ai-state="thinking"] .call-dot { background: #d97706; animation: none; }
 .call-bar[data-ai-state="speaking"] .call-dot { background: #2563eb; }
 
-/* Docked in the app-wide Document PiP window so the call stays on top with it. */
-.call-bar.in-pip {
-  left: 8px;
-  right: 8px;
-  bottom: 8px;
-  width: auto;
-  z-index: 200;
-}
+/* In the pop-out, call UI lives in the top .app-pip-call slot (normal flow),
+   so it pushes the Chats/Meeting/+ row down and leaves the composer free. */
+.call-bar.in-pip,
 .call-ring.in-pip {
-  top: 8px;
-  left: 8px;
-  right: 8px;
-  width: auto;
-  transform: none;
-  z-index: 200;
-  animation: none;
+  position: relative;
+  left: auto; right: auto; top: auto; bottom: auto;
+  transform: none; width: auto; max-width: none;
+  margin: 0; border-radius: 0; box-shadow: none;
+  animation: none; z-index: auto;
+  border: 0; border-bottom: 1px solid var(--line);
 }
+.call-ring.in-pip { padding: .65rem .7rem .7rem; gap: .55rem; }
+.call-ring.in-pip .av.lg { width: 44px; height: 44px; }
+.call-ring.in-pip .call-btn { width: 42px; height: 42px; }
+.call-bar.in-pip { padding: .4rem .55rem .45rem; gap: .3rem; }
+.call-bar.in-pip .call-btn.sm { width: 34px; height: 34px; }
+.call-bar.in-pip.has-video .call-media { aspect-ratio: 16 / 9; max-height: 140px; }

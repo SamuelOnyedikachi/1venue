@@ -19,9 +19,17 @@ function pipWin() {
     return w && !w.closed ? w : null;
   } catch { return null; }
 }
-function callHost() {
+function pipCallSlot() {
   const w = pipWin();
-  return (w && w.document && w.document.body) || document.body;
+  return (w && w.document && w.document.querySelector('.app-pip-call')) || null;
+}
+function callHost() {
+  const slot = pipCallSlot();
+  if (slot) return slot;
+  // While the pop-out is opening, the slot may not exist yet. Don't fall back to
+  // the PiP body (that docks the bar as an overlay). Retry after the slot is in.
+  if (pipWin()) return null;
+  return document.body;
 }
 /** After moving a bar between documents, resume media so video/audio keep playing. */
 function resumeMedia(root) {
@@ -34,7 +42,8 @@ function resumeMedia(root) {
 export function placeCallUi(el = (cur && cur.el) || (ringing && ringing.el)) {
   if (!el) return;
   const host = callHost();
-  const inPip = !!(host && host.ownerDocument !== document);
+  if (!host) return;
+  const inPip = host.classList && host.classList.contains('app-pip-call');
   el.classList.toggle('in-pip', inPip);
   if (el.parentNode !== host) {
     host.append(el);
