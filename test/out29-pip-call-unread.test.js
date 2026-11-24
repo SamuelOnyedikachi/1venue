@@ -17,9 +17,9 @@ describe('out29 pop-out unread badge and in-flow call row', () => {
   });
 
   it('bumps the service worker and cache-bust query', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v78-2026-11-23'/);
-    assert.match(read('public/index.html'), /app\.css\?v=64/);
-    assert.match(read('public/index.html'), /app\.js\?v=64/);
+    assert.match(read('public/sw.js'), /VERSION = 'v79-2026-11-23'/);
+    assert.match(read('public/index.html'), /app\.css\?v=65/);
+    assert.match(read('public/index.html'), /app\.js\?v=65/);
   });
 
   it('badges the Chats tab with live unread, excluding muted, archived and the open thread', () => {

@@ -6,6 +6,7 @@ import { pillComposer } from '../composer.js';
 import { searchSounds } from './sounds.js';
 import { passageCard } from '../passage.js';
 import { buyAttachment } from './buy.js';
+import { pushCaptionLine } from './tools.js';
 
 const I = (n, s = 18) => h('span', { class: 'i', html: icon(n, { size: s }) });
 const vMark = (on) => on ? h('span', { class: 'verified-dot', title: 'Verified', 'aria-label': 'Verified', html: icon('check', { size: 11 }) }) : null;
@@ -436,7 +437,14 @@ export function createPanel(R) {
       h('button', { class: 'tool-card', 'data-group': g, type: 'button', onclick: () => { sub.tools = id; render(); } }, h('span', { class: 'ico-tile', 'data-group': g, html: icon(ic, { size: 20 }) }), h('b', null, label), h('small', null, desc), R.toolBadge(id) ? h('em', { class: 'dot-live' }) : null)));
   }
 
-  return { el, open, close, toggle, isOpen, refresh, render, get tab() { return tab; }, sub };
+  function appendCaption(line) {
+    if (tab !== 'tools' || sub.tools !== 'captions') return false;
+    const list = body.querySelector('.transcript.live');
+    if (!list) return false;
+    return pushCaptionLine(list, line);
+  }
+
+  return { el, open, close, toggle, isOpen, refresh, render, appendCaption, get tab() { return tab; }, sub };
 }
 
 export async function compressImage(file, max = 1280, q = 0.8) {

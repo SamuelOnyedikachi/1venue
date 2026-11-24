@@ -159,3 +159,26 @@
   color: var(--accent-ink, #fff);
   text-decoration: none;
 }
+
+#live-meeting-hold {
+  position: fixed; left: -9999px; top: 0; width: 320px; height: 180px;
+  overflow: hidden; opacity: 0; pointer-events: none; z-index: -1;
+}
+.live-call-mini {
+  position: fixed; left: 50%; bottom: 88px; transform: translateX(-50%);
+  z-index: 80; width: min(420px, calc(100% - 24px));
+  border: 1px solid var(--line); border-radius: 16px;
+  box-shadow: 0 10px 32px color-mix(in srgb, #000 22%, transparent);
+  overflow: hidden; background: var(--s1); color: var(--text);
+}
+.live-call-bar { display: flex; align-items: center; gap: .45rem; width: 100%; box-sizing: border-box; padding: .5rem .6rem; }
+.live-call-bar .lcb-dot { width: 8px; height: 8px; border-radius: 99px; background: #16a34a; flex: none; box-shadow: 0 0 0 4px color-mix(in srgb, #16a34a 25%, transparent); }
+.live-call-bar .lcb-who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.live-call-bar .lcb-who b { font-size: .86rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live-call-bar .lcb-who span { font-size: .72rem; color: var(--muted); display: inline-flex; align-items: center; gap: .25rem; }
+.live-call-bar .lcb-flag { font-size: .68rem; font-weight: 700; font-style: normal; color: #fff; background: var(--accent-action, var(--accent)); border-radius: 99px; padding: .05rem .4rem; }
+.live-call-bar .lcb-btns { display: flex; gap: .25rem; flex: none; }
+.live-call-bar .lcb-btns button { width: 34px; height: 34px; border: 0; border-radius: 10px; cursor: pointer; color: inherit; background: color-mix(in srgb, var(--text) 10%, transparent); display: grid; place-items: center; }
+.live-call-bar .lcb-btns button.off { opacity: .7; }
+.live-call-bar .lcb-btns button.danger { background: #dc2626; color: #fff; }
+.live-call-bar .lcb-btns button.primary { background: var(--accent-action, var(--accent)); color: #fff; }

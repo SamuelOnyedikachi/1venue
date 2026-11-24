@@ -103,6 +103,16 @@ export async function mount(view, params) {
           c.snoozedUntil ? h('span', { class: 'msg-snz' }, I('clock', 12), fmtDate(c.snoozedUntil)) : null,
           h('span', { class: 'ellipsis' }, c.lastPreview || sub || 'No messages yet'), c.unread ? h('em', { class: 'msg-count' }, c.unread > 99 ? '99+' : String(c.unread)) : null)));
   }
+  function highlightList() {
+    const id = S.conv && S.conv.id;
+    listEl.querySelectorAll('.msg-item').forEach((el) => {
+      const href = el.getAttribute('href') || '';
+      const mid = href.split('/').pop();
+      const on = id != null && String(id) === String(mid);
+      el.classList.toggle('on', on);
+      if (on) el.classList.remove('unread');
+    });
+  }
   function paintList() {
     const rows = S.list.filter((c) => !S.q || c.title.toLowerCase().includes(S.q) || (c.lastPreview || '').toLowerCase().includes(S.q));
     const out = [];
@@ -153,19 +163,38 @@ export async function mount(view, params) {
     ]);
     if (S.q.length < 2) toast('Type at least 2 characters to search messages', { icon: 'search' });
   }
+  let openSeq = 0;
   async function open(id) {
+    const seq = ++openSeq;
     root.classList.toggle('is-thread', !!id);
     document.querySelector('.bottomnav')?.classList.toggle('hidden', !!id && isMobile());
-    if (!id) { S.conv = null; setActiveConversation(null); empty(); paintList(); return; }
+    if (!id) { S.conv = null; setActiveConversation(null); threadPane.classList.remove('is-loading'); empty(); highlightList(); return; }
+    if (S.conv && Number(S.conv.id) === Number(id) && !new URLSearchParams(location.search).get('m') && !new URLSearchParams(location.search).get('call')) {
+      highlightList();
+      return;
+    }
+    const nextId = Number(id);
+    listEl.querySelectorAll('.msg-item').forEach((el) => {
+      const mid = (el.getAttribute('href') || '').split('/').pop();
+      el.classList.toggle('on', String(mid) === String(nextId));
+    });
+    if (S.conv) threadPane.classList.add('is-loading');
     try {
       const [c, m] = await Promise.all([api(`/api/messages/conversations/${id}`), api(`/api/messages/conversations/${id}/messages?limit=50`)]);
+      if (seq !== openSeq) return;
       S.conv = c.conversation; S.msgs = m.messages; S.hasMore = m.hasMore; S.hidden = m.hiddenBefore; S.typing.clear(); S.editing = null;
       S.replyTo = null; S.pins = c.conversation.pins || []; S.pinIdx = 0;
       await refreshInviteStatuses();
-    } catch (e) { toastErr(e); navigate('/messages', { replace: true }); return; }
+      if (seq !== openSeq) return;
+    } catch (e) {
+      if (seq !== openSeq) return;
+      threadPane.classList.remove('is-loading');
+      toastErr(e); navigate('/messages', { replace: true }); return;
+    }
     setActiveConversation(S.conv.id);
     composer = null;
-    paintThread(); paintList(); markRead(); paintSide();
+    paintThread(); highlightList(); markRead(); paintSide();
+    threadPane.classList.remove('is-loading');
     const jump = Number(new URLSearchParams(location.search).get('m')); if (jump) jumpTo(jump);
     const callId = new URLSearchParams(location.search).get('call');
     if (callId) api('/api/messages/calls/current').then((r) => { const c2 = r.calls.find((x) => x.id === callId && x.state === 'ringing' && x.myState === 'invited'); if (c2) import('../messages/call.js').then((cm) => { const call = { ...c2, title: S.conv.title }; cm.incoming(call); if (new URLSearchParams(location.search).get('answer') === '1') cm.answerCall(call); }); }).catch(() => {});
@@ -904,6 +933,13 @@ export async function mount(view, params) {
   await loadList();
   await open(params.id ? Number(params.id) : null);
   return {
+    holds(path, params) {
+      return /^\/messages\/?$/.test(path) || (/^\/messages\/(\w+)\/?$/.test(path) && params.id !== 'new');
+    },
+    async update(params) {
+      const id = params.id ? Number(params.id) : null;
+      await open(Number.isFinite(id) ? id : null);
+    },
     unmount() {
       offs.forEach((f) => f()); setActiveConversation(null); barVisible(true); clearInterval(pinTimer);
       document.removeEventListener('visibilitychange', onVis); window.removeEventListener('resize', onResize);

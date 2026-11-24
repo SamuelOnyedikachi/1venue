@@ -190,13 +190,41 @@ async function route() {
     const m = path.match(re); if (!m) continue;
     const params = Object.fromEntries(new URLSearchParams(location.search));
     if (typeof extra === 'string') params[extra] = decodeURIComponent(m[1]); else if (extra) Object.assign(params, extra);
-    try { currentPage && currentPage.unmount && currentPage.unmount(); } catch { /* ignore */ }
+    if (currentPage && typeof currentPage.update === 'function' && currentPage.holds && currentPage.holds(path, params)) {
+      state.route = { path, params, mod: state.route && state.route.mod };
+      highlightNav(path);
+      try { await currentPage.update(params); } catch (e) { console.error(e); }
+      return;
+    }
+    if (currentPage && currentPage.parkLive && currentPage.canParkLive && currentPage.canParkLive()) {
+      try { currentPage.parkLive(); } catch (e) { try { currentPage.unmount && currentPage.unmount(); } catch { /* ignore */ } }
+    } else {
+      try { currentPage && currentPage.unmount && currentPage.unmount(); } catch { /* ignore */ }
+    }
     currentPage = null;
     delete document.body.dataset.page;
     const seq = ++routeSeq;
-    const view = $('#view'); view.replaceChildren(); view.className = 'main page-enter';
-    void view.offsetWidth;
+    const view = $('#view');
     try {
+      if (params.code) {
+        const session = await import('./room/session.js');
+        if (seq !== routeSeq) return;
+        if (session.canResume(params)) {
+          view.replaceChildren();
+          view.className = 'main';
+          const roomMod = await load();
+          if (seq !== routeSeq) return;
+          state.route = { path, params, mod: roomMod };
+          setRoomMode(true);
+          highlightNav(path);
+          const res = await session.resume(view, params);
+          if (seq !== routeSeq) { try { res && res.unmount && res.unmount(); } catch { /* ignore */ } return; }
+          currentPage = res;
+          return;
+        }
+      }
+      view.replaceChildren(); view.className = 'main page-enter';
+      void view.offsetWidth;
       const mod = await load();
       if (seq !== routeSeq) return;
       view.replaceChildren();

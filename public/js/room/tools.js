@@ -305,7 +305,47 @@ function scriptureView(R, corpus = 'bible') {
   return box;
 }
 
+export function captionLineEl(l) {
+  return h('div', { class: 'tline' }, h('span', { class: 'ts' }, new Date(l.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })), h('span', null, h('b', null, l.name + ': '), l.text));
+}
+export function followTranscript(list) {
+  if (!list || list._followBound) return list;
+  list._followBound = true;
+  list._follow = true;
+  list.addEventListener('scroll', () => {
+    const atBottom = list.scrollHeight - list.clientHeight - list.scrollTop < 48;
+    list._follow = atBottom;
+    const pill = list.parentElement && list.parentElement.querySelector('.cap-new-lines');
+    if (atBottom && pill) pill.hidden = true;
+  }, { passive: true });
+  queueMicrotask(() => { list.scrollTop = list.scrollHeight; });
+  return list;
+}
+export function pushCaptionLine(list, line) {
+  if (!list || !line) return false;
+  const empty = list.querySelector('.empty');
+  if (empty) empty.remove();
+  list.append(captionLineEl(line));
+  const rows = list.querySelectorAll('.tline');
+  if (rows.length > 200) rows[0].remove();
+  if (list._follow !== false) {
+    list.scrollTop = list.scrollHeight;
+    const pill = list.parentElement && list.parentElement.querySelector('.cap-new-lines');
+    if (pill) pill.hidden = true;
+  } else {
+    let pill = list.parentElement && list.parentElement.querySelector('.cap-new-lines');
+    if (!pill && list.parentElement) {
+      pill = h('button', { class: 'cap-new-lines', type: 'button' }, 'New lines ↓');
+      pill.onclick = () => { list._follow = true; list.scrollTop = list.scrollHeight; pill.hidden = true; };
+      list.parentElement.append(pill);
+    }
+    if (pill) pill.hidden = false;
+  }
+  return true;
+}
+
 export function buildTools(R) {
+
   return {
     bible() { return scriptureView(R, 'bible'); },
     quran() { return scriptureView(R, 'quran'); },
@@ -337,7 +377,7 @@ export function buildTools(R) {
           row('mic', 'Caption my voice', micSub, sw(c.on, (v) => c.setMine(v).then(() => R.panel.render()).catch(toastErr), !canMic && !c.on)),
           R.isMod() ? row('fileText', 'Save transcript', 'Store captions for summaries after the session', sw(R.transcribe, (v) => R.send('transcript-toggle', { on: v }))) : null) : null);
       const lines = R.data.captions.slice(-200);
-      const list = h('div', { class: 'transcript live', 'data-autoscroll': '' }, lines.length ? lines.map((l) => h('div', { class: 'tline' }, h('span', { class: 'ts' }, new Date(l.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })), h('span', null, h('b', null, l.name + ': '), l.text))) : h('div', { class: 'empty sm' }, h('p', null, 'Captions will appear here as people speak.')));
+      const list = followTranscript(h('div', { class: 'transcript live', 'data-autoscroll': '' }, lines.length ? lines.map(captionLineEl) : h('div', { class: 'empty sm' }, h('p', null, 'Captions will appear here as people speak.'))));
       box.classList.add('cap-view');
       box.append(head, list);
       return box;

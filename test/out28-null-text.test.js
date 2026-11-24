@@ -50,9 +50,9 @@ describe('out28: no literal null on Settings, Dashboard, or sparse page renders'
   });
 
   it('bumps the service worker and cache-bust query', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v78-2026-11-23'/);
-    assert.match(read('public/index.html'), /app\.css\?v=64/);
-    assert.match(read('public/index.html'), /app\.js\?v=64/);
+    assert.match(read('public/sw.js'), /VERSION = 'v79-2026-11-23'/);
+    assert.match(read('public/index.html'), /app\.css\?v=65/);
+    assert.match(read('public/index.html'), /app\.js\?v=65/);
   });
 
   it('kidsOf / put / add skip null, undefined, false and true so append cannot print them', async () => {

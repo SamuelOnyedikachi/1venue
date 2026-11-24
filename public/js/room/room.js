@@ -18,6 +18,7 @@ import { maybeShowBanner } from '../pwa.js';
 import { setRoomBridge, roomMicChanged } from '../voice.js';
 import { fmtCode, wantsCreate } from './intent.js';
 import { surahCommands, loadSurahs, looksLikeQuran } from '../quran-cmd.js';
+import { pageApi, bindMediaSession, release as releaseSession, syncChrome } from './session.js';
 
 export const isRoom = true;
 const roomsStore = () => { try { return JSON.parse(localStorage.getItem('venue.rooms')) || {}; } catch { return {}; } };
@@ -30,7 +31,7 @@ const ibtn = (ic, tip, run, { group = '', cls = '' } = {}) => h('button', { clas
 export async function mount(view, params) {
   const room = new Room(view, params);
   await room.start();
-  return { unmount: () => room.destroy() };
+  return pageApi(room);
 }
 
 class Room {
@@ -443,7 +444,7 @@ Object.assign(Room.prototype, {
     window.addEventListener('pagehide', this.onUnload);
     this.onResize = () => { const m = isMobile(); if (m !== this.isMobile) { this.isMobile = m; this.renderStage(true); } }; window.addEventListener('resize', this.onResize);
     if (this.peopleMap.size <= 1) setTimeout(() => this.peopleMap.size <= 1 && this.alive && toast('You’re the first one here - share the invite to bring people in', { icon: 'userPlus', group: 'people', ms: 5000 }), 1500);
-    if (navigator.mediaSession) try { navigator.mediaSession.metadata = new MediaMetadata({ title: this.roomName, artist: '1venue' }); } catch { /* */ }
+    bindMediaSession(this);
   },
   setPeople(list) { this.peopleMap = new Map(list.filter((p) => p.status !== 'WAITING').map((p) => [p.id, p])); const mp = this.peopleMap.get(this.me.id); if (mp) this.me.role = mp.role; if (this.remoteRecorders) for (const id of [...this.remoteRecorders]) if (!this.peopleMap.has(id)) this.remoteRecorders.delete(id); this.maybeAutoRecord && this.maybeAutoRecord(); },
   people() { return [...this.peopleMap.values()].sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0)); },
@@ -574,7 +575,7 @@ Object.assign(Room.prototype, {
     if (!fromHost) toast({ grid: 'Grid view', spotlight: 'Spotlight view', speaker: 'Speaker view', screenshare: 'Screenshare view' }[l] || 'Layout', { icon: l === 'grid' ? 'grid' : l === 'spotlight' ? 'spotlight' : 'speaker', group: 'media', ms: 1200 });
   },
   pin(id) { this.pinned = id; if (id && this.layout === 'grid') this.layout = 'spotlight'; if (id && this.stageR.screens().length) return this.stageR.setPick('cameras'); this.renderStage(true); },
-  applyWant() { const w = this.want || {}; if (!this.isSpeaker(this.me.id)) return; if (w.mic && this.perm('microphone')) this.toggleMic(true); if (w.cam && this.perm('camera')) this.toggleCam(true); },
+  applyWant() { const w = this.want || {}; if (w.spk === false) this.setCallMuted(true, { silent: true }); if (!this.isSpeaker(this.me.id)) return; if (w.mic && this.perm('microphone')) this.toggleMic(true); if (w.cam && this.perm('camera')) this.toggleCam(true); },
   applyPerms() { if (!this.perm('microphone') && this.media.mic) this.media.setMic(false); if (!this.perm('camera') && this.media.cam) this.media.setCam(false); if (!this.perm('screenShare') && this.media.sharing) this.toggleShare(false); },
   promoted() { this.reconnectMedia(true); this.maybeAutoRecord && this.maybeAutoRecord(); },
   demoted() { this.media.setMic(false).catch(() => {}); this.media.setCam(false).catch(() => {}); if (this.media.sharing) this.toggleShare(false); },
@@ -605,7 +606,8 @@ Object.assign(Room.prototype, {
       if (id === this.me.id) return;
       this.audioEls ||= new Map();
       let a = this.audioEls.get(id + source); if (!a) { a = h('audio', { autoplay: true, hidden: true }); this.root.append(a); this.audioEls.set(id + source, a); }
-      track.attach(a); const out = lsGet('venue.speaker', null); if (out && a.setSinkId) a.setSinkId(out).catch(() => {}); if (this.want && this.want.spk === false) a.muted = true;
+      track.attach(a); const out = lsGet('venue.speaker', null); if (out && a.setSinkId) a.setSinkId(out).catch(() => {});
+      if (this.callMuted || (this.want && this.want.spk === false)) { a.muted = true; try { a.volume = 0; } catch { /* */ } if (track.setVolume) try { track.setVolume(0); } catch { /* */ } }
       this.stageR.paintAll(); return;
     }
     this.stageR.setTrack(id, track, source); this.stageR.render();
@@ -622,6 +624,30 @@ Object.assign(Room.prototype, {
     if (on && this.meP()?.mutedByHost && !this.isMod()) this.send('unmute-self', {});
     try { await this.media.setMic(on); this.captioner.onMic(on); this.captioner.autoSync(); roomMicChanged(); } catch (e) { toastErr(e); }
     this.changed();
+    syncChrome(this);
+  },
+  setCallMuted(on, { silent } = {}) {
+    this.callMuted = !!on;
+    this.want = { ...(this.want || {}), spk: !this.callMuted };
+    this.audioEls && this.audioEls.forEach((a) => { a.muted = this.callMuted; try { a.volume = this.callMuted ? 0 : 1; } catch { /* */ } });
+    try {
+      const lr = this.media && this.media.room;
+      lr && lr.remoteParticipants && lr.remoteParticipants.forEach((rp) => {
+        const pubs = rp.trackPublications || rp.audioTrackPublications;
+        pubs && pubs.forEach((pub) => {
+          const t = pub.track;
+          if (t && t.kind === 'audio' && t.setVolume) try { t.setVolume(this.callMuted ? 0 : 1); } catch { /* */ }
+        });
+      });
+    } catch { /* */ }
+    this.paintHead();
+    refreshBar();
+    syncChrome(this);
+    if (!silent) toast(this.callMuted ? 'Call muted' : 'Call audio on', { icon: this.callMuted ? 'volumeOff' : 'volume', group: 'media', ms: 1400 });
+  },
+  toggleCallAudio(force) {
+    const on = typeof force === 'boolean' ? force : !this.callMuted;
+    this.setCallMuted(on);
   },
   async toggleCam(force) {
     const on = typeof force === 'boolean' ? force : !this.media.cam;
@@ -867,6 +893,15 @@ Object.assign(Room.prototype, {
       const cams = this.headEl.querySelector('.rh-cams'); if (cams) { cams.hidden = !this.stageR.screens().length; cams.classList.toggle('on', this.stageR.pick === 'cameras'); }
       this.headEl.querySelectorAll('[data-lay]').forEach((b) => b.classList.toggle('on', b.dataset.lay === this.layout));
       this.root.dataset.layout = this.layout;
+      const mutedEl = this.headEl.querySelector('.rh-call-muted'); if (mutedEl) mutedEl.hidden = !this.callMuted;
+      const spk = this.headEl.querySelector('.rh-spk');
+      if (spk) {
+        spk.innerHTML = icon(this.callMuted ? 'volumeOff' : 'volume', { size: 18 });
+        spk.classList.toggle('off', !!this.callMuted);
+        const tip = this.callMuted ? 'Unmute call audio' : 'Mute call audio';
+        spk.dataset.tip = tip; spk.setAttribute('aria-label', tip);
+      }
+      syncChrome(this);
       return;
     }
     const lay = (l, ic, tip) => h('button', { class: 'seg-b', 'data-lay': l, 'data-group': 'media', 'data-tip': tip, type: 'button', onclick: () => this.setLayout(l), html: icon(ic, { size: 20 }) });
@@ -874,12 +909,14 @@ Object.assign(Room.prototype, {
       h('a', { class: 'rh-logo', href: '/', 'aria-label': '1venue home', onclick: (e) => { e.preventDefault(); this.leave(); }, html: LOGO(26) }),
       h('div', { class: 'rh-title' }, h('b', { class: 'ellipsis' }, this.roomName), h('div', { class: 'tiny muted row gap-xs' }, h('span', { class: 'rh-timer' }, tstr), '·', h('button', { class: 'linkish', type: 'button', 'data-tip': 'Copy room code', 'data-group': 'people', onclick: () => copy(location.origin + '/' + fmtCode(this.code)).then(() => toast('Link copied', { icon: 'link' })) }, fmtCode(this.code)))),
       h('span', { class: 'pill rec rh-rec', hidden: !this.anyoneRecording() }, h('i', { class: 'rec-dot' }), 'Recording'),
+      h('span', { class: 'pill rh-call-muted', hidden: !this.callMuted }, 'Call muted'),
       h('span', { class: 'pill rh-lock', 'data-group': 'admin', hidden: true, html: icon('lock', { size: 13 }) }),
       h('div', { class: 'grow' }),
       this.creditControl.badge,
       h('div', { class: 'seg rh-lay hide-sm' }, lay('grid', 'grid', 'Grid'), lay('spotlight', 'spotlight', 'Spotlight'), lay('speaker', 'speaker', 'Speaker'), lay('screenshare', 'screen', 'Screenshare')),
       h('button', { class: 'icon-btn rh-cams', 'data-group': 'media', 'data-tip': 'Cameras on the big screen', 'aria-label': 'Cameras', type: 'button', hidden: true, onclick: () => this.stageR.setPick(this.stageR.pick === 'cameras' ? null : 'cameras'), html: icon('video', { size: 16 }) }),
       h('button', { class: 'pill rh-people', 'data-group': 'people', 'data-tip': 'People', type: 'button', onclick: () => this.panel.toggle('people'), html: icon('users', { size: 14 }) + '<span class="rh-count"></span>' }),
+      ibtn(this.callMuted ? 'volumeOff' : 'volume', this.callMuted ? 'Unmute call audio' : 'Mute call audio', () => this.toggleCallAudio(), { group: 'media', cls: 'rh-spk' + (this.callMuted ? ' off' : '') }),
       ibtn('userPlus', 'Invite', () => this.invite(), { group: 'people', cls: 'rh-invite hide-xs' }),
       this.bellBtn = h('button', { class: 'icon-btn rh-bell', 'data-tip': 'Activity', type: 'button', onclick: () => this.openActivity(), html: icon('bell', { size: 16 }) + '<em class="badge rh-bell-badge"></em>' }),
       ibtn('pip', 'Picture-in-picture', () => this.pip(), { group: 'media', cls: 'rh-pip hide-xs' }),
@@ -911,6 +948,7 @@ Object.assign(Room.prototype, {
       } : null,
       { label: `People (${this.peopleMap.size})`, icon: 'users', group: 'people', run: () => this.panel.toggle('people') },
       { label: 'Invite people', icon: 'userPlus', group: 'people', run: () => this.invite() },
+      { label: this.callMuted ? 'Unmute call audio' : 'Mute call audio', icon: this.callMuted ? 'volumeOff' : 'volume', group: 'media', run: () => this.toggleCallAudio() },
       { label: 'Picture-in-picture', icon: 'pip', group: 'media', run: () => this.pip() },
       { label: 'Fullscreen', icon: 'maximize', group: 'media', run: () => this.fullscreen() },
     ].filter(Boolean));
@@ -982,7 +1020,7 @@ Object.assign(Room.prototype, {
         stageEl.replaceWith(ph);
         const mini = w.document.createElement('div'); mini.className = 'pip-dock';
         const mk = (ic, fn, on) => { const b = w.document.createElement('button'); b.className = 'icon-btn' + (on() ? '' : ' off'); b.innerHTML = icon(ic(), { size: 18 }); b.onclick = async () => { await fn(); b.innerHTML = icon(ic(), { size: 18 }); b.className = 'icon-btn' + (on() ? '' : ' off'); }; return b; };
-        mini.append(mk(() => (this.media.mic ? 'mic' : 'micOff'), () => this.toggleMic(), () => this.media.mic), mk(() => (this.media.cam ? 'video' : 'videoOff'), () => this.toggleCam(), () => this.media.cam), mk(() => 'hand', () => this.raiseHand(), () => true), mk(() => 'phoneOff', () => { w.close(); this.leave(); }, () => true));
+        mini.append(mk(() => (this.media.mic ? 'mic' : 'micOff'), () => this.toggleMic(), () => this.media.mic), mk(() => (this.media.cam ? 'video' : 'videoOff'), () => this.toggleCam(), () => this.media.cam), mk(() => (this.callMuted ? 'volumeOff' : 'volume'), () => this.toggleCallAudio(), () => !this.callMuted), mk(() => 'hand', () => this.raiseHand(), () => true), mk(() => 'phoneOff', () => { w.close(); this.leave(); }, () => true));
         w.document.body.append(stageEl, mini);
         w.addEventListener('pagehide', () => { ph.replaceWith(stageEl); this.pipWin = null; this.renderStage(true); });
         return;
@@ -1060,12 +1098,14 @@ Object.assign(Room.prototype, {
   async endForAll() { if (await confirmDlg('End the session for everyone? Transcripts and summaries will be saved.', { ok: 'End session', danger: true })) this.send('end-meeting', {}); },
   async leave() {
     if (!(await confirmDlg('Leave this meeting? You will be disconnected from the call. You can rejoin while it is still active.', { ok: 'Leave meeting', danger: true }))) return;
+    this._leaving = true;
     if (this.recorder.state !== 'idle') { this.announceRecording(false); this.recorder.stop(); await new Promise((r) => setTimeout(r, 600)); }
     api('/api/leave', { method: 'POST', body: { code: this.code, participantId: this.me.id } }).catch(() => {});
     const s = roomsStore(); delete s[this.code]; localStorage.setItem('venue.rooms', JSON.stringify(s));
     this.destroy(); navigate(state.user ? '/dashboard' : '/'); setTimeout(() => maybeShowBanner('after-room'), 1200);
   },
   ended(m) {
+    this._leaving = true;
     if (this.recorder.state !== 'idle') { this.announceRecording(false); this.recorder.stop(); }
     const s = roomsStore(); delete s[this.code]; localStorage.setItem('venue.rooms', JSON.stringify(s));
     this.destroy();
@@ -1075,11 +1115,14 @@ Object.assign(Room.prototype, {
     navigate(m.historyId ? '/session/' + m.historyId : m.eventSlug ? '/e/' + m.eventSlug : '/'); setTimeout(() => maybeShowBanner('after-room'), 1500);
   },
   kicked(m) {
+    this._leaving = true;
     this.destroy();
     this.view.replaceChildren(h('div', { class: 'waiting' }, h('span', { class: 'ico-tile lg', 'data-group': 'danger', html: icon('userX', { size: 30 }) }), h('h2', null, 'You were removed from the room'), h('p', { class: 'muted' }, m.byName ? `Removed by ${m.byName}` : ''), m.paidUsage ? h('p', { class: 'small muted' }, 'Billing for your time has stopped. You were not charged for the time after you left.') : m.paidEntryRefundPending ? h('p', { class: 'small muted' }, 'If you stay out, the unused portion of your advertised time will be refunded after the meeting ends. If the host accepts you again, your original payment covers rejoining.') : null, h('a', { class: 'btn primary', href: '/' }, 'Back home')));
   },
   destroy() {
     if (!this.alive) return; this.alive = false;
+    releaseSession(this);
+    if (this._visPip) document.removeEventListener('visibilitychange', this._visPip);
     this.stopDeviceWatch && this.stopDeviceWatch();
     this.creditControl?.unsubscribe();
     this.cleanupPrejoin && this.cleanupPrejoin();
@@ -1174,6 +1217,7 @@ Object.assign(Room.prototype, {
     const cmds = [
       { id: 'r-mic', label: 'Microphone on/off', short: () => (R.media.mic ? 'Mute' : 'Unmute'), icon: () => (R.media.mic ? 'mic' : 'micOff'), group: 'media', kbd: 'M', active: () => R.media.mic, keywords: 'mute unmute audio voice talk sound', run: () => R.toggleMic() },
       { id: 'r-cam', label: 'Camera on/off', short: () => (R.media.cam ? 'Stop video' : 'Video'), icon: () => (R.media.cam ? 'video' : 'videoOff'), group: 'media', kbd: 'V', active: () => R.media.cam, keywords: 'camera webcam face video', run: () => R.toggleCam() },
+      { id: 'r-spk', label: 'Mute call audio', short: () => (R.callMuted ? 'Call muted' : 'Mute call'), icon: () => (R.callMuted ? 'volumeOff' : 'volume'), group: 'media', active: () => !R.callMuted, keywords: 'speaker volume mute call audio listen headphone deafen', run: () => R.toggleCallAudio() },
       { id: 'r-share', label: 'Share screen', short: () => (R.media.sharing ? 'Stop share' : 'Share'), icon: () => (R.media.sharing ? 'screenOff' : 'screen'), group: 'media', kbd: 'S', active: () => R.media.sharing, keywords: 'present screen share display slides', when: () => !R.stage.enabled || R.isSpeaker(R.me.id), run: () => R.toggleShare() },
       { id: 'r-hand', label: 'Raise hand / request to speak', short: () => (R.stage.enabled && !R.isSpeaker(R.me.id) ? ((R.stage.requests || []).some((q) => q.id === R.me.id) ? 'Queued' : 'Ask to speak') : R.meP()?.handRaised ? 'Lower' : 'Hand'), icon: () => (R.stage.enabled && !R.isSpeaker(R.me.id) ? 'stage' : 'hand'), group: 'engage', kbd: 'H', active: () => !!R.meP()?.handRaised || (R.stage.requests || []).some((q) => q.id === R.me.id), keywords: 'raise hand question speak stage queue mic request', run: () => R.raiseHand() },
       { id: 'r-react', label: 'React', short: 'React', icon: 'smile', group: 'engage', keywords: 'emoji reaction clap love like', run: () => R.reactMenu() },
@@ -1236,7 +1280,7 @@ Object.assign(Room.prototype, {
     const by = (id) => cmds.find((c) => c.id === id);
     setBarContext({
       placeholders: ['Search meeting controls…', 'Search people in this meeting…', 'Search scripture and verses…', 'Search sounds and reactions…', 'Search tools and shared content…'],
-      pinned: () => ['r-mic', 'r-cam', 'r-share', 'r-hand', 'r-react', 'r-again', 'r-chat', 'r-people', 'r-engage', 'r-tools', 'r-layout', 'r-more', 'r-leave'].map(by),
+      pinned: () => ['r-mic', 'r-cam', 'r-spk', 'r-share', 'r-hand', 'r-react', 'r-again', 'r-chat', 'r-people', 'r-engage', 'r-tools', 'r-layout', 'r-more', 'r-leave'].map(by),
       dynamic: (q) => {
         const out = [];
         const em = q.match(/^(\p{Extended_Pictographic}\uFE0F?)$/u); if (em) out.push({ id: 'dyn-react', label: 'React ' + em[1], glyph: em[1], short: 'React', group: 'engage', run: () => R.react(em[1]) });

@@ -2374,6 +2374,22 @@ body.in-room .cmdbar {
 /* captions & transcript: compact header, settings collapse to the top so the transcript gets the room */
 .cap-view {
   gap: 0.5rem;
+  position: relative;
+}
+.cap-new-lines {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 3;
+  border: 0;
+  border-radius: 999px;
+  padding: .35rem .8rem;
+  font: 700 .78rem/1.2 system-ui, sans-serif;
+  cursor: pointer;
+  color: #fff;
+  background: var(--accent-action, var(--accent));
+  box-shadow: 0 6px 18px color-mix(in srgb, #000 22%, transparent);
 }
 .cap-head {
   position: sticky;
@@ -3520,3 +3536,5 @@ html.room-fs .cmdbar {
 }
 .paid-switch-card h3 { margin: 0 0 .4rem; font-size: 1.15rem; }
 .paid-switch-time { font-variant-numeric: tabular-nums; font-weight: 600; margin: .4rem 0 .8rem; }
+
+.rh-call-muted { background: color-mix(in srgb, var(--accent) 18%, var(--s2)); color: var(--text); }

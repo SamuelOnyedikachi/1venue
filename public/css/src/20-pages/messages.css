@@ -23,6 +23,16 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
 .page-messages .msg-pane-thread,
 .page-messages .msg-pane-side { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--s1); }
 .page-messages .msg-pane-list { border-right: 1px solid var(--line); }
+.page-messages .msg-pane-thread { position: relative; }
+.page-messages .msg-pane-thread.is-loading::after {
+  content: '';
+  position: absolute; left: 0; right: 0; top: 0; height: 3px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  background-size: 200% 100%;
+  animation: msg-thread-load .8s linear infinite;
+  pointer-events: none; z-index: 4;
+}
+@keyframes msg-thread-load { to { background-position: -200% 0; } }
 .page-messages .msg-pane-side { border-left: 1px solid var(--line); overflow-y: auto; position: relative; }
 .page-messages .msg-pane-side[hidden] { display: none; }
 
