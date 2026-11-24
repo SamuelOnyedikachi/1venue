@@ -250,12 +250,46 @@ function attachAutoPip(room, winP) {
       w._autoPipHide = true;
       w.addEventListener('pagehide', () => {
         if (live) live.autoPip = null;
-        restoreStage(room);
-        if (room.alive && room.inRoom && !room._leaving && (!room.root || !document.getElementById('view') || !document.getElementById('view').contains(room.root))) showMini(room);
+        onPipClosed(room);
       });
     }
     return 'auto';
   }).catch((err) => { dbg('attach-failed', err && (err.message || err)); showMini(room); return 'mini'; });
+}
+
+function isParked(room) {
+  if (!room) return false;
+  const view = document.getElementById('view');
+  return !room.root || !view || !view.contains(room.root);
+}
+
+/** Native PiP title-bar "Back to tab" focuses this tab then closes the window.
+ *  The close (X) button does not focus us if the tab is in the background.
+ *  When we cannot tell them apart (tab already visible), treat a parked live
+ *  call as return-to-meeting, matching the in-PiP footer button. */
+function onPipClosed(room) {
+  restoreStage(room);
+  if (!room || !room.alive || !room.inRoom || room._leaving) {
+    dbg('pip-close: ended');
+    closeMini();
+    return;
+  }
+  if (!isParked(room)) {
+    dbg('pip-close: already-on-meeting');
+    return;
+  }
+  const go = () => {
+    const visible = document.visibilityState === 'visible';
+    const focused = typeof document.hasFocus !== 'function' || document.hasFocus();
+    if (visible && focused) {
+      dbg('pip-close: back-to-tab');
+      returnToMeeting();
+    } else {
+      dbg('pip-close: close-x');
+      showMini(room);
+    }
+  };
+  setTimeout(go, 0);
 }
 
 function copyStyles(win) {
@@ -311,16 +345,14 @@ function pipCss() {
 .meet-pip-stage{flex:1;min-height:0;overflow:hidden;position:relative;background:#0b0d12}
 .meet-pip-stage > *{width:100%;height:100%}
 .meet-pip-bar,.live-call-bar{display:flex;align-items:center;gap:.45rem;width:100%;box-sizing:border-box;padding:.45rem .55rem;background:var(--s1,#1a1a1a);color:inherit;flex:none}
-.lcb-dot{width:8px;height:8px;border-radius:99px;background:#16a34a;flex:none;box-shadow:0 0 0 4px color-mix(in srgb,#16a34a 25%,transparent)}
 .lcb-who{flex:1;min-width:0;display:flex;flex-direction:column}
 .lcb-who b{font-size:.86rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lcb-who span{font-size:.72rem;color:var(--muted,#888)}
 .lcb-flag{font-size:.68rem;font-weight:700;color:#fff;background:color-mix(in srgb,var(--accent,#2563eb) 80%,#000);border-radius:99px;padding:.05rem .4rem;margin-left:.25rem}
 .lcb-btns{display:flex;gap:.25rem;flex:none}
-.lcb-btns button{width:34px;height:34px;border:0;border-radius:10px;cursor:pointer;color:inherit;background:color-mix(in srgb,var(--text,#fff) 10%,transparent);display:grid;place-items:center}
+.lcb-btns button{width:34px;height:34px;border:0;border-radius:10px;cursor:pointer;color:inherit;background:color-mix(in srgb,var(--text,#fff) 12%,transparent);display:grid;place-items:center}
 .lcb-btns button.off{opacity:.7}
-.lcb-btns button.danger{background:#dc2626;color:#fff}
-.lcb-btns button.primary{background:var(--accent-action,var(--accent,#2563eb));color:#fff}`;
+.lcb-btns button.danger{background:#dc2626;color:#fff}`;
 }
 
 function moveStage(win, room) {
@@ -396,8 +428,7 @@ function paintBar(bar, room, doc) {
   }
   const btns = d.createElement('div');
   btns.className = 'lcb-btns';
-  const back = mk('pip', 'Back to tab', () => returnToMeeting(d), 'primary');
-  back.innerHTML = icon('login', { size: 16 });
+  const back = mk('login', 'Back to tab', () => returnToMeeting(d), '');
   back.setAttribute('aria-label', 'Back to tab');
   back.title = 'Back to tab';
   btns.append(
@@ -406,9 +437,7 @@ function paintBar(bar, room, doc) {
     mk(muted ? 'volumeOff' : 'volume', muted ? 'Unmute call audio' : 'Mute call audio', () => room.toggleCallAudio(), muted ? 'off' : ''),
     mk('phoneOff', 'Leave', () => { room._leaving = true; closeAutoPip(); closeMini(); room.leave(); }, 'danger'),
   );
-  const dot = d.createElement('i');
-  dot.className = 'lcb-dot';
-  bar.replaceChildren(dot, who, btns);
+  bar.replaceChildren(who, btns);
   bar._room = room;
 }
 
@@ -433,7 +462,7 @@ function timerText(room) {
 
 function showMini(room) {
   closeMini();
-  const bar = h('div', { id: 'live-call-mini', class: 'live-call-mini', role: 'dialog', 'aria-label': 'Meeting in progress' });
+  const bar = h('div', { id: 'live-call-mini', class: 'live-call-mini live-call-bar', role: 'dialog', 'aria-label': 'Meeting in progress' });
   document.body.append(bar);
   paintBar(bar, room, document);
 }
@@ -452,6 +481,7 @@ function closeAutoPip() {
 }
 
 export function returnToMeeting(pipDoc) {
+  closeMini();
   const url = (live && live.url) || (live && live.room && liveUrl(live.room));
   let focused = false;
   try { window.focus(); focused = !!(document.hasFocus && document.hasFocus()); } catch { focused = false; }
