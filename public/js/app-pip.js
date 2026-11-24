@@ -3,11 +3,12 @@
  * apps in Chrome and Edge on desktop. It follows the site theme (light/dark and accent), and
  * can start a chat, an instant meeting, or a call from a conversation.
  */
-import { h, api, toast, toastErr, avatar, debounce, linkify, uploadFile, esc, timeAgo } from './ui.js';
+import { h, api, toast, toastErr, avatar, debounce, linkify, uploadFile, esc, timeAgo, menu } from './ui.js';
 import { icon } from './icons.js';
 import { state, navigate, openInstantOverlay } from './app.js';
 import { verifiedDot } from './components.js';
 import { pillComposer } from './composer.js';
+import { QUICK, emojiPopover } from './emoji.js';
 import { bus, setPipConversation, typing as sendTyping, refreshUnread } from './messages/live.js';
 
 export function pipSupported() {
@@ -312,14 +313,16 @@ export async function popOut() {
     }
 
     function chatsView() {
-      const search = h('input', { class: 'input app-pip-search-in', type: 'search', placeholder: 'Search people and messages', 'aria-label': 'Search people and messages' });
+      const search = h('input', { class: 'input app-pip-search-in', type: 'search', placeholder: 'Search people and messages', 'aria-label': 'Search people and messages', enterkeyhint: 'search' });
       const hits = h('div', { class: 'app-pip-scroll app-pip-hits', hidden: true });
       const listEl = h('div', { class: 'app-pip-scroll' });
       listEl.replaceChildren(...(convList.length ? convList.slice(0, 60).map(rowEl) : [h('p', { class: 'muted', style: { padding: '.8rem' } }, 'No chats yet. Tap + to start a message.')]));
       const run = debounce(() => runSearch(search.value, hits, listEl), 220);
       search.addEventListener('input', run);
       return h('div', { class: 'app-pip-list' },
-        h('div', { class: 'app-pip-search' }, h('span', { class: 'i', html: icon('search', { size: 16 }) }), search),
+        h('div', { class: 'app-pip-search' },
+          h('label', { class: 'app-pip-search-box' },
+            h('span', { class: 'i', html: icon('search', { size: 16 }) }), search)),
         hits, listEl);
     }
 
@@ -372,15 +375,115 @@ export async function popOut() {
             input, sugg, btn, status)));
     }
 
+    function prettySize(n) {
+      n = Number(n) || 0;
+      if (!n) return '';
+      if (n < 1024) return n + ' B';
+      if (n < 1048576) return (n / 1024).toFixed(n < 10240 ? 1 : 0) + ' KB';
+      return (n / 1048576).toFixed(1) + ' MB';
+    }
+    function scrollEnd(el) {
+      const go = () => { el.scrollTop = el.scrollHeight; };
+      go();
+      requestAnimationFrame(() => { go(); requestAnimationFrame(go); });
+      el.querySelectorAll('img, audio, video').forEach((n) => {
+        n.addEventListener('load', go, { once: true });
+        n.addEventListener('loadedmetadata', go, { once: true });
+      });
+    }
     function attView(a) {
       if (!a) return null;
-      const url = a.url ? absUrl(a.url) : '';
-      if ((a.kind === 'image' || (a.mime || '').startsWith('image/')) && url) return h('img', { class: 'app-pip-att', src: url, alt: a.name || '' });
-      if ((a.kind === 'voice' || (a.mime || '').startsWith('audio/')) && url) return h('audio', { class: 'app-pip-voice', controls: true, src: url, preload: 'metadata' });
-      return h('div', { class: 'tiny muted' }, a.name || a.kind || 'Attachment');
+      if (a.kind === 'passage') return h('div', { class: 'tiny muted' }, a.reference || 'Passage');
+      const url = a.url ? absUrl(a.url) : (a.dataUrl || '');
+      if (!url) return h('div', { class: 'tiny muted' }, a.name || a.kind || 'Attachment');
+      if (a.kind === 'image' || (a.mime || '').startsWith('image/')) {
+        return h('a', { class: 'app-pip-att-link', href: url, target: '_blank', rel: 'noopener' },
+          h('img', { class: 'app-pip-att', src: url, alt: a.name || 'image', loading: 'lazy' }));
+      }
+      if (a.kind === 'voice' || (a.mime || '').startsWith('audio/')) {
+        return h('div', { class: 'app-pip-voice-wrap' },
+          h('audio', { class: 'app-pip-voice', controls: true, src: url, preload: 'metadata' }));
+      }
+      return h('a', { class: 'app-pip-file', href: url, target: '_blank', rel: 'noopener', download: a.name || 'file' },
+        h('span', { class: 'i', html: icon('file', { size: 18 }) }),
+        h('span', { class: 'grow min-w-0' },
+          h('b', { class: 'ellipsis' }, a.name || 'File'),
+          a.size ? h('span', { class: 'tiny muted' }, prettySize(a.size)) : null));
     }
-
-    function msgNode(c, m, prev) {
+    function quoteEl(q) {
+      if (!q) return null;
+      const who = q.missing ? 'Message' : (state.user && q.fromUserId === state.user.id ? 'You' : q.fromName || 'Message');
+      const text = q.missing || q.deleted ? 'Message unavailable' : q.text || (q.attachmentKind === 'voice' || q.attachment && q.attachment.kind === 'voice' ? '🎤 Voice note' : q.attachmentKind === 'image' || q.attachment && q.attachment.kind === 'image' ? '📷 Photo' : (q.attachmentKind || (q.attachment && q.attachment.kind)) ? '📎 File' : '');
+      return h('button', { class: 'msg-quote', type: 'button', onclick: (e) => { e.stopPropagation(); if (!q.missing && q.id) { const n = thread && thread.msgsEl.querySelector(`[data-id="${q.id}"]`); if (n) { n.scrollIntoView({ block: 'center' }); n.classList.add('app-pip-jump'); } } } },
+        h('b', null, who), h('span', { class: 'ellipsis' }, text));
+    }
+    function startReply(th, m) {
+      th.replyTo = m;
+      paintReply(th);
+      th.composer && th.composer.focus();
+    }
+    function paintReply(th) {
+      if (!th.replyBar) return;
+      const r = th.replyTo;
+      th.replyBar.hidden = !r;
+      if (!r) return th.replyBar.replaceChildren();
+      th.replyBar.replaceChildren(
+        h('div', { class: 'msg-quote in-bar' }, h('b', null, r.mine || (state.user && r.fromUserId === state.user.id) ? 'You' : r.fromName || 'Message'), h('span', { class: 'ellipsis' }, r.text || (r.attachment ? `📎 ${r.attachment.name || r.attachment.kind}` : ''))),
+        h('button', { class: 'icon-btn sm', type: 'button', 'aria-label': 'Cancel reply', html: icon('x', { size: 16 }), onclick: () => { th.replyTo = null; paintReply(th); } }));
+    }
+    async function react(th, m, emoji) {
+      try {
+        const r = await api(`/api/messages/conversations/${th.conv.id}/messages/${m.id}/reactions`, { method: 'POST', body: { emoji } });
+        if (r && r.reactions) { m.reactions = r.reactions; paintMsgs(th, {}); }
+      } catch (e) { toastErr(e); }
+    }
+    function pipMsgMenu(anchor, th, m) {
+      const c = th.conv;
+      const quick = c.canSend ? h('div', { class: 'msg-quick' }, QUICK.slice(0, 6).map((e) => h('button', { type: 'button', 'aria-label': `React ${e}`, onclick: () => { mm.remove(); react(th, m, e); } }, e))) : null;
+      let mm = null;
+      mm = menu(anchor, [
+        c.canSend ? { label: 'Reply', icon: 'reply', run: () => startReply(th, m) } : null,
+        c.canSend ? { label: 'React', icon: 'smile', run: () => emojiPopover(anchor, (e) => react(th, m, e)) } : null,
+        c.canSend && c.editable && m.kind === 'text' ? { label: (th.pins || []).some((p) => p.id === m.id) ? 'Unpin' : 'Pin', icon: 'pin', run: () => api(`/api/messages/conversations/${c.id}/messages/${m.id}/pin`, { method: (th.pins || []).some((p) => p.id === m.id) ? 'DELETE' : 'POST' }).then((r) => { th.pins = r.pins || []; toast((th.pins || []).some((p) => p.id === m.id) ? 'Pinned' : 'Unpinned', { icon: 'pin' }); }).catch(toastErr) } : null,
+        m.kind === 'text' && convList.length ? { label: 'Forward', icon: 'forward', run: () => pipForward(th, m) } : null,
+        m.text ? { label: 'Copy text', icon: 'copy', run: () => navigator.clipboard.writeText(m.text).then(() => toast('Copied', { icon: 'copy' })).catch(() => {}) } : null,
+        !m.mine && m.fromUserId ? { label: 'Report', icon: 'alert', group: 'admin', run: () => api('/api/messages/reports', { method: 'POST', body: { conversationId: c.id, messageId: m.id, reason: '' } }).then(() => toast('Thanks. Our team will review it.', { icon: 'check' })).catch(toastErr) } : null,
+      ], { header: quick, sheet: false });
+    }
+    function pipForward(th, m) {
+      const items = convList.filter((c) => c.id !== th.conv.id).slice(0, 12).map((c) => ({
+        label: c.title || 'Chat', icon: 'forward', run: async () => {
+          try {
+            await api(`/api/messages/conversations/${th.conv.id}/messages/${m.id}/forward`, { method: 'POST', body: { conversationId: c.id } });
+            toast(`Forwarded to ${c.title}`, { icon: 'forward' });
+          } catch (e) { toastErr(e); }
+        },
+      }));
+      if (!items.length) return toast('No other chats to forward to', { icon: 'info' });
+      menu(th.msgsEl, items, { sheet: false });
+    }
+    function bindSwipe(row, th, m, c) {
+      let pressT = null, sx = 0, sy = 0, dx = 0, swiping = false;
+      const bub = () => row.querySelector('.app-pip-col') || row.querySelector('.app-pip-bubble');
+      row.addEventListener('touchstart', (e) => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; dx = 0; swiping = false; pressT = setTimeout(() => !m.deleted && pipMsgMenu(row.querySelector('.app-pip-bubble'), th, m), 450); }, { passive: true });
+      row.addEventListener('touchmove', (e) => {
+        clearTimeout(pressT);
+        const x = e.touches[0].clientX - sx, y = e.touches[0].clientY - sy;
+        if (!swiping && Math.abs(x) > 12 && Math.abs(x) > Math.abs(y) * 1.5 && x > 0 && c.canSend && !m.deleted) swiping = true;
+        if (swiping) { dx = Math.min(80, Math.max(0, x)); const b = bub(); if (b) b.style.transform = `translateX(${dx}px)`; row.classList.toggle('swipe-ready', dx > 56); }
+      }, { passive: true });
+      row.addEventListener('touchend', () => {
+        clearTimeout(pressT);
+        if (swiping) {
+          const b = bub();
+          if (b) { b.style.transition = 'transform .18s'; b.style.transform = ''; setTimeout(() => { if (b) b.style.transition = ''; }, 200); }
+          row.classList.remove('swipe-ready');
+          if (dx > 56) { try { navigator.vibrate && navigator.vibrate(15); } catch { /* ignore */ } startReply(th, m); }
+        }
+        swiping = false;
+      });
+    }
+    function msgNode(c, m, prev, th) {
       if (m.kind === 'system' || m.kind === 'call') {
         return h('div', { class: 'app-pip-sys', 'data-id': m.id }, m.text || (m.kind === 'call' ? 'Call' : ''));
       }
@@ -388,14 +491,24 @@ export async function popOut() {
         && new Date(m.createdAt) - new Date(prev.createdAt) < 5 * 60000);
       const showName = !m.mine && c.type !== 'dm' && !grouped;
       const showAv = !m.mine && c.type !== 'dm';
+      const reacts = m.reactions && m.reactions.length ? h('div', { class: 'msg-reacts' }, m.reactions.map((r) => h('button', { type: 'button', class: `msg-react${r.mine ? ' on' : ''}`, 'aria-label': `${r.emoji} ${r.count}`, onclick: () => react(th, m, r.emoji), disabled: !c.canSend }, `${r.emoji} ${r.count}`))) : null;
       const bubble = h('div', { class: 'app-pip-bubble' },
         showName ? h('b', { class: 'app-pip-who' }, m.fromName || '', memberVerified(c, m.fromUserId) ? verifiedDot(true, { title: 'Verified' }) : null) : null,
+        m.payload && m.payload.forwarded ? h('span', { class: 'msg-fwd tiny' }, 'Forwarded') : null,
+        m.replyTo ? quoteEl(m.replyTo) : null,
         m.text ? h('div', { html: linkify(m.text, { siteBase }) }) : null,
         attView(m.attachment),
         !m.text && !m.attachment && m.kind === 'card' ? h('div', { class: 'tiny muted' }, (m.payload && m.payload.title) || 'Card') : null);
-      return h('div', { class: 'app-pip-msg' + (m.mine ? ' mine' : '') + (grouped ? ' grouped' : ''), 'data-id': m.id },
+      const hover = m.deleted ? null : h('div', { class: 'app-pip-hover' },
+        c.canSend ? h('button', { class: 'icon-btn msg-hb', type: 'button', 'aria-label': 'Reply', title: 'Reply', html: icon('reply', { size: 16 }), onclick: () => startReply(th, m) }) : null,
+        c.canSend ? h('button', { class: 'icon-btn msg-hb', type: 'button', 'aria-label': 'React', title: 'React', html: icon('smile', { size: 16 }), onclick: (e) => emojiPopover(e.currentTarget, (x) => react(th, m, x)) }) : null,
+        h('button', { class: 'icon-btn msg-hb', type: 'button', 'aria-label': 'Message actions', title: 'More', html: icon('moreHorizontal', { size: 16 }), onclick: (e) => pipMsgMenu(e.currentTarget, th, m) }));
+      const row = h('div', { class: 'app-pip-msg' + (m.mine ? ' mine' : '') + (grouped ? ' grouped' : ''), 'data-id': m.id },
         showAv ? (grouped ? h('span', { class: 'app-pip-av-gap' }) : memberAv(c, m.fromUserId, m.fromName)) : null,
-        bubble);
+        h('div', { class: 'app-pip-col' }, bubble, reacts),
+        hover);
+      if (!m.deleted) bindSwipe(row, th, m, c);
+      return row;
     }
 
     function paintMsgs(th, { stick, jump } = {}) {
@@ -404,12 +517,13 @@ export async function popOut() {
       const out = [];
       if (!th.msgs.length) out.push(h('p', { class: 'muted tiny', style: { padding: '.5rem' } }, th.conv.type === 'dm' ? `Say hi to ${th.conv.title}` : 'No messages yet.'));
       let prev = null;
-      for (const m of th.msgs) { out.push(msgNode(th.conv, m, prev)); prev = m; }
+      for (const m of th.msgs) { out.push(msgNode(th.conv, m, prev, th)); prev = m; }
       el.replaceChildren(...out);
       if (jump) {
         const n = el.querySelector(`[data-id="${jump}"]`);
         if (n) { n.classList.add('app-pip-jump'); n.scrollIntoView({ block: 'center' }); }
-      } else if (stick || atBottom) el.scrollTop = el.scrollHeight;
+        else scrollEnd(el);
+      } else if (stick || atBottom) scrollEnd(el);
     }
 
     function paintThreadTyping(th) {
@@ -458,23 +572,26 @@ export async function popOut() {
         const msgsEl = h('div', { class: 'app-pip-msgs' });
         const typingEl = h('div', { class: 'app-pip-typing', hidden: true });
         let foot;
-        const th = { id: c.id, conv: c, msgs, msgsEl, typingEl, typing: new Map(), composer: null };
+        const th = { id: c.id, conv: c, msgs, msgsEl, typingEl, typing: new Map(), composer: null, replyTo: null, replyBar: null, pins: c.pins || [] };
         thread = th;
         if (c.canSend) {
           const limits = state.config && state.config.storage && state.config.storage.limits;
+          th.replyBar = h('div', { class: 'app-pip-replybar', hidden: true });
           th.composer = pillComposer({
             placeholder: c.type === 'dm' ? `Message ${c.title}` : 'Message',
             maxLength: 4000,
             voice: true,
             dictate: true,
+            dictateEnd: true,
             limits,
             upload: (f, purpose) => uploadFile(f, { purpose: purpose === 'voice' ? 'voice' : 'chat' }),
             onActivity: (st) => sendTyping(c.id, st === 'recording' ? 'recording' : 'typing'),
             onSend: async (text, att) => {
-              await api(`/api/messages/conversations/${c.id}/messages`, { method: 'POST', body: { text, attachment: att || undefined } });
+              await api(`/api/messages/conversations/${c.id}/messages`, { method: 'POST', body: { text, attachment: att || undefined, replyToId: th.replyTo ? th.replyTo.id : undefined } });
+              th.replyTo = null; paintReply(th);
             },
           });
-          foot = h('div', { class: 'app-pip-foot' }, th.composer.el);
+          foot = h('div', { class: 'app-pip-foot' }, th.replyBar, th.composer.el);
         } else {
           foot = h('p', { class: 'tiny muted app-pip-foot', style: { padding: '.6rem .8rem' } }, c.reason || 'You can’t send messages here');
         }
@@ -555,6 +672,11 @@ export async function popOut() {
         paintMsgs(thread, { stick: mine });
         markThreadRead(thread);
       }
+    });
+    on('reaction', (m) => {
+      if (!thread || Number(m.conversationId) !== Number(thread.conv.id) || !m.messageId) return;
+      const row = thread.msgs.find((x) => x.id === m.messageId);
+      if (row) { row.reactions = m.reactions; paintMsgs(thread, {}); }
     });
     on('message-edited', (m) => {
       if (!thread || Number(m.conversationId) !== Number(thread.conv.id) || !m.message) return;

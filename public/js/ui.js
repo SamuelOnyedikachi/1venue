@@ -157,8 +157,11 @@ export const closeTopSheet = () => { const s = sheetStack[sheetStack.length - 1]
  * screen and scrolls when it is too tall. On phones it is a bottom sheet instead. Pass { header } for
  * extra content on top (e.g. quick reactions) so it is measured before the menu is placed.
  */
-export function menu(anchor, items, { header = null, sheet: asSheet = isMobile(), cls = '' } = {}) {
-  document.querySelectorAll('.menu').forEach((x) => x.remove());
+export function menu(anchor, items, { header = null, sheet: asSheet, cls = '' } = {}) {
+  const doc = (anchor && anchor.ownerDocument) || document;
+  const win = doc.defaultView || window;
+  if (asSheet == null) asSheet = doc === document && isMobile();
+  doc.querySelectorAll('.menu').forEach((x) => x.remove());
   const m = h('div', { class: 'menu' + (asSheet ? ' menu-sheet' : '') + (cls ? ' ' + cls : ''), role: 'menu' });
   if (header) m.append(header);
   for (const it of items) {
@@ -183,7 +186,7 @@ export function menu(anchor, items, { header = null, sheet: asSheet = isMobile()
   const place = () => {
     if (asSheet || !m.isConnected) return;
     m.style.maxHeight = ''; m.style.maxWidth = '';
-    const p = menuPosition(anchor.getBoundingClientRect(), m.offsetWidth, m.offsetHeight, innerWidth, innerHeight);
+    const p = menuPosition(anchor.getBoundingClientRect(), m.offsetWidth, m.offsetHeight, win.innerWidth, win.innerHeight);
     m.style.left = p.left + 'px'; m.style.top = p.top + 'px';
     if (p.maxHeight) m.style.maxHeight = p.maxHeight + 'px';
     if (p.maxWidth) m.style.maxWidth = p.maxWidth + 'px';
@@ -193,13 +196,13 @@ export function menu(anchor, items, { header = null, sheet: asSheet = isMobile()
   const onScroll = (e) => { if (!m.contains(e.target)) place(); };
   const off = (e) => { if (!m.contains(e.target) && e.target !== back) m.remove(); };
   const remove = m.remove.bind(m);
-  m.remove = () => { unlockPage(); remove(); back && back.remove(); removeEventListener('resize', place); removeEventListener('keydown', onKey); removeEventListener('scroll', onScroll, true); document.removeEventListener('pointerdown', off); };
-  if (back) document.body.append(back);
-  document.body.append(m);
+  m.remove = () => { unlockPage(); remove(); back && back.remove(); win.removeEventListener('resize', place); win.removeEventListener('keydown', onKey); win.removeEventListener('scroll', onScroll, true); doc.removeEventListener('pointerdown', off); };
+  if (back) (doc.body || doc.documentElement).append(back);
+  (doc.body || doc.documentElement).append(m);
   lockPage();
   place();
-  addEventListener('resize', place); addEventListener('keydown', onKey); addEventListener('scroll', onScroll, true);
-  setTimeout(() => { if (m.isConnected) document.addEventListener('pointerdown', off); }, 0);
+  win.addEventListener('resize', place); win.addEventListener('keydown', onKey); win.addEventListener('scroll', onScroll, true);
+  setTimeout(() => { if (m.isConnected) doc.addEventListener('pointerdown', off); }, 0);
   m.place = place;
   return m;
 }

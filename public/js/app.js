@@ -26,7 +26,7 @@ export function applyPrefs(p = state.prefs) {
   root.style.setProperty('--accent', p.accent || '#2563eb');
   const a2 = p.accent2 || (ACCENTS.find((x) => x[1] === p.accent) || [])[2] || '#7c3aed';
   root.style.setProperty('--accent-2', a2);
-  root.style.setProperty('--accent-ink', accentInk(p.accent || '#2563eb', a2));
+  root.style.setProperty('--accent-ink', accentInk(p.accent || '#2563eb', a2) || '#fff');
   const actionColors = accentButtonColors(p.accent || '#2563eb', a2);
   root.style.setProperty('--accent-action', actionColors.primary);
   root.style.setProperty('--accent-action-2', actionColors.secondary);
@@ -42,6 +42,22 @@ export function setPrefs(patch, { silent = false } = {}) {
   localStorage.setItem(LS_PREFS, JSON.stringify(state.prefs));
   applyPrefs(); pushPrefs();
   if (!silent) window.dispatchEvent(new CustomEvent('prefs', { detail: state.prefs }));
+}
+/** Boolean flags stored in prefs.extra (server) with a localStorage fallback. */
+export function extraPref(key, fallback = false) {
+  const e = state.prefs && state.prefs.extra;
+  if (e && Object.prototype.hasOwnProperty.call(e, key) && e[key] != null) return !!e[key];
+  try {
+    const v = localStorage.getItem('venue.' + key);
+    if (v === '1' || v === 'true') return true;
+    if (v === '0' || v === 'false') return false;
+  } catch { /* private mode */ }
+  return fallback;
+}
+export function setExtraPref(key, val) {
+  try { localStorage.setItem('venue.' + key, val ? '1' : '0'); } catch { /* private mode */ }
+  const extra = { ...((state.prefs && state.prefs.extra) || {}), [key]: !!val };
+  setPrefs({ extra });
 }
 function loadLocalPrefs() { try { return { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem(LS_PREFS) || '{}') }; } catch { return { ...DEFAULT_PREFS }; } }
 

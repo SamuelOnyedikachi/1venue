@@ -17,9 +17,10 @@ export class Captioner {
   autoSync() {
     const R = this.R; const cfg = R.config.stt || {};
     const supported = !!((cfg.server && window.MediaRecorder) || SpeechRec);
-    const want = !!R.transcribe && !this.optOut && supported && R.isSpeaker(R.me.id) && !!R.media;
+    const want = !this.optOut && supported && R.isSpeaker(R.me.id) && !!R.media;
+    // STT starts on join for speakers (overlay visibility is a separate pref).
     if (want && !this.on) { this.auto = true; this.start().catch(() => {}); }
-    else if (!R.transcribe && this.on && this.auto) this.stop();
+    else if (!want && this.on && this.auto) this.stop();
   }
   // User toggled "caption me": manual start clears the opt-out, manual stop during a saved transcript sets it.
   setMine(on) { if (on) { this.optOut = false; this.auto = false; return this.start(); } if (this.R.transcribe) this.optOut = true; this.stop(); return Promise.resolve(); }

@@ -135,8 +135,10 @@ export async function mount(view, params) {
   let book = corpus === 'quran' ? 'Q001' : 'JHN', chapter = 1, highlight = [];
   const refIn = h('input', {
     class: 'input',
+    type: 'search',
     placeholder: corpus === 'quran' ? 'Al-Ikhlas, Al-Fatihah 1, 2:255, family…' : 'John 3:16, family, hope, “a man shall leave…”',
     'aria-label': 'Reference or topic',
+    enterkeyhint: 'search',
   });
   const isQuranTr = (id) => /^(quran_)/i.test(id || '');
   const bookGroups = corpus === 'quran'
@@ -458,9 +460,16 @@ export async function mount(view, params) {
       body.append(h('p', { class: 'muted' }, 'No matching passages found. Try a reference like “John 3:16” or a topic like “family”, “hope”, “peace”.'));
     } catch (e) { toastErr(e); body.innerHTML = ''; body.append(h('p', { class: 'muted' }, e.message || 'Search failed')); }
   }
-  refIn.addEventListener('keydown', (e) => { if (e.key === 'Enter' && refIn.value.trim()) goRef(refIn.value.trim()); });
+  const runSearch = () => { const q = refIn.value.trim(); if (q) goRef(q); };
+  refIn.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); runSearch(); } });
+  refIn.addEventListener('search', runSearch);
+  refIn.addEventListener('change', runSearch);
+  const searchGo = h('button', { class: 'bt-go', type: 'submit', 'aria-label': 'Search', 'data-tip': 'Search', html: icon('search', { size: 16 }) });
+  const searchBox = h('div', { class: 'bt-search' }, h('span', { class: 'bt-ic', html: icon('search', { size: 16 }) }), refIn, searchGo);
+  const tools = h('form', { class: 'bible-tools card layer', role: 'search' }, searchBox, bookSel, chSel, trSel);
+  tools.addEventListener('submit', (e) => { e.preventDefault(); runSearch(); });
   view.append(h('div', { class: 'page-head' }, h('h1', { html: icon('bookOpen', { size: 28 }) + (corpus === 'quran' ? 'Qur’an' : 'Bible') })),
-    h('div', { class: 'bible-tools card layer' }, h('span', { class: 'bt-ic', html: icon('search', { size: 16 }) }), refIn, bookSel, chSel, trSel), body, selBar);
+    tools, body, selBar);
   bookSel.value = book; fillCh();
   if (params.ref) goRef(params.ref);
   else if (params.q) { refIn.value = params.q; goRef(params.q); }

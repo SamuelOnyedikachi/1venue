@@ -2,7 +2,7 @@
 import { creditBadge, refreshCredits } from '../credits.js';
 import { h, esc, api, toast, toastErr, sheet, menu, confirmDlg, promptDlg, copy, isMobile, avatar } from '../ui.js';
 import { icon, LOGO } from '../icons.js';
-import { state, navigate, requireLogin, toggleTheme } from '../app.js';
+import { state, navigate, requireLogin, toggleTheme, extraPref, setExtraPref } from '../app.js';
 import { registerCommands, unregisterCommands, setBarContext, refreshBar, focusBar } from '../commands.js';
 import { QUICK, emojiName, emojiPopover, pushRecent, searchEmoji } from '../emoji.js';
 import { searchSounds } from './sounds.js';
@@ -393,7 +393,7 @@ Object.assign(Room.prototype, {
     this.timeline = { items: [], slideshow: false, selected: 0 };
     this.content = r.content || null; this.scripture = null; this.stageView = null;
     this.layout = lsGet('venue.layout', 'grid'); this.pinned = null; this.mirror = lsGet('venue.mirror', true);
-    this.isMobile = isMobile(); this.showCaptions = lsGet('venue.showCaptions', true);
+    this.isMobile = isMobile(); this.showCaptions = extraPref('showMeetingCaptions', lsGet('venue.showCaptions', false)); this.remoteRecorders = new Set();
     this.myBoard = lsGet('venue.myboard2', null) || { strokes: lsGet('venue.myboard', []) }; this.myBoardRef = state.user ? lsGet('venue.myboard.ref', null) : null; this.boardSharing = false; this.teamStrokes = [];
     this.peopleMap = new Map(); this.setPeople(r.participants || []);
     this.startedAt = Date.now(); this.recording = null; this.transcribe = false;
@@ -435,13 +435,17 @@ Object.assign(Room.prototype, {
       this.syncBilling();
     }
     this.onKey = (e) => this.shortcut(e); window.addEventListener('keydown', this.onKey);
-    this.onUnload = () => { navigator.sendBeacon && navigator.sendBeacon('/api/leave', new Blob([JSON.stringify({ code: this.code, participantId: this.me.id })], { type: 'application/json' })); };
+    this.onUnload = () => {
+      try { if (this.recorder && this.recorder.state !== 'idle') this.recorder.trySave(); } catch { /* may be blocked */ }
+      this.announceRecording(false);
+      navigator.sendBeacon && navigator.sendBeacon('/api/leave', new Blob([JSON.stringify({ code: this.code, participantId: this.me.id })], { type: 'application/json' }));
+    };
     window.addEventListener('pagehide', this.onUnload);
     this.onResize = () => { const m = isMobile(); if (m !== this.isMobile) { this.isMobile = m; this.renderStage(true); } }; window.addEventListener('resize', this.onResize);
     if (this.peopleMap.size <= 1) setTimeout(() => this.peopleMap.size <= 1 && this.alive && toast('You’re the first one here - share the invite to bring people in', { icon: 'userPlus', group: 'people', ms: 5000 }), 1500);
     if (navigator.mediaSession) try { navigator.mediaSession.metadata = new MediaMetadata({ title: this.roomName, artist: '1venue' }); } catch { /* */ }
   },
-  setPeople(list) { this.peopleMap = new Map(list.filter((p) => p.status !== 'WAITING').map((p) => [p.id, p])); const mp = this.peopleMap.get(this.me.id); if (mp) this.me.role = mp.role; },
+  setPeople(list) { this.peopleMap = new Map(list.filter((p) => p.status !== 'WAITING').map((p) => [p.id, p])); const mp = this.peopleMap.get(this.me.id); if (mp) this.me.role = mp.role; if (this.remoteRecorders) for (const id of [...this.remoteRecorders]) if (!this.peopleMap.has(id)) this.remoteRecorders.delete(id); this.maybeAutoRecord && this.maybeAutoRecord(); },
   people() { return [...this.peopleMap.values()].sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0)); },
   p(id) { return this.peopleMap.get(id) || (id === this.me?.id ? this.me : null); },
   meP() { return this.peopleMap.get(this.me.id); },
@@ -484,7 +488,37 @@ Object.assign(Room.prototype, {
   },
   captionLang() { return lsGet('venue.captionLang', 'en'); },
   setCaptionLang(v) { lsSet('venue.captionLang', v); if (this.captioner.on) { this.captioner.stop(); this.captioner.start(); } },
-  setShowCaptions(v) { this.showCaptions = v; lsSet('venue.showCaptions', v); this.stageR.paintCaps(); },
+  anyoneRecording() {
+    return (this.recorder && this.recorder.state !== 'idle')
+      || !!(this.remoteRecorders && this.remoteRecorders.size)
+      || !!(this.recording && this.recording.status && this.recording.status !== 'stopped');
+  },
+  announceRecording(on) {
+    this.send('local-recording', { on: !!on });
+  },
+  onLocalRecording(m) {
+    this.remoteRecorders = this.remoteRecorders || new Set();
+    const id = m.participantId;
+    if (id && id !== this.me.id) {
+      if (m.on) this.remoteRecorders.add(id); else this.remoteRecorders.delete(id);
+    }
+    this.paintHead();
+  },
+  maybeAutoRecord() {
+    if (!this.alive || !this.isMod()) return;
+    if (this._autoRecordTried) return;
+    if (!this.recorder || this.recorder.state !== 'idle') return;
+    if (!extraPref('autoRecordMeetings', true)) return;
+    this._autoRecordTried = true;
+    const getVideos = () => {
+      const root = (this.stageR && this.stageR.el) || this.root || document;
+      return [...root.querySelectorAll('video')];
+    };
+    this.recorder.startLocal({ name: (this.roomName || this.code || 'meeting').toString().slice(0, 40), getVideos })
+      .then(() => { this.announceRecording(true); this.paintHead(); })
+      .catch((e) => { this._autoRecordTried = false; console.warn('auto-record', e); });
+  },
+  setShowCaptions(v) { this.showCaptions = !!v; lsSet('venue.showCaptions', this.showCaptions); setExtraPref('showMeetingCaptions', this.showCaptions); this.stageR.paintCaps(); },
   onCaptionMode(mode) { this.captionMode = mode; this.panel.refresh(); },
   // My board: kept on this device; when it came from (or was saved to) your account, edits autosave there too.
   saveMyBoard() {
@@ -542,7 +576,7 @@ Object.assign(Room.prototype, {
   pin(id) { this.pinned = id; if (id && this.layout === 'grid') this.layout = 'spotlight'; if (id && this.stageR.screens().length) return this.stageR.setPick('cameras'); this.renderStage(true); },
   applyWant() { const w = this.want || {}; if (!this.isSpeaker(this.me.id)) return; if (w.mic && this.perm('microphone')) this.toggleMic(true); if (w.cam && this.perm('camera')) this.toggleCam(true); },
   applyPerms() { if (!this.perm('microphone') && this.media.mic) this.media.setMic(false); if (!this.perm('camera') && this.media.cam) this.media.setCam(false); if (!this.perm('screenShare') && this.media.sharing) this.toggleShare(false); },
-  promoted() { this.reconnectMedia(true); },
+  promoted() { this.reconnectMedia(true); this.maybeAutoRecord && this.maybeAutoRecord(); },
   demoted() { this.media.setMic(false).catch(() => {}); this.media.setCam(false).catch(() => {}); if (this.media.sharing) this.toggleShare(false); },
 
   /* --------------------------------------------------------------- media */
@@ -557,6 +591,7 @@ Object.assign(Room.prototype, {
       // tracks already published by others
       lr && lr.remoteParticipants && lr.remoteParticipants.forEach((rp) => rp.trackPublications.forEach((pub) => pub.track && pub.isSubscribed && this.onTrack(rp.identity, pub.track, pub.source)));
       this.captioner && this.captioner.autoSync();
+      this.maybeAutoRecord();
     } catch (e) { console.warn('media', e); toast('Couldn’t connect audio/video - retrying from Tools › Diagnostics', { icon: 'wifi', group: 'media' }); await this.media.fallback().catch(() => {}); }
   },
   audioBlocked() {
@@ -825,8 +860,8 @@ Object.assign(Room.prototype, {
     const tstr = `${Math.floor(secs / 3600) ? Math.floor(secs / 3600) + ':' : ''}${String(Math.floor(secs / 60) % 60).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
     if (!full && this.headEl.firstChild) {
       const t = this.headEl.querySelector('.rh-timer'); if (t) t.textContent = tstr;
-      const rec = this.recorder.state !== 'idle' || (this.recording && this.recording.status && this.recording.status !== 'stopped');
-      this.headEl.querySelector('.rh-rec').hidden = !rec;
+      const rec = this.anyoneRecording();
+      const recEl = this.headEl.querySelector('.rh-rec'); if (recEl) recEl.hidden = !rec;
       this.headEl.querySelector('.rh-count').textContent = this.peopleMap.size;
       this.headEl.querySelector('.rh-lock').hidden = !this.security.locked;
       const cams = this.headEl.querySelector('.rh-cams'); if (cams) { cams.hidden = !this.stageR.screens().length; cams.classList.toggle('on', this.stageR.pick === 'cameras'); }
@@ -838,7 +873,7 @@ Object.assign(Room.prototype, {
     this.headEl.replaceChildren(
       h('a', { class: 'rh-logo', href: '/', 'aria-label': '1venue home', onclick: (e) => { e.preventDefault(); this.leave(); }, html: LOGO(26) }),
       h('div', { class: 'rh-title' }, h('b', { class: 'ellipsis' }, this.roomName), h('div', { class: 'tiny muted row gap-xs' }, h('span', { class: 'rh-timer' }, tstr), '·', h('button', { class: 'linkish', type: 'button', 'data-tip': 'Copy room code', 'data-group': 'people', onclick: () => copy(location.origin + '/' + fmtCode(this.code)).then(() => toast('Link copied', { icon: 'link' })) }, fmtCode(this.code)))),
-      h('span', { class: 'pill rec rh-rec', hidden: true }, h('i', { class: 'rec-dot' }), 'REC'),
+      h('span', { class: 'pill rec rh-rec', hidden: !this.anyoneRecording() }, h('i', { class: 'rec-dot' }), 'Recording'),
       h('span', { class: 'pill rh-lock', 'data-group': 'admin', hidden: true, html: icon('lock', { size: 13 }) }),
       h('div', { class: 'grow' }),
       this.creditControl.badge,
@@ -1025,13 +1060,13 @@ Object.assign(Room.prototype, {
   async endForAll() { if (await confirmDlg('End the session for everyone? Transcripts and summaries will be saved.', { ok: 'End session', danger: true })) this.send('end-meeting', {}); },
   async leave() {
     if (!(await confirmDlg('Leave this meeting? You will be disconnected from the call. You can rejoin while it is still active.', { ok: 'Leave meeting', danger: true }))) return;
-    if (this.recorder.state !== 'idle') { this.recorder.stop(); await new Promise((r) => setTimeout(r, 600)); }
+    if (this.recorder.state !== 'idle') { this.announceRecording(false); this.recorder.stop(); await new Promise((r) => setTimeout(r, 600)); }
     api('/api/leave', { method: 'POST', body: { code: this.code, participantId: this.me.id } }).catch(() => {});
     const s = roomsStore(); delete s[this.code]; localStorage.setItem('venue.rooms', JSON.stringify(s));
     this.destroy(); navigate(state.user ? '/dashboard' : '/'); setTimeout(() => maybeShowBanner('after-room'), 1200);
   },
   ended(m) {
-    if (this.recorder.state !== 'idle') this.recorder.stop();
+    if (this.recorder.state !== 'idle') { this.announceRecording(false); this.recorder.stop(); }
     const s = roomsStore(); delete s[this.code]; localStorage.setItem('venue.rooms', JSON.stringify(s));
     this.destroy();
     refreshCredits();
@@ -1225,7 +1260,8 @@ Object.assign(Room.prototype, {
     s.body.append(h('div', { class: 'tool-grid' },
       R.me.role === 'host' && R.paidEntry?.enabled && R.paidEntry.model !== 'usage' ? it('clock', 'Extend 15 minutes · 15 credits', 'wallet', () => R.extendPaidEntry()) : null,
       R.me.role === 'host' && !R.paidEntry?.enabled ? it('wallet', 'Switch to Paid Entry', 'wallet', () => R.enablePaidEntry()) : null,
-      it('captions', R.captioner.on ? 'Stop captions' : 'Captions', 'content', () => (R.captioner.on ? R.captioner.stop() : R.captioner.start(), R.changed())),
+      it('captions', R.showCaptions ? 'Hide captions overlay' : 'Show captions overlay', 'content', () => { R.setShowCaptions(!R.showCaptions); R.changed(); }),
+      R.isMod() && R.recorder.state !== 'idle' ? it('download', 'Stop & save recording', 'media', () => { R.announceRecording(false); R.recorder.stop(); }) : null,
       it('record', 'Record', 'media', () => R.panel.open('tools', 'record')),
       it('pip', 'Mini window', 'media', () => R.pip()),
       it('qr', 'Invite & QR', 'people', () => R.invite()),

@@ -55,7 +55,7 @@ export function checkLimit(file, limits) {
  * @param {object} [o.limits]   /api/config storage.limits
  * @param {object} [o.drafts]   object to persist drafts in; [o.draftKey]
  */
-export function pillComposer({ placeholder = 'Message', onSend, upload, voice = !!upload, dictate = false, onActivity, limits, drafts, draftKey, disabled = false, maxLength = 2000, suggest, accept = 'image/*,application/pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.tsv,.txt,.zip,audio/*,.mwb,application/x-mwb' } = {}) {
+export function pillComposer({ placeholder = 'Message', onSend, upload, voice = !!upload, dictate = false, dictateEnd = false, onActivity, limits, drafts, draftKey, disabled = false, maxLength = 2000, suggest, accept = 'image/*,application/pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.tsv,.txt,.zip,audio/*,.mwb,application/x-mwb' } = {}) {
   const ta = h('textarea', { rows: 1, placeholder: disabled ? 'Chat is turned off by the host' : placeholder, disabled: !!disabled, 'data-focus': '', enterkeyhint: 'send', maxlength: maxLength, 'aria-label': placeholder });
   if (drafts && draftKey) ta.value = drafts[draftKey] || '';
   let pending = null, busy = false;
@@ -108,7 +108,22 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
   ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
 
   // attachments ------------------------------------------------------------
-  const file = h('input', { type: 'file', hidden: true, accept });
+  // Create the file input in the composer's document at click time so the picker
+  // opens from a Picture-in-Picture window (an input built in the opener is ignored).
+  function pickFile() {
+    const doc = (pill && pill.ownerDocument) || document;
+    const inp = doc.createElement('input');
+    inp.type = 'file';
+    inp.accept = accept;
+    inp.hidden = true;
+    (doc.body || doc.documentElement).append(inp);
+    inp.addEventListener('change', () => {
+      const f = inp.files && inp.files[0];
+      inp.remove();
+      if (f) attachFile(f);
+    });
+    inp.click();
+  }
   async function attachFile(f, purpose = 'chat') {
     if (!upload) return;
     const board = isBoardFile(f);
@@ -132,7 +147,6 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
     } catch (e) { if (pending === mine) pending = null; toast(e.message || 'Upload failed', { icon: 'alert', group: 'admin', ms: 5000 }); }
     paintPrev(); paintAct();
   }
-  file.onchange = () => { const f = file.files[0]; file.value = ''; if (f) attachFile(f); };
   ta.addEventListener('paste', (e) => { const f = [...(e.clipboardData?.files || [])][0]; if (f && upload) { e.preventDefault(); attachFile(f); } });
 
   // voice notes ------------------------------------------------------------
@@ -164,10 +178,11 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
   act.onclick = () => { const m = act.dataset.mode; if (m === 'mic') startRec(); else if (m === 'stop') rec && rec.stop(); else send(); };
 
   let dictating = false;
-  const dictateBtn = dictate ? ib('mic', 'Voice typing', () => toggleDictate()) : null;
+  const dictateBtn = dictate ? ib('mic', 'Voice typing', () => toggleDictate(), dictateEnd ? 'dictate-end sm' : '') : null;
   function paintDictate() {
     if (!dictateBtn) return;
     dictateBtn.classList.toggle('on', dictating);
+    dictateBtn.classList.toggle('listening', dictating);
     dictateBtn.setAttribute('aria-pressed', String(dictating));
     dictateBtn.setAttribute('aria-label', dictating ? 'Stop voice typing' : 'Voice typing');
     dictateBtn.dataset.tip = dictating ? 'Stop voice typing' : 'Voice typing';
@@ -185,7 +200,7 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
     ta.value = ta.value.slice(0, s) + t + ta.value.slice(en); ta.selectionStart = ta.selectionEnd = s + t.length;
     ta.dispatchEvent(new Event('input')); ta.focus({ preventScroll: true });
   }
-  const pill = h('div', { class: 'wa-pill' }, emojiBtn, upload ? ib('paperclip', 'Attach photo or file', () => file.click()) : null, dictateBtn, ta, recBar, file);
+  const pill = h('div', { class: 'wa-pill' + (dictateEnd ? ' dictate-end' : '') }, emojiBtn, upload ? ib('paperclip', 'Attach photo or file', () => pickFile()) : null, dictateEnd ? null : dictateBtn, ta, recBar, dictateEnd ? dictateBtn : null);
   const el = h('div', { class: `wa${disabled ? ' off' : ''}` }, sugg, prev, h('div', { class: 'wa-row' }, pill, act));
   paintAct(); requestAnimationFrame(fit);
   const clear = () => { ta.value = ''; ta.dispatchEvent(new Event('input')); };

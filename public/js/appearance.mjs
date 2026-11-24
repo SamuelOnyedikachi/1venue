@@ -40,18 +40,7 @@ export function accentButtonColors(accent, accent2) {
   return { primary: toHex(first), secondary: toHex(second) };
 }
 
-export function accentInk(accent, accent2) {
-  const primary = parseHex(accent);
-  const secondary = parseHex(accent2);
-  if (!primary || !secondary) return '#fff';
-
-  const darkInk = luminance([15, 23, 42]);
-  const backgrounds = [
-    luminance(primary),
-    luminance(secondary),
-    luminance(primary.map((channel, i) => (channel * 60 + secondary[i] * 40) / 100)),
-  ];
-  const whiteContrast = Math.min(...backgrounds.map((background) => contrast(1, background)));
-  const darkContrast = Math.min(...backgrounds.map((background) => contrast(darkInk, background)));
-  return darkContrast > whiteContrast ? '#0f172a' : '#fff';
+/** Content on a theme/accent background is always white. */
+export function accentInk(_accent, _accent2) {
+  return '#fff';
 }

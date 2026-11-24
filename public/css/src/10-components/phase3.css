@@ -40,8 +40,11 @@
   -webkit-overflow-scrolling: touch;
 }
 .app-pip-search { display: flex; align-items: center; gap: .4rem; flex: none; padding: .4rem .55rem; border-bottom: 1px solid var(--line); background: var(--s1); }
-.app-pip-search .i { color: var(--muted); flex: none; }
-.app-pip-search-in { flex: 1; min-width: 0; }
+.app-pip-search-box { display: flex; align-items: center; gap: .4rem; flex: 1; min-width: 0; height: 36px; padding: 0 .7rem; border: 1px solid var(--line); border-radius: 999px; background: var(--bg, var(--s1)); }
+.app-pip-search-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.app-pip-search-box .i { color: var(--muted); flex: none; }
+.app-pip-search-in, .app-pip-search-box .input, .app-pip-search-box .app-pip-search-in { flex: 1; min-width: 0; border: 0; background: transparent; box-shadow: none; height: 34px; padding: 0; }
+.app-pip-search-in:focus, .app-pip-search-box .app-pip-search-in:focus { box-shadow: none; }
 .app-pip-sec { padding: .55rem .8rem .2rem; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
 .app-pip-row { display: flex; align-items: center; gap: .55rem; width: 100%; text-align: left; border: 0; background: transparent; color: inherit; padding: .65rem .8rem; border-bottom: 1px solid var(--line); cursor: pointer; }
 .app-pip-row:hover { background: var(--s2); }
@@ -62,19 +65,38 @@
 .app-pip-pin { display: inline-flex; color: var(--muted); opacity: .8; }
 .app-pip-continue { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .45rem; padding: .5rem .7rem; border-top: 1px solid var(--line); background: var(--s1); font-size: .8rem; z-index: 20; }
 .app-pip-msgs { padding: .55rem .7rem .4rem; display: flex; flex-direction: column; gap: .35rem; }
-.app-pip-msg { display: flex; align-items: flex-end; gap: .35rem; max-width: 92%; align-self: flex-start; }
+.app-pip-msg { display: flex; align-items: flex-end; gap: .35rem; max-width: 92%; align-self: flex-start; position: relative; }
 .app-pip-msg.mine { align-self: flex-end; }
+.app-pip-col { display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
 .app-pip-av-gap { width: 28px; flex: none; }
 .app-pip-bubble { padding: .4rem .65rem; border-radius: 14px; background: var(--s1); border: 1px solid var(--line); overflow-wrap: anywhere; min-width: 0; }
-.app-pip-msg.mine .app-pip-bubble { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.app-pip-msg.mine .app-pip-bubble, .app-pip-msg.mine .app-pip-bubble a, .app-pip-msg.mine .msg-quote, .app-pip-msg.mine .msg-quote b { color: #fff; }
+.app-pip-msg.mine .app-pip-bubble { background: var(--accent); color: #fff; border-color: transparent; }
+.app-pip-msg .msg-quote { display: flex; flex-direction: column; align-items: flex-start; gap: .05rem; width: 100%; min-width: 0; margin: .05rem 0 .3rem; padding: .3rem .55rem; border-radius: 10px; border: 0; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); color: inherit; text-align: left; font: inherit; font-size: .8rem; line-height: 1.3; cursor: pointer; }
+.app-pip-msg .msg-quote b { color: var(--accent); font-size: .74rem; }
+.app-pip-msg.mine .msg-quote { border-left-color: #fff; background: color-mix(in srgb, #fff 16%, transparent); }
+.app-pip-hover { display: flex; gap: .1rem; align-self: center; padding: .15rem; border-radius: var(--r-pill, 999px); background: var(--s1); border: 1px solid var(--line); box-shadow: var(--shadow-1); opacity: 0; transform: scale(.92); transition: opacity .12s, transform .12s; pointer-events: none; }
+.app-pip-msg:hover .app-pip-hover, .app-pip-hover:focus-within { opacity: 1; transform: none; pointer-events: auto; }
+.app-pip-hover .msg-hb, .app-pip-hover .icon-btn { width: 28px; height: 28px; }
+.app-pip-msg.swipe-ready .app-pip-col { }
 .app-pip-who { display: flex; align-items: center; gap: .2rem; font-size: .75rem; margin-bottom: .1rem; }
-.app-pip-att { display: block; max-width: 100%; border-radius: 10px; margin-top: .25rem; }
-.app-pip-voice { width: 100%; margin-top: .25rem; }
+.app-pip-att-link { display: block; max-width: 100%; }
+.app-pip-att { display: block; max-width: min(280px, 100%); border-radius: 10px; margin-top: .25rem; cursor: zoom-in; }
+.app-pip-voice-wrap { display: flex; flex-direction: column; margin-top: .25rem; width: min(230px, 100%); }
+.app-pip-voice { display: block; width: 100%; height: 40px; max-width: 100%; }
+.app-pip-file { display: flex; align-items: center; gap: .45rem; padding: .5rem .65rem; border-radius: 12px; background: color-mix(in srgb, currentColor 9%, transparent); margin-top: .25rem; color: inherit; text-decoration: none; min-width: 140px; max-width: 100%; }
+.app-pip-file .i { flex: none; }
+.app-pip-file span { display: flex; flex-direction: column; min-width: 0; }
+.app-pip-replybar { display: flex; align-items: center; gap: .35rem; width: 100%; padding: .15rem .15rem .35rem; }
+.app-pip-replybar[hidden] { display: none; }
+.app-pip-replybar .msg-quote { flex: 1; margin: 0; cursor: default; }
+.app-pip-foot { flex-wrap: wrap; }
+.app-pip-foot .app-pip-replybar { flex: 1 1 100%; }
 .app-pip-sys { align-self: center; font-size: .75rem; color: var(--muted); padding: .2rem .4rem; }
 .app-pip-jump { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 14px; }
 .app-pip-typing { flex: none; padding: .15rem .8rem .25rem; font-size: .76rem; color: var(--accent); font-style: italic; }
 .app-pip-typing[hidden] { display: none; }
-.app-pip-foot { flex: none; display: flex; gap: .4rem; align-items: flex-end; padding: .4rem .5rem calc(.4rem + var(--safe-b, 0px)); border-top: 1px solid var(--line); background: var(--s1); }
+.app-pip-foot { flex: none; display: flex; flex-wrap: wrap; gap: .4rem; align-items: flex-end; padding: .4rem .5rem calc(.4rem + var(--safe-b, 0px)); border-top: 1px solid var(--line); background: var(--s1); }
 .app-pip-foot .wa { flex: 1; min-width: 0; }
 .app-pip-foot .wa-pill textarea { max-height: 80px; min-height: 36px; font-size: .9rem; padding: .4rem .25rem; }
 .app-pip-sugg { display: flex; flex-direction: column; }

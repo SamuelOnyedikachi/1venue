@@ -25,8 +25,18 @@ const captionsPlugin = {
       meeting.transcribe = !!msg.on;
       broadcast(meetingCode, { type: 'transcript-state', on: meeting.transcribe, historyId: meeting.historyId });
     });
+    ctx.onWs('local-recording', ({ msg, participantId: pid, meeting, meetingCode }) => {
+      const p = active(meeting, pid);
+      if (!p || (p.role !== 'host' && p.role !== 'cohost')) return;
+      meeting.localRecorders = meeting.localRecorders || new Set();
+      if (msg.on) meeting.localRecorders.add(pid);
+      else meeting.localRecorders.delete(pid);
+      broadcast(meetingCode, { type: 'local-recording', on: meeting.localRecorders.size > 0, count: meeting.localRecorders.size, participantId: pid });
+    });
     ctx.onRegister((ws, meeting) => {
       try { ws.send(JSON.stringify({ type: 'transcript-state', on: meeting.transcribe !== false, historyId: meeting.historyId })); } catch (_) {}
+      const n = meeting.localRecorders ? meeting.localRecorders.size : 0;
+      if (n) { try { ws.send(JSON.stringify({ type: 'local-recording', on: true, count: n })); } catch (_) {} }
     });
   },
 };

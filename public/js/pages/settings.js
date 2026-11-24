@@ -1,6 +1,6 @@
 import { icon } from '../icons.js';
 import { h, esc, toast, toastErr, api } from '../ui.js';
-import { state, setPrefs, ACCENTS, FONT_SIZES, loginUrl } from '../app.js';
+import { state, setPrefs, setExtraPref, extraPref, ACCENTS, FONT_SIZES, loginUrl } from '../app.js';
 import { promptInstall, canInstall } from '../pwa.js';
 import { translationSelect } from './bible.js';
 import { accountCard, deleteAccountCard } from './account.js';
@@ -46,7 +46,8 @@ export async function mount(view) {
       card('Voice & captions', 'captions',
         row('mic', 'ai', 'Voice typing', 'A small mic appears when you hover or tap into a text box. Tap it to dictate, tap again to stop; you can keep typing while it listens (Whisper on Replicate, or your browser’s speech service). Never in password, email, phone or code fields. This device only.', toggle(() => voicePrefs.enabled, (v) => { voicePrefs.set(v); toast(v ? 'Voice typing on' : 'Voice typing off', { icon: v ? 'mic' : 'micOff', group: 'ai' }); }), 'voice'),
         row('captions', 'ai', 'Speech language', 'A hint for voice typing and captions. Auto-detect works for most people; pick one if words come out in the wrong language.', capSel, 'captions'),
-        row('download', 'content', 'Recordings', 'Recordings stay on your device - they are never uploaded', h('span', { class: 'chip' }, 'Local only'))),
+        row('captions', 'ai', 'Show live captions in meetings', 'Captions are transcribed automatically as soon as you join. Turn this on to show them over the stage. They always appear in the captions side panel when that is open.', toggle(() => extraPref('showMeetingCaptions', false), (v) => { setExtraPref('showMeetingCaptions', v); toast(v ? 'Live captions will show on stage' : 'Live captions stay in the side panel only', { icon: 'captions', group: 'ai' }); }), 'live-captions'),
+        row('download', 'content', 'Auto-record meetings', 'Host and co-hosts each record locally on their device (for redundancy) and get a .webm file when they leave. Never uploaded. Everyone sees a single Recording notice.', toggle(() => extraPref('autoRecordMeetings', true), (v) => { setExtraPref('autoRecordMeetings', v); toast(v ? 'Meetings will auto-record on this device when you host or co-host' : 'Auto-record is off on this device', { icon: 'download', group: 'content' }); }), 'auto-record')),
       card('App', 'install',
         row('install', 'nav', 'Install 1venue', canInstall() ? 'Full-screen, faster, works offline' : 'Already installed or not supported in this browser', h('button', { class: 'btn sm', onclick: promptInstall }, 'Install')),
         row('keyboard', 'nav', 'Command bar', 'Press / or Ctrl K anywhere - every feature and setting is searchable', h('span', { class: 'kbd' }, '/'))),

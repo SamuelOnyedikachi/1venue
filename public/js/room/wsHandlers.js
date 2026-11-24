@@ -27,6 +27,7 @@ export function handle(R, m) {
     case 'force-stop-share': R.media.setShare(false).catch(() => {}); toast('The host stopped your screen share', { icon: 'screenOff', group: 'media' }); break;
     case 'share-started': case 'share-stopped': roster(); break;
     case 'removed': R.kicked(m); return;
+    case 'local-recording': R.onLocalRecording?.(m); return;
     case 'meeting-ended': R.ended(m); return;
     case 'toast': toast(m.message, { icon: 'info' }); return;
     case 'error': if (m.code === 'content-rejected') { R._presentPending = false; reportClientError('present', new Error(m.error || 'Share rejected'), { step: 'start presenting' }, { silent: true }); } toast(m.error || 'Something went wrong', { icon: 'alert' }); return;

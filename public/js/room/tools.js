@@ -509,16 +509,18 @@ export function buildTools(R) {
     record() {
       const box = h('div', { class: 'stack' });
       const mine = R.recorder.state;
-      box.append(h('div', { class: 'tool-hero', 'data-group': 'media' }, h('b', null, 'Recordings never leave your device'), note('We capture this tab with everyone’s audio and save a .webm file straight to your computer or phone.')));
+      box.append(h('div', { class: 'tool-hero', 'data-group': 'media' }, h('b', null, 'Recordings never leave your device'), note('The host and every co-host can each auto-record locally so a copy is saved even if one tab is lost. A single Recording notice is shown to everyone. Files stay on your device.')));
       if (R.me.role === 'host') {
         const rs = R.recording;
         box.append(h('div', { class: 'sec-sub' }, 'Session recording (everyone is notified)'),
           !rs || rs.status === 'stopped' ? btn('record', 'Start recording', () => R.send('start-recording', { audio: true, video: true, screenShare: true, chat: true }), { group: 'media', cls: 'primary block' })
             : h('div', { class: 'row gap-s' }, rs.status === 'paused' ? btn('play', 'Resume', () => R.send('resume-recording', {}), { group: 'media' }) : btn('pause', 'Pause', () => R.send('pause-recording', {}), { group: 'media' }), btn('stop', 'Stop & save', () => R.send('stop-recording', {}), { cls: 'danger grow' })));
       } else if (R.recording && R.recording.status !== 'stopped') box.append(h('div', { class: 'shade', 'data-group': 'media' }, h('b', null, '● The host is recording this session')));
-      box.append(h('div', { class: 'sec-sub' }, 'Personal recording'),
-        mine === 'idle' ? h('div', { class: 'row gap-s wrap' }, btn('video', 'Record screen + audio', () => R.recorder.start({ video: true, name: R.code }).catch(toastErr), { group: 'media' }), btn('mic', 'Audio only', () => R.recorder.start({ video: false, name: R.code + '-audio' }).catch(toastErr), { group: 'media' }))
-          : h('div', { class: 'row gap-s' }, h('span', { class: 'rec-dot' }), h('span', { class: 'grow' }, mine === 'paused' ? 'Paused' : 'Recording ' + fmtDur((Date.now() - R.recorder.started) / 1000)), mine === 'paused' ? btn('play', '', () => R.recorder.resume()) : btn('pause', '', () => R.recorder.pause()), btn('stop', 'Save', () => R.recorder.stop(), { cls: 'danger' })));
+      box.append(h('div', { class: 'sec-sub' }, 'On this device'),
+        mine === 'idle' ? h('div', { class: 'col', style: { gap: '.45rem' } },
+          R.isMod() ? note('Auto-record is off in Settings, or it could not start. You can still record manually.') : null,
+          h('div', { class: 'row gap-s wrap' }, btn('video', 'Record screen + audio', () => R.recorder.start({ video: true, name: R.code }).catch(toastErr), { group: 'media' }), btn('mic', 'Audio only', () => R.recorder.start({ video: false, name: R.code + '-audio' }).catch(toastErr), { group: 'media' })))
+          : h('div', { class: 'row gap-s wrap' }, h('span', { class: 'rec-dot' }), h('span', { class: 'grow' }, mine === 'paused' ? 'Paused' : 'Recording ' + fmtDur((Date.now() - R.recorder.started) / 1000)), mine === 'paused' ? btn('play', '', () => R.recorder.resume()) : btn('pause', '', () => R.recorder.pause()), btn('stop', 'Stop & save', () => { R.announceRecording(false); R.recorder.stop(); }, { cls: 'danger' })));
       return box;
     },
     breakouts() {

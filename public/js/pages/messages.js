@@ -391,7 +391,15 @@ export async function mount(view, params) {
       out.push(msgEl(m, prev)); prev = m;
     }
     put(msgsEl, ...out);
-    if (stick) msgsEl.scrollTop = msgsEl.scrollHeight;
+    if (stick) {
+      const go = () => { msgsEl.scrollTop = msgsEl.scrollHeight; };
+      go();
+      requestAnimationFrame(() => { go(); requestAnimationFrame(go); });
+      msgsEl.querySelectorAll('img, audio, video').forEach((n) => {
+        n.addEventListener('load', go, { once: true });
+        n.addEventListener('loadedmetadata', go, { once: true });
+      });
+    }
   }
   async function older() {
     if (S.loadingOlder || !S.msgs.length) return;

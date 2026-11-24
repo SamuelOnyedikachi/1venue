@@ -204,3 +204,33 @@
 .who-name .app-pip-pin {
   flex: none;
 }
+
+/* When the theme/accent colour is a background, content is always white (text, icons, SVG). */
+.btn.primary, .btn.primary a, .au-btn.au-primary, .au-primary,
+.msg-tab.on, .page-messages .msg-tab.on,
+.page-messages .msg-row.mine .msg-bubble,
+.page-messages .msg-row.mine .msg-bubble a,
+.page-messages .msg-row.mine .msg-meta,
+.page-messages .msg-row.mine .msg-ticks,
+.page-messages .msg-row.mine .msg-quote,
+.page-messages .msg-row.mine .msg-file,
+.app-pip-msg.mine .app-pip-bubble,
+.app-pip-msg.mine .app-pip-bubble a,
+.app-pip-msg.mine .app-pip-file,
+.app-pip-count,
+.msg-count, .nav-badge,
+.pill.rec, .rh-rec,
+.notify-ic,
+.mat-qa-q, .mat-qa-send, .mini-row.mine .mini-bubble, .mini-send,
+.verified-dot {
+  color: #fff;
+}
+.btn.primary svg, .au-btn.au-primary svg, .au-primary svg,
+.page-messages .msg-row.mine .msg-ticks svg,
+.page-messages .msg-row.mine .msg-meta svg,
+.notify-ic svg, .verified-dot svg,
+.app-pip-msg.mine .app-pip-bubble svg,
+.pill.rec svg, .rh-rec svg, .mat-qa-send svg, .mini-send svg {
+  color: #fff;
+  stroke: currentColor;
+}
