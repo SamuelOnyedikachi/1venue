@@ -29,6 +29,8 @@ module.exports = function routes(route, kit) {
   // ------------------------------------------------------------ materials (preload decks)
   route('GET', '/api/materials', async (ctx) => {
     const u = await requireUser(ctx.req, ctx.res);
+    const filter = String(ctx.url.searchParams.get('filter') || '');
+    if (filter === 'purchased') return { materials: await data.listPurchased(u.id) };
     return { materials: await data.listMaterials(u.id) };
   });
   route('POST', '/api/materials', async (ctx) => {

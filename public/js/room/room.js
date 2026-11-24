@@ -19,6 +19,7 @@ import { setRoomBridge, roomMicChanged } from '../voice.js';
 import { fmtCode, wantsCreate } from './intent.js';
 import { surahCommands, loadSurahs, looksLikeQuran } from '../quran-cmd.js';
 import { pageApi, bindMediaSession, release as releaseSession, syncChrome, startAutoPip } from './session.js';
+import { openGiftSheet } from '../gift.js';
 
 export const isRoom = true;
 const roomsStore = () => { try { return JSON.parse(localStorage.getItem('venue.rooms')) || {}; } catch { return {}; } };
@@ -1284,6 +1285,7 @@ Object.assign(Room.prototype, {
       { id: 'r-breakouts', label: 'Breakout rooms', icon: 'split', group: 'people', keywords: 'breakout groups rooms split', run: tool('breakouts') },
       { id: 'r-ringall', label: 'Ring everyone', icon: 'bellRing', group: 'people', when: mod, keywords: 'ring call notify alert', run: () => R.send('ring-all', {}) },
       { id: 'r-transcript', label: 'Save transcript for summary', icon: 'fileText', group: 'content', when: mod, active: () => R.transcribe, keywords: 'transcript save summary minutes notes', run: () => R.send('transcript-toggle', { on: !R.transcribe }) },
+      { id: 'r-gift', label: 'Send a gift', short: 'Gift', icon: 'heart', group: 'engage', when: () => R.me && R.me.role !== 'host', keywords: 'donate tip support host gift credits thank', run: () => openGiftSheet({ eventId: (R.event && R.event.id), meetingCode: R.code }) },
       { id: 'r-end', label: 'End session for everyone', icon: 'phoneOff', group: 'danger', when: host, keywords: 'end close finish stop meeting', run: () => R.endForAll() },
     ];
     registerCommands('room', cmds);
@@ -1315,6 +1317,7 @@ Object.assign(Room.prototype, {
       R.me.role === 'host' && R.paidEntry?.enabled && R.paidEntry.model !== 'usage' ? it('clock', 'Extend 15 minutes · 15 credits', 'wallet', () => R.extendPaidEntry()) : null,
       R.me.role === 'host' && !R.paidEntry?.enabled ? it('wallet', 'Switch to Paid Entry', 'wallet', () => R.enablePaidEntry()) : null,
       it('captions', R.showCaptions ? 'Hide captions overlay' : 'Show captions overlay', 'content', () => { R.setShowCaptions(!R.showCaptions); R.changed(); }),
+      R.me.role !== 'host' ? it('heart', 'Send a gift', 'wallet', () => openGiftSheet({ eventId: (R.event && R.event.id), meetingCode: R.code })) : null,
       R.isMod() && R.recorder.state !== 'idle' ? it('download', 'Stop & save recording', 'media', () => { R.announceRecording(false); R.recorder.stop(); }) : null,
       it('record', 'Record', 'media', () => R.panel.open('tools', 'record')),
       it('pip', 'Pop out', 'media', () => R.popOutMeeting()),

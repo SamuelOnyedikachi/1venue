@@ -7,15 +7,19 @@ const { describe, it, test } = require('node:test');
 const root = path.join(__dirname, '..');
 const read = (p) => readFileSync(path.join(root, p), 'utf8');
 const skip = process.env.DB_DRIVER !== 'sqlite' && !process.env.DATABASE_URL ? 'set DATABASE_URL or DB_DRIVER=sqlite' : false;
+if (process.env.DB_DRIVER === 'sqlite') require('./helpers/server');
 
 describe('out18 gift note, materials, certs, perks, pip', () => {
   it('removes the gift helper note and keeps currency affixes', () => {
     const ev = read('public/js/pages/event.js');
-    assert.match(ev, /gift-cur-prefix/);
-    assert.match(ev, /gift-cur-suffix/);
+    const gift = read('public/js/gift.js');
+    assert.match(gift, /gift-cur-prefix/);
+    assert.match(gift, /gift-cur-suffix/);
+    assert.match(ev, /openGiftSheet/);
     assert.doesNotMatch(ev, /real money/);
     assert.doesNotMatch(ev, /not wallet credits/);
     assert.doesNotMatch(ev, /processing fee is added at checkout/);
+    assert.doesNotMatch(gift, /real money/);
   });
 
   it('suggests VIP perks from name and price rank', () => {
@@ -74,9 +78,9 @@ describe('out18 gift note, materials, certs, perks, pip', () => {
   });
 
   it('bumps the cache versions', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v82-2026-11-23'/);
-    assert.match(read('public/index.html'), /app\.css\?v=68/);
-    assert.match(read('public/index.html'), /app\.js\?v=68/);
+    assert.match(read('public/sw.js'), /VERSION = 'v83-2026-11-23'/);
+    assert.match(read('public/index.html'), /app\.css\?v=69/);
+    assert.match(read('public/index.html'), /app\.js\?v=69/);
   });
 });
 

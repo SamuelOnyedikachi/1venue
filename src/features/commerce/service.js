@@ -11,12 +11,13 @@ const { q, tx, one, many } = require('../../core/db');
 const plans = require('../../lib/plans');
 const gateway = require('../wallet/paystack');
 const perks = require('./perks');
+const { UNITS_PER_CREDIT, PRICE_PER_CREDIT_KOBO } = require('../wallet/rules');
 const fail = (status, message, extra) => Object.assign(new Error(message), { status, expose: true }, extra || {});
 const asJson = (v) => { if (!v) return {}; if (typeof v === 'object') return v; try { return JSON.parse(v); } catch (_) { return {}; } };
 
 const paymentOut = (p) => ({ reference: p.reference, kind: p.kind, eventId: p.event_id ? Number(p.event_id) : null, tierId: p.tier_id ? Number(p.tier_id) : null, promotionId: p.promotion_id ? Number(p.promotion_id) : null,
   quantity: Number(p.quantity), priceKobo: Number(p.price_kobo), feeKobo: Number(p.fee_kobo || 0), subtotalKobo: Number(p.subtotal_kobo ?? p.price_kobo), processingFeeKobo: Number(p.processing_fee_kobo || 0), feePercent: p.fee_percent == null ? 0 : Number(p.fee_percent), displayCurrency: p.display_currency || p.currency || 'NGN', displayTotalMinor: p.display_total_minor == null ? Number(p.price_kobo) : Number(p.display_total_minor), status: p.status, refunded: p.refund_status === 'refunded', createdAt: p.created_at, paidAt: p.paid_at,
-  authorizationUrl: p.status === 'pending' ? p.authorization_url || null : null, error: p.last_error || null });
+  authorizationUrl: p.status === 'pending' ? p.authorization_url || null : null, error: p.last_error || null, materialId: Number((asJson(p.detail) || {}).materialId) || null });
 const getPayment = (ref) => one('SELECT * FROM commerce_payments WHERE reference=$1', [ref]);
 async function settings() { return plans.platform(await plans.getSettings()); }
 
@@ -218,6 +219,97 @@ async function donate(user, eventId, amountKobo) {
   const split = plans.feeSplit(amount, p.feeBps);
   return initialize(user, { kind: 'donation', hostUserId: ev.host_user_id, eventId, priceKobo: amount, feeBps: p.feeBps, feeKobo: split.fee }, `/e/${ev.slug}`);
 }
+
+function guestName(user) {
+  return String(user?.name || user?.username || 'A guest').trim() || 'A guest';
+}
+
+function announceGift({ meetingCode, eventId, fromName, credits }) {
+  const text = credits
+    ? `${fromName} sent the host a gift of ${credits} credit${Number(credits) === 1 ? '' : 's'}. Thank you!`
+    : `${fromName} sent the host a gift. Thank you!`;
+  try {
+    const store = require('../../rooms/store');
+    let meeting = meetingCode ? store.getMeeting(meetingCode) : null;
+    if (!meeting && eventId) {
+      for (const m of store.allMeetings().values()) {
+        if (Number(m.eventId) === Number(eventId) && !m.ended) { meeting = m; break; }
+      }
+    }
+    if (!meeting || meeting.ended) return;
+    const chatMsg = { type: 'chat', id: 'gift-' + Date.now().toString(36), participantId: 'system', name: '1venue', text, mentions: [], at: Date.now(), system: true };
+    if (!Array.isArray(meeting.chatHistory)) meeting.chatHistory = [];
+    meeting.chatHistory.push(chatMsg);
+    if (meeting.chatHistory.length > 200) meeting.chatHistory = meeting.chatHistory.slice(-200);
+    store.broadcast(meeting.code, chatMsg);
+    const messages = require('../messages/service');
+    Promise.resolve(messages.persistRoomChat(meeting, meeting.code, { senderId: 'system', senderName: '1venue', senderUserId: null, text }))
+      .then((row) => { if (row && messages.onRoomChat) return messages.onRoomChat(row); })
+      .catch(() => {});
+  } catch (_) { /* meeting may not be running */ }
+}
+
+function announceGiftFromPayment(p) {
+  Promise.resolve(one('SELECT name, username FROM users WHERE id=$1', [p.user_id]))
+    .then((u) => announceGift({ eventId: p.event_id, fromName: guestName(u) }))
+    .catch(() => {});
+}
+
+function minCreditsForDonation(minKobo) {
+  return Math.max(1, Math.ceil(Number(minKobo || 0) / PRICE_PER_CREDIT_KOBO));
+}
+
+async function resolveGiftHost({ eventId, meetingCode }) {
+  if (eventId) {
+    const ev = await one('SELECT * FROM events WHERE id=$1', [eventId]);
+    if (!ev || ['draft', 'cancelled'].includes(ev.status)) throw fail(404, 'Event not found');
+    if (ev.meeting_access_mode === 'paid_entry') throw fail(409, 'Gifts are not available for paid-entry meetings');
+    const ent = await plans.entitlements(ev.host_user_id);
+    if (!ent.features.ticketing) throw fail(404, 'Donations are not available for this event');
+    return { hostUserId: ev.host_user_id, eventId: ev.id, ev };
+  }
+  if (!meetingCode) throw fail(400, 'Choose an event or meeting');
+  const store = require('../../rooms/store');
+  const meeting = store.getMeeting(meetingCode);
+  if (!meeting || meeting.ended) throw fail(404, 'This meeting has ended');
+  const hostUserId = meeting.hostUserId || meeting.ownerUserId || meeting.limits?.ownerUserId;
+  if (!hostUserId) throw fail(400, 'This meeting has no host to gift');
+  if (meeting.eventId) return resolveGiftHost({ eventId: Number(meeting.eventId), meetingCode });
+  return { hostUserId, eventId: null, meeting };
+}
+
+async function donateCredits(user, { eventId, meetingCode, credits } = {}) {
+  if (!user) throw fail(401, 'Sign in to send a gift');
+  const n = Math.round(Number(credits));
+  if (!Number.isInteger(n) || n < 1 || n > 100000) throw fail(400, 'Enter a whole number of credits');
+  const target = await resolveGiftHost({ eventId, meetingCode });
+  if (Number(target.hostUserId) === Number(user.id)) throw fail(400, 'You cannot send a gift to yourself');
+  const p = await settings();
+  const minCredits = minCreditsForDonation(p.donationMinKobo);
+  if (n < minCredits) throw fail(400, `Gifts start at ${minCredits} credit${minCredits === 1 ? '' : 's'}`);
+  const guestUnits = n * UNITS_PER_CREDIT;
+  const splitUnits = plans.feeSplit(guestUnits, p.feeBps);
+  const splitKobo = plans.feeSplit(n * PRICE_PER_CREDIT_KOBO, p.feeBps);
+  const out = await tx(async (c) => {
+    const guest = (await c.query('SELECT balance_units FROM credit_wallets WHERE user_id=$1 FOR UPDATE', [user.id])).rows[0];
+    const have = Number(guest?.balance_units || 0);
+    if (have < guestUnits) throw fail(402, 'Not enough credits');
+    const guestAfter = have - guestUnits;
+    await c.query('UPDATE credit_wallets SET balance_units=$2, updated_at=NOW() WHERE user_id=$1', [user.id, guestAfter]);
+    await c.query("INSERT INTO credit_ledger (user_id, kind, delta_units, balance_after_units) VALUES ($1,'gift',$2,$3)", [user.id, -guestUnits, guestAfter]);
+    await c.query('INSERT INTO credit_wallets(user_id) VALUES($1) ON CONFLICT DO NOTHING', [target.hostUserId]);
+    const host = (await c.query('SELECT balance_units FROM credit_wallets WHERE user_id=$1 FOR UPDATE', [target.hostUserId])).rows[0];
+    const hostAfter = Number(host?.balance_units || 0) + splitUnits.net;
+    await c.query('UPDATE credit_wallets SET balance_units=$2, updated_at=NOW() WHERE user_id=$1', [target.hostUserId, hostAfter]);
+    await c.query("INSERT INTO credit_ledger (user_id, kind, delta_units, balance_after_units) VALUES ($1,'gift',$2,$3)", [target.hostUserId, splitUnits.net, hostAfter]);
+    await c.query(`INSERT INTO host_ledger (host_user_id, kind, payment_id, gross_kobo, fee_kobo, net_kobo) VALUES ($1,'donation',NULL,$2,$3,$4)`,
+      [target.hostUserId, splitKobo.gross, splitKobo.fee, splitKobo.net]);
+    return { guestAfter };
+  });
+  announceGift({ meetingCode, eventId: target.eventId, fromName: guestName(user), credits: n });
+  return { ok: true, credits: n, netCredits: +(splitUnits.net / UNITS_PER_CREDIT).toFixed(2), feeCredits: +(splitUnits.fee / UNITS_PER_CREDIT).toFixed(2), balance: Math.round(out.guestAfter / UNITS_PER_CREDIT) };
+}
+
 /** Room join gate: events with ticket tiers need a valid ticket (hosts, speakers and venue managers skip). */
 async function ticketFor(eventId, userId) {
   if (!userId) return null;
@@ -323,7 +415,9 @@ async function settle(purchase, verified) {
     }
     return paid;
   });
-  return paymentOut(out);
+  const paidOut = paymentOut(out);
+  if (paidOut.status === 'paid' && paidOut.kind === 'donation') announceGiftFromPayment(out);
+  return paidOut;
 }
 
 // ---------------------------------------------------------------- earnings and payouts
@@ -431,5 +525,5 @@ async function adminPayments({ status, kind } = {}) {
 }
 async function myPayments(userId) { return (await many('SELECT * FROM commerce_payments WHERE user_id=$1 ORDER BY id DESC LIMIT 50', [userId])).map(paymentOut); }
 
-module.exports = { paymentOut, getPayment, confirm, settle, validVerified, quotePromotion, startPromotion, myPromotions, pausePromotion, reviewPromotion, tiers, saveTiers, publicTickets, getTicket, donate, canJoinEvent, ticketFor, myTickets,
-  balance, earnings, requestPayout, backfillPayoutBanks, decidePayout, listPayouts, markRefunded, adminPayments, myPayments };
+module.exports = { paymentOut, getPayment, confirm, settle, validVerified, quotePromotion, startPromotion, myPromotions, pausePromotion, reviewPromotion, tiers, saveTiers, publicTickets, getTicket, donate, donateCredits, canJoinEvent, ticketFor, myTickets,
+  balance, earnings, requestPayout, backfillPayoutBanks, decidePayout, listPayouts, markRefunded, adminPayments, myPayments, initialize };

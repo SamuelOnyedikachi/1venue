@@ -11,7 +11,8 @@
  * Buyers:
  *   GET  /api/events/:id/tickets            tiers, my tickets, donations on/off
  *   POST /api/events/:id/tickets { tierId, quantity }   free tier = instant; paid = Paystack checkout
- *   POST /api/events/:id/donate  { amountKobo }
+ *   POST /api/events/:id/donate  { amountKobo } or { method: 'credits', credits }
+ *   POST /api/meetings/:code/donate  { method: 'credits', credits }
  *   GET  /api/commerce/payments             my purchases      POST /api/commerce/payments/:ref/verify
  * Admin:
  *   GET /api/admin/commerce/payments?status&kind   POST /api/admin/commerce/payments/:ref/refund { note }
@@ -45,7 +46,19 @@ module.exports = function routes(route, { requireUser, getAuthUser, httpError, r
     const b = await ctx.body();
     return { $status: 201, $body: await svc.getTicket(u, int(id), { tierId: int(b.tierId), quantity: b.quantity }) };
   });
-  route('POST', '/api/events/(\\d+)/donate', async (ctx, [id]) => { const u = await requireUser(ctx.req, ctx.res); limited(u); return { $status: 201, $body: await svc.donate(u, int(id), (await ctx.body()).amountKobo) }; });
+  route('POST', '/api/events/(\\d+)/donate', async (ctx, [id]) => {
+    const u = await requireUser(ctx.req, ctx.res); limited(u);
+    const b = await ctx.body();
+    if (b.method === 'credits' || b.credits) return { $status: 201, $body: await svc.donateCredits(u, { eventId: int(id), credits: b.credits, meetingCode: b.meetingCode }) };
+    return { $status: 201, $body: await svc.donate(u, int(id), b.amountKobo) };
+  });
+  route('POST', '/api/meetings/([A-Za-z0-9]{4,16})/donate', async (ctx, [code]) => {
+    const u = await requireUser(ctx.req, ctx.res); limited(u);
+    const b = await ctx.body();
+    if (b.method === 'credits' || b.credits) return { $status: 201, $body: await svc.donateCredits(u, { meetingCode: code, credits: b.credits, eventId: b.eventId }) };
+    if (b.eventId) return { $status: 201, $body: await svc.donate(u, int(b.eventId), b.amountKobo) };
+    throw httpError(400, 'Card gifts need an event page. Send credits instead, or open the event.');
+  });
   route('GET', '/api/commerce/payments', async (ctx) => ({ payments: await svc.myPayments((await requireUser(ctx.req, ctx.res)).id) }));
   route('POST', '/api/commerce/payments/([A-Za-z0-9-]{1,80})/verify', async (ctx, [ref]) => {
     const u = await requireUser(ctx.req, ctx.res);

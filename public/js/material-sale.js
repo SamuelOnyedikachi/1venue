@@ -2,6 +2,7 @@
 import { h, api, toast, toastErr, sheet } from './ui.js';
 import { fmtMoney } from './money.js';
 import { icon } from './icons.js';
+import { navigate } from './app.js';
 
 export function priceLabel(m) {
   if (!m || !m.forSale || !m.priceKobo) return '';
@@ -34,7 +35,7 @@ export function saleEditor(m, { onSaved } = {}) {
     h('button', { class: 'btn sm', type: 'button', onclick: save }, 'Save sale'));
 }
 
-export async function openBuySheet(m, { eventId, meetingCode, returnPath } = {}) {
+export async function openBuySheet(m, { eventId, meetingCode, returnPath, onBought } = {}) {
   const s = sheet({ title: m.title || 'Buy material', icon: 'ticket', group: 'content' });
   const status = h('div', { class: 'tiny muted' }, 'Loading price…');
   s.body.append(status);
@@ -59,14 +60,14 @@ export async function openBuySheet(m, { eventId, meetingCode, returnPath } = {})
         else toast('Could not start checkout', { icon: 'alert' });
         return;
       }
-      toast('You now have this material', { icon: 'check' });
-      s.close();
       m.purchased = true; m.locked = false;
+      toast('You now have this material', { icon: 'check', action: { label: 'Open', run: () => navigate('/materials/' + m.id) } });
+      s.close();
+      onBought && onBought(m);
     } catch (e) { toastErr(e); }
   };
   s.body.replaceChildren(
     pay,
-    h('div', { class: 'tiny muted' }, `The platform keeps ${((q.feeBps || 2000) / 100).toFixed(0)}%. The rest goes to the host.`),
     h('div', { class: 'col', style: { gap: '.5rem', marginTop: '.6rem' } },
       h('button', { class: 'btn primary block', type: 'button', onclick: () => go('paystack'), html: icon('creditCard', { size: 16 }) + ' Pay with card' }),
       h('button', { class: 'btn block', type: 'button', onclick: () => go('credits') }, `Pay with ${q.credits} credit${q.credits === 1 ? '' : 's'}`))

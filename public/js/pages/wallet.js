@@ -106,7 +106,9 @@ export async function mount(view) {
             : entry.type === "entry" ? (entry.meetingName || "Paid meeting entry")
               : entry.type === "entry_refund" ? (entry.meetingName || "Paid meeting refund")
                 : entry.type === "extension" ? (entry.meetingName || "Meeting extension")
-                : entry.type === "earning_transfer" ? "Meeting earnings transfer" : "Credit purchase";
+                : entry.type === "earning_transfer" ? "Meeting earnings transfer"
+                : entry.type === "gift" ? (Number(entry.credits) >= 0 ? "Gift received" : "Gift sent")
+                : entry.type === "material" ? "Material purchase" : "Credit purchase";
       const detail =
         entry.type === "usage"
           ? `Meeting usage · ${timeAgo(entry.createdAt)}`
@@ -114,7 +116,9 @@ export async function mount(view) {
             : entry.type === "entry" ? `Paid meeting entry · ${timeAgo(entry.createdAt)}`
               : entry.type === "entry_refund" ? `Meeting refund · ${timeAgo(entry.createdAt)}`
                 : entry.type === "extension" ? `Added meeting time · ${timeAgo(entry.createdAt)}`
-                : entry.type === "earning_transfer" ? `Host earnings moved to spending wallet · ${timeAgo(entry.createdAt)}` : timeAgo(entry.createdAt);
+                : entry.type === "earning_transfer" ? `Host earnings moved to spending wallet · ${timeAgo(entry.createdAt)}`
+                : entry.type === "gift" ? (Number(entry.credits) >= 0 ? `Gift from a guest · ${timeAgo(entry.createdAt)}` : `Gift to the host · ${timeAgo(entry.createdAt)}`)
+                : entry.type === "material" ? `Material · ${timeAgo(entry.createdAt)}` : timeAgo(entry.createdAt);
       entries.append(
         h(
           "div",
@@ -389,7 +393,7 @@ export async function mount(view) {
     ),
     h("section", { class: "card pad" },
       h("h2", null, "Meeting earnings"),
-      h("p", { class: "small muted" }, "Paid-entry meeting earnings become available after the meeting ends and refunds are settled. Your share is 80% of retained entry credits."),
+      h("p", { class: "small muted" }, "Paid-entry meeting earnings become available after the meeting ends and refunds are settled."),
       h("div", { class: "row between wrap", style: { gap: ".8rem", margin: ".8rem 0" } },
         h("div", null, h("span", { class: "tiny muted" }, "Pending"), h("br"), meetingPending),
         h("div", null, h("span", { class: "tiny muted" }, "Available to transfer"), h("br"), meetingAvailable)),

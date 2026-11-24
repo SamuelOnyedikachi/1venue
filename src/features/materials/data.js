@@ -88,6 +88,16 @@ async function listMaterials(userId, { limit = 50 } = {}) {
   );
   return rows.map(materialOut);
 }
+async function listPurchased(userId, { limit = 50 } = {}) {
+  const rows = await many(
+    `SELECT m.* FROM material_purchases p JOIN materials m ON m.id=p.material_id
+     WHERE p.user_id=$1 ORDER BY p.id DESC LIMIT $2`,
+    [userId, Math.min(100, Math.max(1, limit))]
+  );
+  const out = [];
+  for (const r of rows) out.push(await withAccess(materialOut(r), userId));
+  return out;
+}
 async function getMaterial(id, userId) {
   const r = await one(`SELECT * FROM materials WHERE id=$1 AND (owner_user_id=$2 OR (org_id IS NOT NULL AND org_id IN (SELECT org_id FROM org_members WHERE user_id=$2)))`, [id, userId]);
   return materialOut(r);
@@ -189,4 +199,4 @@ async function saveAnalysis(materialId, { sourceKey, result, model, userId }) {
   return analysisOut(r);
 }
 
-module.exports = { KINDS, viewableMaterial, getAnalysis, saveAnalysis, materialOut, withAccess, sanitizeMaterialPayload, listMaterials, getMaterial, createMaterial, updateMaterial, deleteMaterial, listEventMaterials, setEventMaterials };
+module.exports = { KINDS, viewableMaterial, getAnalysis, saveAnalysis, materialOut, withAccess, sanitizeMaterialPayload, listMaterials, listPurchased, getMaterial, createMaterial, updateMaterial, deleteMaterial, listEventMaterials, setEventMaterials };

@@ -22,9 +22,9 @@ describe('out31 mute-call style and sync auto-pip', () => {
   });
 
   it('bumps the service worker and cache-bust query', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v82-2026-11-23'/);
-    assert.match(read('public/index.html'), /app\.css\?v=68/);
-    assert.match(read('public/index.html'), /app\.js\?v=68/);
+    assert.match(read('public/sw.js'), /VERSION = 'v83-2026-11-23'/);
+    assert.match(read('public/index.html'), /app\.css\?v=69/);
+    assert.match(read('public/index.html'), /app\.js\?v=69/);
   });
 
   it('uses the same command-bar toggle as the other chips, only when the call is muted', () => {

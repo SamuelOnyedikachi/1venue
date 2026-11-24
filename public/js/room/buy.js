@@ -16,7 +16,7 @@ export function showBuyChip(R, material) {
     h('div', { class: 'buy-chip-body' },
       h('b', { class: 'ellipsis' }, material.title),
       h('div', { class: 'tiny muted' }, priceLabel(material) || 'For sale')),
-    h('button', { class: 'btn xs primary', type: 'button', onclick: () => openBuySheet(material, { eventId: material.eventId || R.eventId, meetingCode: material.code || R.code }) }, 'Buy'),
+    h('button', { class: 'btn xs primary', type: 'button', onclick: () => openBuySheet(material, { eventId: material.eventId || (R.event && R.event.id), meetingCode: material.code || R.code, onBought: () => { hideBuyChip(); } }) }, 'Buy'),
     h('button', { class: 'icon-btn sm', type: 'button', 'aria-label': 'Dismiss', onclick: hideBuyChip, html: icon('x', { size: 14 }) })
   );
   stage.append(chip);
@@ -37,7 +37,9 @@ export function offerChat(R, m) {
 
 export function buyAttachment(a, R) {
   const m = a.material || a;
+  const open = () => h('a', { class: 'btn xs', href: '/materials/' + m.id, 'data-link': '' }, 'Open');
+  const buy = h('button', { class: 'btn xs primary', type: 'button', onclick: () => openBuySheet(m, { eventId: m.eventId || (R.event && R.event.id), meetingCode: m.code || R.code, onBought: () => { m.purchased = true; m.locked = false; buy.replaceWith(open()); hideBuyChip(); } }) }, 'Buy');
   return h('div', { class: 'msg-buy' },
     h('div', { class: 'grow' }, h('b', null, m.title || 'Material'), h('div', { class: 'tiny muted' }, priceLabel(m) || 'For sale')),
-    h('button', { class: 'btn xs primary', type: 'button', onclick: () => openBuySheet(m, { eventId: m.eventId || R.eventId, meetingCode: m.code || R.code }) }, 'Buy'));
+    (m.purchased || m.owner) ? open() : buy);
 }

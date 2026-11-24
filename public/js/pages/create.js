@@ -71,7 +71,7 @@ export async function mount(view, params) {
     field('Entry price (credits)', 'coin', entryPrice));
   const meetingAccess = h('div', { class: 'card pad layer col', style: { gap: '.8rem' }, hidden: category !== 'meeting' },
     field('Who pays for this meeting?', 'wallet', accessMode),
-    h('p', { class: 'tiny muted' }, 'Paid-entry attendees must sign in. They are charged when you accept them. You receive 80% of entry credits after refunds are settled.'),
+    h('p', { class: 'tiny muted' }, 'Paid-entry attendees must sign in. They are charged when you accept them.'),
     paidEntryFields);
   const syncMeetingAccess = () => {
     meetingAccess.hidden = category !== 'meeting';

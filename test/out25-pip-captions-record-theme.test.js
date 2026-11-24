@@ -121,8 +121,8 @@ describe('out25 PiP search/composer/media, scripture search, captions, auto-reco
   });
 
   it('bumps the cache versions', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v82-2026-11-23'/);
-    assert.match(read('public/index.html'), /app\.css\?v=68/);
-    assert.match(read('public/index.html'), /app\.js\?v=68/);
+    assert.match(read('public/sw.js'), /VERSION = 'v83-2026-11-23'/);
+    assert.match(read('public/index.html'), /app\.css\?v=69/);
+    assert.match(read('public/index.html'), /app\.js\?v=69/);
   });
 });

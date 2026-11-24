@@ -101,6 +101,10 @@ async function history(userId, before) {
       SELECT l.id,l.user_id,l.kind,l.delta_units,l.balance_after_units,NULL,b.code,NULL,l.created_at
       FROM credit_ledger l LEFT JOIN credit_billing_sessions b ON b.id=l.billing_session_id
       WHERE l.user_id=$1 AND l.kind='usage' AND l.billing_session_id IS NULL
+      UNION ALL
+      SELECT l.id,l.user_id,l.kind,l.delta_units,l.balance_after_units,NULL,NULL,NULL,l.created_at
+      FROM credit_ledger l
+      WHERE l.user_id=$1 AND l.kind='gift'
     )
     SELECT * FROM history_entries ${before ? 'WHERE id<$2' : ''} ORDER BY id DESC LIMIT 31`, before ? [userId, before] : [userId])).rows;
   const page = rows.slice(0, 30);

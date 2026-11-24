@@ -9,6 +9,7 @@ import { accentButtonColors, accentInk } from './appearance.mjs';
 import './messages/tones.js'; // install audio-unlock handlers before any incoming call or message arrives
 import { installAutoPipGuards, bindShell, primeAutoPip } from './room/session.js';
 import { installPipHotkey, openPopOut } from './pip-hotkey.js';
+import { claimCommerceReturn } from './commerce-return.js';
 
 export const state = { config: null, user: null, session: null, prefs: null, route: null, inRoom: false };
 const LS_PREFS = 'venue.prefs';
@@ -190,6 +191,7 @@ export function navigate(to, { replace = false } = {}) {
 async function route() {
   const path = location.pathname;
   closeTopSheet();
+  claimCommerceReturn();
   for (const [re, load, extra] of ROUTES) {
     const m = path.match(re); if (!m) continue;
     const params = Object.fromEntries(new URLSearchParams(location.search));
