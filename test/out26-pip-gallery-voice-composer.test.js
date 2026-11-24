@@ -21,9 +21,9 @@ describe('out26 gallery, bubble gap, voice player, STT mic, send button', () => 
   });
 
   it('bumps the service worker and cache-bust query', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v75-2026-11-23'/);
-    assert.match(read('public/index.html'), /app\.css\?v=61/);
-    assert.match(read('public/index.html'), /app\.js\?v=61/);
+    assert.match(read('public/sw.js'), /VERSION = 'v76-2026-11-23'/);
+    assert.match(read('public/index.html'), /app\.css\?v=62/);
+    assert.match(read('public/index.html'), /app\.js\?v=62/);
   });
 
   it('opens chat images in an in-document lightbox with download, and not a new tab', () => {
@@ -59,10 +59,10 @@ describe('out26 gallery, bubble gap, voice player, STT mic, send button', () => 
     assert.equal(mod.isVoiceAtt({ kind: 'image', mime: 'image/jpeg', url: '/files/p.jpg' }), false);
     assert.equal(mod.isVoiceAtt({ mime: 'audio/webm', url: '/files/x.webm' }), true);
     const pip = read('public/js/app-pip.js');
-    assert.match(pip, /mountVoicePlayers/);
-    assert.match(pip, /voicePlayer\(/);
-    assert.match(pip, /data-voice-url/);
+    assert.match(pip, /hydrateVoicePlayers/);
+    assert.match(pip, /voiceSlot\(/);
     assert.match(pip, /root\.ownerDocument/);
+    assert.match(read('public/js/voice-player.js'), /data-voice-url/);
     assert.doesNotMatch(pip, /h\('audio', \{ class: 'app-pip-voice', controls: true/);
     const msg = read('public/js/pages/messages.js');
     assert.match(msg, /voicePlayer\(/);

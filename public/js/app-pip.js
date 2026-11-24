@@ -11,7 +11,7 @@ import { pillComposer } from './composer.js';
 import { QUICK, emojiPopover } from './emoji.js';
 import { bus, setPipConversation, typing as sendTyping, refreshUnread } from './messages/live.js';
 import { initLightbox } from './lightbox.js';
-import { isVoiceAtt, voicePlayer } from './voice-player.js';
+import { isVoiceAtt, pickVoiceAtt, voiceSlot, hydrateVoicePlayers } from './voice-player.js';
 
 export function pipSupported() {
   return typeof window !== 'undefined' && 'documentPictureInPicture' in window && window.top === window;
@@ -394,27 +394,24 @@ export async function popOut() {
         n.addEventListener('loadedmetadata', go, { once: true });
       });
     }
-    function mountVoicePlayers(root) {
-      const doc = (root && root.ownerDocument) || win.document;
-      root.querySelectorAll('[data-voice-url]').forEach((n) => {
-        const url = n.getAttribute('data-voice-url') || '';
-        const player = voicePlayer({ kind: 'voice', name: n.getAttribute('data-voice-name') || 'Voice note', url }, { doc, onAccent: n.getAttribute('data-on-accent') === '1' });
-        n.replaceWith(player);
-      });
+    function hydrateVoice(root) {
+      if (!root) return;
+      // Only hydrate once the node lives in the PiP document. threadView paints
+      // messages before the view is inserted; hydrating in the opener (out26)
+      // built <audio> in the wrong document and left an empty pill.
+      if (root.ownerDocument !== win.document) return;
+      hydrateVoicePlayers(root, win.document);
     }
     function attView(a, mine) {
       if (!a) return null;
+      if (typeof a === 'string') { try { a = JSON.parse(a); } catch { return null; } }
       if (a.kind === 'passage') return h('div', { class: 'tiny muted' }, a.reference || 'Passage');
+      const voice = pickVoiceAtt(a) || (isVoiceAtt(a) ? a : null);
+      if (voice) return voiceSlot(voice, { doc: document, onAccent: !!mine });
       const url = a.url ? absUrl(a.url) : (a.dataUrl || a.href || a.src || '');
-      if (!url && !isVoiceAtt(a)) return h('div', { class: 'tiny muted' }, a.name || a.kind || 'Attachment');
+      if (!url) return h('div', { class: 'tiny muted' }, a.name || a.kind || 'Attachment');
       if (a.kind === 'image' || (a.mime || '').startsWith('image/')) {
         return h('img', { class: 'app-pip-att msg-img', src: url, alt: a.name || 'image', loading: 'lazy', tabindex: '0' });
-      }
-      if (isVoiceAtt(a) || a.kind === 'voice' || (a.mime || '').startsWith('audio/')) {
-        // Placeholder only: native <audio> built in the opener is adopted into the
-        // about:blank PiP document and its controls often never paint. The real
-        // player is mounted into win.document after the row is inserted.
-        return h('div', { class: 'app-pip-voice-wrap', 'data-voice-url': url, 'data-voice-name': a.name || 'Voice note', 'data-on-accent': mine ? '1' : '0' });
       }
       return h('a', { class: 'app-pip-file', href: url, target: '_blank', rel: 'noopener', download: a.name || 'file' },
         h('span', { class: 'i', html: icon('file', { size: 18 }) }),
@@ -509,7 +506,7 @@ export async function popOut() {
         m.payload && m.payload.forwarded ? h('span', { class: 'msg-fwd tiny' }, 'Forwarded') : null,
         m.replyTo ? quoteEl(m.replyTo) : null,
         m.text ? h('div', { html: linkify(m.text, { siteBase }) }) : null,
-        attView(m.attachment, m.mine),
+        attView(pickVoiceAtt(m) || m.attachment, m.mine),
         !m.text && !m.attachment && m.kind === 'card' ? h('div', { class: 'tiny muted' }, (m.payload && m.payload.title) || 'Card') : null);
       const hover = m.deleted ? null : h('div', { class: 'app-pip-hover' },
         c.canSend ? h('button', { class: 'icon-btn msg-hb', type: 'button', 'aria-label': 'Reply', title: 'Reply', html: icon('reply', { size: 16 }), onclick: () => startReply(th, m) }) : null,
@@ -530,7 +527,7 @@ export async function popOut() {
       let prev = null;
       for (const m of th.msgs) { out.push(msgNode(th.conv, m, prev, th)); prev = m; }
       el.replaceChildren(...out);
-      mountVoicePlayers(el);
+      hydrateVoice(el);
       if (jump) {
         const n = el.querySelector(`[data-id="${jump}"]`);
         if (n) { n.classList.add('app-pip-jump'); n.scrollIntoView({ block: 'center' }); }
@@ -650,6 +647,7 @@ export async function popOut() {
       else if (current === 'meeting') view = meetingView();
       else view = chatsView();
       body.replaceChildren(view);
+      if (thread && thread.msgsEl) hydrateVoice(thread.msgsEl);
     }
 
     function bumpList(m) {

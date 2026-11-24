@@ -72,19 +72,46 @@ export function playMessageTone() {
   });
 }
 
+function pipWin() {
+  try {
+    const w = window.documentPictureInPicture && window.documentPictureInPicture.window;
+    return w && !w.closed ? w : null;
+  } catch { return null; }
+}
+
 /** Start the looping ringtone (plus vibration on phones). Returns stop(). */
 export function startRingtone() {
-  let vib = null;
+  let vib = null, pipAudio = null;
   const buzz = () => { try { navigator.vibrate && navigator.vibrate([400, 200, 400]); } catch { /* ignore */ } };
   buzz(); vib = setInterval(buzz, 2600);
   const a = audio('ringtone'); a.muted = false; a.loop = true; a.volume = 1; ringing = true;
+  const stopPip = () => { if (pipAudio) { try { pipAudio.pause(); pipAudio.remove(); } catch { /* */ } pipAudio = null; } };
+  const startPip = () => {
+    const w = pipWin();
+    if (!w || toneMuted('ring')) return null;
+    stopPip();
+    try {
+      const b = w.document.createElement('audio');
+      try { b.src = new URL('/sounds/ringtone.mp3', document.baseURI).href; } catch { b.src = '/sounds/ringtone.mp3'; }
+      b.loop = true; b.volume = 1;
+      (w.document.body || w.document.documentElement).append(b);
+      pipAudio = b;
+      return b.play().then(() => { unlocked = true; });
+    } catch { return null; }
+  };
   if (!toneMuted('ring')) {
     a.currentTime = 0;
-    a.play().then(() => { unlocked = true; }).catch(() => {});
+    if (pipWin()) {
+      const p = startPip();
+      if (p && p.catch) p.catch(() => { a.play().then(() => { unlocked = true; }).catch(() => {}); });
+    } else {
+      a.play().then(() => { unlocked = true; }).catch(() => { const p = startPip(); if (p && p.catch) p.catch(() => {}); });
+    }
   }
   return () => {
     clearInterval(vib); try { navigator.vibrate && navigator.vibrate(0); } catch { /* ignore */ }
     if (ringing) ringing = false;
     try { a.pause(); a.currentTime = 0; } catch { /* ignore */ }
+    stopPip();
   };
 }

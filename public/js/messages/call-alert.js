@@ -10,13 +10,22 @@ let active = null;
 export const ALERT_TITLE = (name) => `📞 Incoming call – ${String(name || 'Someone').slice(0, 60)}`;
 
 /** The pieces that apply right now (exported for tests). */
-export function plan({ hidden, permission, hasSW, hasPiP, activation }) {
+export function plan({ hidden, permission, hasSW, hasPiP, activation, hasAppPip }) {
   return {
     notify: !!hidden && permission === 'granted' && !!hasSW,
     title: true,
     favicon: true,
-    pip: !!hidden && !!hasPiP && !!activation,
+    // Chrome allows one Document PiP per tab. Never open the small call PiP
+    // when the app-wide pop-out is already open — it would replace it.
+    pip: !!hidden && !!hasPiP && !!activation && !hasAppPip,
   };
+}
+
+export function hasAppPip() {
+  try {
+    const w = window.documentPictureInPicture && window.documentPictureInPicture.window;
+    return !!(w && !w.closed);
+  } catch { return false; }
 }
 
 export function startCallAlert(call, { onAnswer, onDecline } = {}) {
@@ -31,6 +40,7 @@ export function startCallAlert(call, { onAnswer, onDecline } = {}) {
     hasSW: 'serviceWorker' in navigator,
     hasPiP: 'documentPictureInPicture' in window,
     activation: navigator.userActivation ? navigator.userActivation.isActive : false,
+    hasAppPip: hasAppPip(),
   });
   // (b) title flash + favicon badge
   const title0 = document.title, alt = ALERT_TITLE(name);
@@ -56,7 +66,8 @@ export function startCallAlert(call, { onAnswer, onDecline } = {}) {
   const vis = () => { if (!document.hidden) closeCallNotifications(call.id); };
   document.addEventListener('visibilitychange', vis);
   a.cleanups.push(() => document.removeEventListener('visibilitychange', vis));
-  // (c) Document PiP, best effort
+  // (c) Small call PiP only when the app-wide pop-out is not already open.
+  // The standard ring card is moved into the app pop-out by placeCallUi.
   if (want.pip) openPiP(a, { name, kind, onAnswer, onDecline }).catch(() => {});
   return a;
 }
@@ -98,6 +109,7 @@ function badgeFavicon(a) {
 }
 
 async function openPiP(a, { name, kind, onAnswer, onDecline }) {
+  if (hasAppPip()) return;
   const pip = await window.documentPictureInPicture.requestWindow({ width: 320, height: 150 });
   if (active !== a) { pip.close(); return; }
   a.cleanups.push(() => { try { pip.close(); } catch { /* closed */ } });

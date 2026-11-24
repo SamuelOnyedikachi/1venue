@@ -3,7 +3,7 @@
 import { h, esc, api, toast, toastErr, avatar, timeAgo, fmtDate, menu, sheet, confirmDlg, promptDlg, uploadFile, copy, isMobile, debounce, linkify as linkifyText } from '../ui.js';
 import { icon } from '../icons.js';
 import { pillComposer } from '../composer.js';
-import { isVoiceAtt, voicePlayer } from '../voice-player.js';
+import { isVoiceAtt, pickVoiceAtt, voicePlayer } from '../voice-player.js';
 import { QUICK, emojiPopover } from '../emoji.js';
 import { passageCard } from '../passage.js';
 import { state, navigate } from '../app.js';
@@ -255,11 +255,11 @@ export async function mount(view, params) {
   function attEl(a, m) {
     if (!a) return null;
     if (a.kind === 'passage') return passageCard(a, { compact: true });
-    const src = a.url || a.dataUrl; if (!src) return null;
-    if (a.kind === 'image' || (a.mime || '').startsWith('image/')) return h('img', { class: 'msg-img', src, alt: a.name || 'image', loading: 'lazy', tabindex: '0' });
-    const audio = isVoiceAtt(a) || a.kind === 'voice' || /^audio\//.test(a.mime || '');
-    if (audio) {
-      const out = h('div', { class: 'msg-voice-wrap' }, voicePlayer({ ...a, url: src }, { doc: document, onAccent: !!(m && m.mine) }));
+    const voice = pickVoiceAtt(a) || (isVoiceAtt(a) ? a : null);
+    const src = (voice && (voice.url || voice.dataUrl || voice.href || voice.src)) || a.url || a.dataUrl;
+    if (a.kind === 'image' || (a.mime || '').startsWith('image/')) return h('img', { class: 'msg-img', src: src || a.url || a.dataUrl, alt: a.name || 'image', loading: 'lazy', tabindex: '0' });
+    if (voice) {
+      const out = h('div', { class: 'msg-voice-wrap' }, voicePlayer({ ...voice, url: src || '' }, { doc: document, onAccent: !!(m && m.mine) }));
       const tx = transcripts.get(m && m.id);
       if (tx) add(out, h('div', { class: 'msg-transcript' }, I('fileText', 14), h('span', null, tx)));
       return out;

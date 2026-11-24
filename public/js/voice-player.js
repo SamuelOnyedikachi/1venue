@@ -3,13 +3,74 @@
 // into about:blank, and default controls also disappear on accent-coloured bubbles.
 import { icon } from './icons.js';
 
+const VOICE_KIND = /^(voice|audio|voice_note|voice-note|voicenote)$/i;
+
 export function isVoiceAtt(a) {
-  if (!a || typeof a !== 'object') return false;
+  if (!a || typeof a !== 'object' || Array.isArray(a)) return false;
   const kind = a.kind || a.type || '';
   const mime = a.mime || a.contentType || a.content_type || '';
   const name = a.name || a.filename || '';
   const url = attUrl(a);
-  return kind === 'voice' || kind === 'audio' || /^audio\//.test(mime) || /\.(webm|m4a|mp3|ogg|wav|aac)(\?|$)/i.test(url || name);
+  return VOICE_KIND.test(kind) || /^audio\//.test(mime) || /\.(webm|m4a|mp3|ogg|wav|aac)(\?|$)/i.test(url || name);
+}
+
+/** Pull a voice attachment off a message or raw attachment (API, live socket, or odd shapes). */
+export function pickVoiceAtt(m) {
+  if (!m || typeof m !== 'object') return null;
+  const list = [];
+  if (m.attachment) list.push(m.attachment);
+  if (Array.isArray(m.attachments)) list.push(...m.attachments);
+  else if (m.attachments && typeof m.attachments === 'object') list.push(m.attachments);
+  if (m.file) list.push(m.file);
+  if (m.media) list.push(m.media);
+  if (isVoiceAtt(m) && (attUrl(m) || VOICE_KIND.test(m.kind || m.type || ''))) list.push(m);
+  for (const a of list) {
+    if (typeof a === 'string') {
+      try { const o = JSON.parse(a); if (isVoiceAtt(o)) return o; } catch { /* */ }
+      continue;
+    }
+    if (isVoiceAtt(a)) return a;
+  }
+  return list.find((a) => a && typeof a === 'object' && attUrl(a)) || null;
+}
+
+/** Empty slot painted in the opener; hydrateVoicePlayers turns it into a real player in `doc`. */
+export function voiceSlot(a, { doc = document, onAccent = false } = {}) {
+  const el = doc.createElement('div');
+  el.className = 'app-pip-voice-wrap';
+  const url = attUrl(a);
+  const name = (a && (a.name || a.filename)) || 'Voice note';
+  el.setAttribute('data-voice-url', url);
+  el.setAttribute('data-voice-name', name);
+  el.setAttribute('data-on-accent', onAccent ? '1' : '0');
+  el.dataset.voiceUrl = url;
+  el.dataset.voiceName = name;
+  el.dataset.onAccent = onAccent ? '1' : '0';
+  return el;
+}
+
+/**
+ * Replace voice slots with a player whose <audio> is created in `doc`.
+ * Must run AFTER the slot has been adopted into `doc` (the PiP document).
+ * Hydrating while the tree still belongs to the opener, then moving it into
+ * the PiP window, is what left an empty red pill in out26.
+ */
+export function hydrateVoicePlayers(root, doc) {
+  if (!root || !root.querySelectorAll) return 0;
+  const d = doc || root.ownerDocument || document;
+  let n = 0;
+  root.querySelectorAll('.app-pip-voice-wrap').forEach((slot) => {
+    if (slot.classList.contains('vp') && slot.querySelector && slot.querySelector('.vp-play')) return;
+    if (slot.ownerDocument && slot.ownerDocument !== d) return;
+    const url = (slot.dataset && slot.dataset.voiceUrl) || slot.getAttribute('data-voice-url') || '';
+    const name = (slot.dataset && slot.dataset.voiceName) || slot.getAttribute('data-voice-name') || 'Voice note';
+    const onAccent = ((slot.dataset && slot.dataset.onAccent) || slot.getAttribute('data-on-accent') || '') === '1';
+    const player = voicePlayer({ kind: 'voice', name, url, mime: 'audio/webm' }, { doc: d, onAccent });
+    if (player.dataset) player.dataset.voiceUrl = url;
+    slot.replaceWith(player);
+    n++;
+  });
+  return n;
 }
 
 export function attUrl(a) {
@@ -49,7 +110,7 @@ function node(doc, tag, props = {}, ...kids) {
   }
   for (const kid of kids.flat()) {
     if (kid == null || kid === false) continue;
-    el.append(kid instanceof Node ? kid : doc.createTextNode(String(kid)));
+    el.append(kid && kid.nodeType ? kid : doc.createTextNode(String(kid)));
   }
   return el;
 }

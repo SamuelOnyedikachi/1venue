@@ -44,6 +44,9 @@
 }
 .wa-pill textarea::placeholder {
   color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .wa-ib {
   flex: none;
@@ -490,13 +493,14 @@
 .wa-ib.wa-dictate {
   position: absolute;
   right: 6px;
-  top: 50%;
+  top: auto;
+  bottom: 7px;
   width: 26px;
   height: 26px;
   margin: 0;
   z-index: 1;
   opacity: 0;
-  transform: translateY(-50%) scale(0.85);
+  transform: scale(0.85);
   pointer-events: none;
   color: var(--muted);
   transition:
@@ -512,7 +516,7 @@
 }
 .wa-ib.wa-dictate.in {
   opacity: 1;
-  transform: translateY(-50%);
+  transform: none;
   pointer-events: auto;
 }
 .wa-ib.wa-dictate.on,
@@ -522,7 +526,7 @@
   border: 1px solid var(--accent-action, var(--accent));
   animation: vmicRing 1.6s ease-out infinite;
   opacity: 1;
-  transform: translateY(-50%);
+  transform: none;
   pointer-events: auto;
 }
 @media (prefers-reduced-motion: reduce) {
