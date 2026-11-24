@@ -11,27 +11,35 @@ export function priceLabel(m) {
   return fmtMoney(m.priceKobo);
 }
 
+export const MARKET_CATEGORIES = ['Teaching', 'Worship', 'Study', 'Music', 'Training', 'Kids', 'Business', 'Other'];
+
 export function saleEditor(m, { onSaved } = {}) {
   const on = h('input', { type: 'checkbox', checked: !!m.forSale });
+  const listed = h('input', { type: 'checkbox', checked: !!m.listed });
   const price = h('input', { class: 'input sm', type: 'number', min: '50', step: '50', value: m.priceKobo ? String(Math.round(m.priceKobo / 100)) : '', placeholder: 'Price (₦)', 'aria-label': 'Price in naira' });
   const disc = h('input', { class: 'input sm', type: 'number', min: '0', max: '90', step: '5', value: String(m.callDiscountPct || 0), 'aria-label': 'Discount percent during a live call' });
+  const cat = h('select', { class: 'input sm', 'aria-label': 'Marketplace category' },
+    h('option', { value: '' }, 'Category'),
+    ...MARKET_CATEGORIES.map((c) => h('option', { value: c, selected: m.category === c }, c)));
   const save = async () => {
     try {
       const forSale = on.checked;
       const priceKobo = price.value === '' ? null : Math.round(Number(price.value) * 100);
       const callDiscountPct = Number(disc.value) || 0;
-      const body = { forSale, priceKobo, callDiscountPct };
+      const body = { forSale, priceKobo, callDiscountPct, listed: listed.checked, category: cat.value || null };
       const updated = await api(`/api/materials/${m.id}/sale`, { method: 'POST', body });
       Object.assign(m, updated);
-      toast(forSale ? 'Sale settings saved' : 'This material is no longer for sale', { icon: 'check' });
+      toast(listed.checked ? 'Listed on the marketplace' : (forSale ? 'Sale settings saved' : 'Saved'), { icon: 'check' });
       onSaved && onSaved(m);
     } catch (e) { toastErr(e); }
   };
   return h('div', { class: 'mat-sale col', style: { gap: '.4rem' } },
     h('label', { class: 'set-row' }, h('span', { class: 'grow' }, 'For sale'), h('span', { class: 'switch' }, on, h('span'))),
+    h('label', { class: 'set-row' }, h('span', { class: 'grow' }, 'List on marketplace'), h('span', { class: 'switch' }, listed, h('span'))),
     h('div', { class: 'row wrap gap-s', style: { alignItems: 'center' } },
       h('label', { class: 'grow' }, h('span', { class: 'tiny muted' }, 'Price (₦)'), price),
       h('label', { class: 'grow' }, h('span', { class: 'tiny muted' }, 'Call discount %'), disc)),
+    h('label', { class: 'grow' }, h('span', { class: 'tiny muted' }, 'Category'), cat),
     h('button', { class: 'btn sm', type: 'button', onclick: save }, 'Save sale'));
 }
 

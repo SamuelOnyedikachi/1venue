@@ -342,7 +342,11 @@ export async function deckKind(f) {
 }
 export const DECK_HELP = { ppt: 'Old .ppt files aren’t supported. Save it as PPTX or PDF and try again.', keynote: 'Keynote files aren’t supported. Export it as PDF or PPTX and try again.' };
 /** Upload a File/Blob to /api/files (raw body). headers: room credentials when uploading as a guest. */
-export async function uploadFile(file, { purpose = 'attachment', headers = {} } = {}) {
+export async function uploadFile(file, { purpose = 'attachment', headers = {}, onProgress, signal } = {}) {
+  if (file && String(file.type || '').startsWith('video/')) {
+    const { uploadVideo } = await import('./video-upload.js');
+    return uploadVideo(file, { purpose, headers, onProgress, signal, profile: purpose === 'content' ? 'material' : 'chat' });
+  }
   let res;
   try {
     res = await fetch('/api/files?purpose=' + encodeURIComponent(purpose), {

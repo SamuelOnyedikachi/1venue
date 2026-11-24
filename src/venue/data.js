@@ -97,6 +97,7 @@ module.exports = {
   getFile: files.getFile,
   listMaterials: materials.listMaterials,
   listPurchased: materials.listPurchased,
+  listMarket: materials.listMarket,
   getMaterial: materials.getMaterial,
   createMaterial: materials.createMaterial,
   updateMaterial: materials.updateMaterial,

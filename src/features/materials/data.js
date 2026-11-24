@@ -6,7 +6,15 @@ const { q, one, many } = require('../../core/db');
 const { normalizeStoredFileUrl } = require('../../lib/file-url');
 
 // ---------------------------------------------------------------- materials
-const KINDS = ['slides', 'image', 'youtube', 'pdf', 'pptx', 'doc', 'sheet'];
+const KINDS = ['slides', 'image', 'youtube', 'pdf', 'pptx', 'doc', 'sheet', 'video', 'audio'];
+const MARKET_TYPES = {
+  document: ['slides', 'pdf', 'pptx', 'doc', 'sheet'],
+  video: ['video', 'youtube'],
+  audio: ['audio'],
+  image: ['image'],
+  file: ['slides', 'pdf', 'pptx', 'doc', 'sheet'],
+};
+const CATEGORIES = ['Teaching', 'Worship', 'Study', 'Music', 'Training', 'Kids', 'Business', 'Other'];
 function materialOut(r) {
   if (!r) return null;
   const payload = typeof r.payload === 'string' ? JSON.parse(r.payload) : (r.payload || {});
@@ -25,6 +33,7 @@ function materialOut(r) {
 function lockedPayload(m) {
   const p = m.payload || {};
   if (Array.isArray(p.pages) && p.pages.length) return { pages: p.pages.slice(0, 1) };
+  if (p.posterUrl) return { posterUrl: p.posterUrl, durationSec: p.durationSec || null };
   if (p.url) return { url: p.url };
   if (p.videoId) return { videoId: p.videoId, url: p.url };
   return {};
@@ -70,6 +79,13 @@ function sanitizeMaterialPayload(kind, payload) {
     if (!source.sourceUrl) { const e = new Error('Upload the file first'); e.status = 400; e.reason = 'no source url'; throw e; }
     return source;
   }
+  if (kind === 'video' || kind === 'audio') {
+    const url = normalizeStoredFileUrl(String(p.url || p.sourceUrl || ''));
+    if (!url) { const e = new Error('Upload the file first'); e.status = 400; e.reason = 'no video url'; throw e; }
+    const posterUrl = p.posterUrl ? normalizeStoredFileUrl(String(p.posterUrl)) : null;
+    const durationSec = Number.isFinite(Number(p.durationSec)) && Number(p.durationSec) > 0 ? Math.round(Number(p.durationSec)) : null;
+    return { url, posterUrl, durationSec, mime: p.mime ? String(p.mime).slice(0, 80) : null, size: Number.isFinite(Number(p.size)) ? Math.round(Number(p.size)) : source.sourceSize, width: Number(p.width) || null, height: Number(p.height) || null, ...source, sourceUrl: source.sourceUrl || url };
+  }
   // slides | pdf | pptx - store page image URLs (+ optional source meta)
   const raw = Array.isArray(p.pages) ? p.pages : [];
   const pages = raw.map(normalizeStoredFileUrl).filter(Boolean).slice(0, 200);
@@ -112,21 +128,23 @@ async function createMaterial(userId, { title, kind, payload }) {
   );
   return materialOut(r);
 }
-async function updateMaterial(id, userId, { title, payload, forSale, priceKobo, callDiscountPct } = {}) {
+async function updateMaterial(id, userId, { title, payload, forSale, priceKobo, callDiscountPct, listed, category } = {}) {
   const cur = await one(`SELECT * FROM materials WHERE id=$1 AND owner_user_id=$2`, [id, userId]);
   if (!cur) return null;
   const t = title != null ? (String(title).trim().slice(0, 120) || cur.title) : cur.title;
   const pl = payload != null ? sanitizeMaterialPayload(cur.kind, payload) : (typeof cur.payload === 'string' ? JSON.parse(cur.payload) : cur.payload);
-  const sale = require('./sale').sanitizeSale({ forSale, priceKobo, callDiscountPct });
+  const sale = require('./sale').sanitizeSale({ forSale, priceKobo, callDiscountPct, listed, category });
   const for_sale = sale.for_sale != null ? sale.for_sale : cur.for_sale;
   const price_kobo = sale.price_kobo !== undefined ? sale.price_kobo : cur.price_kobo;
   const call_discount_pct = sale.call_discount_pct != null ? sale.call_discount_pct : cur.call_discount_pct;
+  const listedVal = sale.listed != null ? sale.listed : cur.listed;
+  const categoryVal = sale.category !== undefined ? sale.category : cur.category;
   if ((for_sale === true || for_sale === 1) && (price_kobo == null || Number(price_kobo) < 5000)) {
     const e = new Error('Set a price of at least ₦50 to mark this for sale'); e.status = 400; throw e;
   }
   const r = await one(
-    `UPDATE materials SET title=$3, payload=$4, for_sale=$5, price_kobo=$6, call_discount_pct=$7, updated_at=NOW() WHERE id=$1 AND owner_user_id=$2 RETURNING *`,
-    [id, userId, t, JSON.stringify(pl), for_sale, price_kobo, call_discount_pct || 0]
+    `UPDATE materials SET title=$3, payload=$4, for_sale=$5, price_kobo=$6, call_discount_pct=$7, listed=$8, category=$9, updated_at=NOW() WHERE id=$1 AND owner_user_id=$2 RETURNING *`,
+    [id, userId, t, JSON.stringify(pl), for_sale, price_kobo, call_discount_pct || 0, listedVal, categoryVal]
   );
   return materialOut(r);
 }
@@ -199,4 +217,62 @@ async function saveAnalysis(materialId, { sourceKey, result, model, userId }) {
   return analysisOut(r);
 }
 
-module.exports = { KINDS, viewableMaterial, getAnalysis, saveAnalysis, materialOut, withAccess, sanitizeMaterialPayload, listMaterials, listPurchased, getMaterial, createMaterial, updateMaterial, deleteMaterial, listEventMaterials, setEventMaterials };
+
+async function listMarket(userId, q = {}) {
+  const limit = Math.min(48, Math.max(1, parseInt(q.limit, 10) || 24));
+  const page = Math.max(1, parseInt(q.page, 10) || 1);
+  const off = (page - 1) * limit;
+  const where = ['m.listed = TRUE'];
+  const args = [];
+  const add = (sql, v) => { args.push(v); where.push(sql.replace('?', '$' + args.length)); };
+  const type = String(q.type || q.kind || '').toLowerCase();
+  if (type && MARKET_TYPES[type]) {
+    const kinds = MARKET_TYPES[type];
+    args.push(kinds);
+    where.push(`m.kind = ANY($${args.length}::text[])`);
+  }
+  const price = String(q.price || '').toLowerCase();
+  if (price === 'free') where.push('(m.for_sale IS NOT TRUE OR m.price_kobo IS NULL OR m.price_kobo = 0)');
+  else if (price === 'paid') where.push('(m.for_sale IS TRUE AND m.price_kobo > 0)');
+  const minP = q.minPrice != null && q.minPrice !== '' ? Number(q.minPrice) : null;
+  const maxP = q.maxPrice != null && q.maxPrice !== '' ? Number(q.maxPrice) : null;
+  if (Number.isFinite(minP)) add('m.price_kobo >= ?', Math.round(minP));
+  if (Number.isFinite(maxP)) add('m.price_kobo <= ?', Math.round(maxP));
+  if (q.category) add('m.category = ?', String(q.category).slice(0, 40));
+  if (q.host || q.hostId) add('m.owner_user_id = ?', Number(q.host || q.hostId));
+  if (q.org || q.orgId) add('m.org_id = ?', Number(q.org || q.orgId));
+  const term = String(q.q || q.search || '').trim().slice(0, 80);
+  if (term) {
+    args.push('%' + term.replace(/[%_]/g, ' ') + '%');
+    const n = '$' + args.length;
+    where.push(`(m.title ILIKE ${n} OR m.category ILIKE ${n} OR u.display_name ILIKE ${n} OR u.username ILIKE ${n})`);
+  }
+  const sort = String(q.sort || 'newest');
+  const order = sort === 'popular' ? 'purchases DESC, m.updated_at DESC'
+    : sort === 'price_asc' ? 'COALESCE(m.price_kobo, 0) ASC, m.updated_at DESC'
+    : sort === 'price_desc' ? 'COALESCE(m.price_kobo, 0) DESC, m.updated_at DESC'
+    : 'm.updated_at DESC, m.id DESC';
+  const rows = await many(
+    `SELECT m.*, u.display_name AS host_name, u.username AS host_username,
+            COALESCE(pc.c, 0) AS purchases
+       FROM materials m
+       JOIN users u ON u.id = m.owner_user_id
+       LEFT JOIN (SELECT material_id, COUNT(*)::int AS c FROM material_purchases GROUP BY material_id) pc ON pc.material_id = m.id
+      WHERE ${where.join(' AND ')}
+      ORDER BY ${order}
+      LIMIT ${limit + 1} OFFSET ${off}`,
+    args
+  );
+  const hasMore = rows.length > limit;
+  const pageRows = rows.slice(0, limit);
+  const materials = [];
+  for (const r of pageRows) {
+    const m = materialOut(r);
+    m.host = { id: Number(r.owner_user_id), name: r.host_name, username: r.host_username };
+    m.purchases = Number(r.purchases || 0);
+    materials.push(await withAccess(m, userId));
+  }
+  return { materials, page, limit, hasMore, categories: CATEGORIES };
+}
+
+module.exports = { KINDS, CATEGORIES, MARKET_TYPES, viewableMaterial, getAnalysis, saveAnalysis, materialOut, withAccess, sanitizeMaterialPayload, listMaterials, listPurchased, listMarket, getMaterial, createMaterial, updateMaterial, deleteMaterial, listEventMaterials, setEventMaterials };

@@ -5,6 +5,8 @@ import { icon } from '../icons.js';
 import { h, api, esc, toast, toastErr } from '../ui.js';
 import { state } from '../app.js';
 import { kindIcon, kindLabel, materialSub } from '../materials-lib.js';
+import { videoPlayer } from '../video-player.js';
+import { openBuySheet, priceLabel } from '../material-sale.js';
 import { safeText, safeList, put, add } from '../safe-text.js';
 
 const fmtNum = (n) => (typeof n === 'number' ? n.toLocaleString(undefined, { maximumFractionDigits: 2 }) : String(n ?? ''));
@@ -34,6 +36,10 @@ export async function mount(view, { id }) {
   // ---- preview
   if (m.kind === 'image' && p.url) add(previewEl, h('div', { class: 'mat-pages', 'data-lb-group': 'material' }, h('img', { class: 'mat-page-img', src: p.url, alt: m.title, 'data-lightbox': '' })));
   else if (m.kind === 'youtube' && p.videoId) add(previewEl, h('div', { class: 'mat-video' }, h('iframe', { src: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(p.videoId)}`, title: m.title, allow: 'encrypted-media; picture-in-picture', allowfullscreen: true, loading: 'lazy' })));
+  else if ((m.kind === 'video' || m.kind === 'audio') && (p.url || p.posterUrl)) {
+    if (m.locked && !p.url) add(previewEl, h('div', { class: 'col gap-s' }, p.posterUrl ? h('img', { src: p.posterUrl, alt: '', style: { maxWidth: '100%', borderRadius: '12px' } }) : null, h('p', { class: 'muted' }, 'Buy this material to watch it.'), m.forSale ? h('button', { class: 'btn primary', type: 'button', onclick: () => openBuySheet(m, { onBought: () => location.reload() }) }, 'Buy' + (priceLabel(m) ? ' · ' + priceLabel(m) : '')) : null));
+    else add(previewEl, m.kind === 'audio' ? h('audio', { class: 'v-player-el', src: p.url, controls: true, preload: 'metadata' }) : videoPlayer({ url: p.url, poster: p.posterUrl, name: m.title, durationSec: p.durationSec }));
+  }
   else if (Array.isArray(p.pages) && p.pages.length) {
     add(previewEl, h('div', { class: 'row between wrap', style: { gap: '.5rem', marginBottom: '.6rem' } }, h('b', null, `${p.pages.length} page${p.pages.length === 1 ? '' : 's'}`), h('span', { class: 'tiny muted' }, 'Tap a page to view it full screen')),
       h('div', { class: 'mat-pages', 'data-lb-group': 'material' }, ...p.pages.map((u, i) => h('img', { class: 'mat-page-img', src: u, alt: `Page ${i + 1}`, loading: i > 3 ? 'lazy' : 'eager', 'data-lightbox': '' }))));

@@ -64,7 +64,7 @@ async function quota(data, { size, userId, ownerKey, roomCode }) {
 function publicLimits() {
   return {
     image: limitFor('image/png'), pdf: limitFor('application/pdf'), audio: limitFor('audio/webm'), video: limitFor('video/mp4'), board: limitFor('application/x-mwb'), other: limitFor('application/octet-stream'),
-    userQuota: U.userQuotaBytes, meetingCap: U.meetingCapBytes, perMinute: U.perMinute,
+    userQuota: U.userQuotaBytes, meetingCap: U.meetingCapBytes, perMinute: U.perMinute, videoSeconds: U.maxVideoSeconds || 900,
   };
 }
 

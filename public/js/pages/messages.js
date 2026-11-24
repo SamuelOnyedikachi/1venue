@@ -4,6 +4,7 @@ import { h, esc, api, toast, toastErr, avatar, timeAgo, fmtDate, menu, sheet, co
 import { icon } from '../icons.js';
 import { pillComposer } from '../composer.js';
 import { isVoiceAtt, pickVoiceAtt, voicePlayer } from '../voice-player.js';
+import { isVideoAtt, videoPlayer } from '../video-player.js';
 import { QUICK, emojiPopover } from '../emoji.js';
 import { passageCard } from '../passage.js';
 import { state, navigate } from '../app.js';
@@ -258,7 +259,7 @@ export async function mount(view, params) {
     if (!composer) {
       composer = pillComposer({ placeholder: S.conv.type === 'dm' && !isMobile() ? `Message ${S.conv.title}` : 'Message', maxLength: 4000,
         dictate: true,
-        upload: (f, purpose) => uploadFile(f, { purpose: purpose === 'voice' ? 'voice' : 'chat' }),
+        upload: (f, purpose, opts) => uploadFile(f, { purpose: purpose === 'voice' ? 'voice' : 'chat', ...(opts || {}) }),
         suggest: quickSuggest,
         onActivity: (st) => { if (S.conv) sendTyping(S.conv.id, st === 'recording' ? 'recording' : 'typing'); },
         onSend: async (text, att) => {
@@ -287,6 +288,7 @@ export async function mount(view, params) {
     const voice = pickVoiceAtt(a) || (isVoiceAtt(a) ? a : null);
     const src = (voice && (voice.url || voice.dataUrl || voice.href || voice.src)) || a.url || a.dataUrl;
     if (a.kind === 'image' || (a.mime || '').startsWith('image/')) return h('img', { class: 'msg-img', src: src || a.url || a.dataUrl, alt: a.name || 'image', loading: 'lazy', tabindex: '0' });
+    if (isVideoAtt(a)) return videoPlayer({ ...a, url: src || a.url });
     if (voice) {
       const out = h('div', { class: 'msg-voice-wrap' }, voicePlayer({ ...voice, url: src || '' }, { doc: document, onAccent: !!(m && m.mine) }));
       const tx = transcripts.get(m && m.id);

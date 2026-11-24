@@ -55,7 +55,7 @@ export function checkLimit(file, limits) {
  * @param {object} [o.limits]   /api/config storage.limits
  * @param {object} [o.drafts]   object to persist drafts in; [o.draftKey]
  */
-export function pillComposer({ placeholder = 'Message', onSend, upload, voice = !!upload, dictate = false, dictateEnd = false, onActivity, limits, drafts, draftKey, disabled = false, maxLength = 2000, suggest, accept = 'image/*,application/pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.tsv,.txt,.zip,audio/*,.mwb,application/x-mwb' } = {}) {
+export function pillComposer({ placeholder = 'Message', onSend, upload, voice = !!upload, dictate = false, dictateEnd = false, onActivity, limits, drafts, draftKey, disabled = false, maxLength = 2000, suggest, accept = 'image/*,video/*,application/pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.tsv,.txt,.zip,audio/*,.mwb,application/x-mwb' } = {}) {
   const ta = h('textarea', { rows: 1, placeholder: disabled ? 'Chat is turned off by the host' : placeholder, disabled: !!disabled, 'data-focus': '', enterkeyhint: 'send', maxlength: maxLength, 'aria-label': placeholder });
   if (drafts && draftKey) ta.value = drafts[draftKey] || '';
   let pending = null, busy = false;
@@ -66,9 +66,10 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
   const paintPrev = () => {
     prev.hidden = !pending;
     if (!pending) return prev.replaceChildren();
-    const thumb = (pending.kind === 'image' || pending.kind === 'board') && pending.preview ? h('img', { src: pending.preview, alt: '' }) : h('span', { class: 'i', html: icon(pending.kind === 'voice' ? 'mic' : pending.kind === 'board' ? 'pen' : 'paperclip', { size: 16 }) });
-    prev.replaceChildren(thumb, h('span', { class: 'grow ellipsis' }, pending.uploading ? `Uploading ${pending.name}…` : pending.name),
-      h('button', { class: 'wa-ib sm', type: 'button', 'aria-label': 'Remove attachment', html: icon('x', { size: 16 }), onclick: () => { pending = null; paintPrev(); paintAct(); } }));
+    const thumb = (pending.kind === 'image' || pending.kind === 'board' || pending.kind === 'video') && pending.preview ? h('img', { src: pending.preview, alt: '' }) : h('span', { class: 'i', html: icon(pending.kind === 'voice' ? 'mic' : pending.kind === 'video' ? 'video' : pending.kind === 'board' ? 'pen' : 'paperclip', { size: 16 }) });
+    const label = pending.uploading ? (pending.status || `Uploading ${pending.name}…`) : pending.name;
+    prev.replaceChildren(thumb, h('span', { class: 'grow ellipsis' }, label),
+      h('button', { class: 'wa-ib sm', type: 'button', 'aria-label': pending.uploading ? 'Cancel upload' : 'Remove attachment', html: icon('x', { size: 16 }), onclick: () => { if (pending && pending.cancel) pending.cancel(); pending = null; paintPrev(); paintAct(); } }));
   };
   const act = h('button', { class: 'wa-act', type: 'button', disabled: !!disabled });
   act.append(
@@ -133,15 +134,17 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
     const prepared = board ? new File([f], /\.mwb$/i.test(f.name) ? f.name : (f.name || 'Whiteboard') + '.mwb', { type: MWB }) : f.type.startsWith('image/') ? await shrinkImage(f) : f;
     const why = checkLimit(prepared, limits);
     if (why) { toast(why, { icon: 'alert', group: 'admin', ms: 5000 }); return; }
-    const kind = board ? 'board' : prepared.type.startsWith('image/') ? 'image' : purpose === 'voice' ? 'voice' : 'file';
+    const kind = board ? 'board' : prepared.type.startsWith('image/') ? 'image' : prepared.type.startsWith('video/') ? 'video' : purpose === 'voice' ? 'voice' : 'file';
     pending = { kind, name: prepared.name || 'file', mime: prepared.type || 'application/octet-stream', size: prepared.size, uploading: true, preview: kind === 'image' ? URL.createObjectURL(prepared) : null };
     const mine = pending; paintPrev(); paintAct();
     try {
       // Whiteboards: read the board, render page 1 as a small preview and upload it next to the file.
       const thumb = board ? boardPreview(prepared).catch(() => null) : null;
-      const r = await upload(prepared, purpose);
+      const ac = new AbortController();
+      mine.cancel = () => ac.abort();
+      const r = await upload(prepared, purpose, { onProgress: (p, phase) => { if (pending === mine) { pending.status = `${phase === 'compress' ? 'Compressing' : 'Uploading'} ${pending.name}… ${Math.round((p || 0) * 100)}%`; paintPrev(); } }, signal: ac.signal });
       if (pending !== mine) return;
-      Object.assign(pending, { url: r.url, mime: r.mime || pending.mime, size: r.size || pending.size, uploading: !!board });
+      Object.assign(pending, { url: r.url, mime: r.mime || pending.mime, size: r.size || pending.size, durationSec: r.durationSec, poster: r.posterUrl || r.poster, kind: r.kind || pending.kind, uploading: !!board });
       if (board) {
         const t = await thumb;
         if (t && pending === mine) { pending.pages = t.pages; try { const pr = await upload(t.file, purpose); if (pending === mine && pr && pr.url) pending.preview = pr.url; } catch { /* the card works without a preview */ } }

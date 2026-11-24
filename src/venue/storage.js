@@ -175,4 +175,43 @@ async function remove(row) {
   }
 }
 
-module.exports = { save, saveStream, open, remove, publicUrl, driver, slugName, s3Settings: () => S.s3, _sign: sign };
+/** Browser-friendly query-string SigV4 PUT (R2/S3). No Authorization header, so CORS is simpler. */
+function encodeRfc3986(s) { return encodeURIComponent(s).replace(/[!'()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase()); }
+function presignPut(key, { mime = 'application/octet-stream', expires = 900 } = {}) {
+  if (driver() !== 's3') { const e = new Error('Video uploads need object storage (set STORAGE_DRIVER=s3)'); e.status = 503; throw e; }
+  const url = s3Url(key);
+  const { region, accessKeyId, secretAccessKey } = S.s3;
+  const now = new Date();
+  const amz = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const date = amz.slice(0, 8);
+  const scope = `${date}/${region}/s3/aws4_request`;
+  const signed = 'content-type;host';
+  const params = {
+    'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+    'X-Amz-Credential': `${accessKeyId}/${scope}`,
+    'X-Amz-Date': amz,
+    'X-Amz-Expires': String(Math.min(3600, Math.max(60, expires))),
+    'X-Amz-SignedHeaders': signed,
+    'X-Amz-Content-Sha256': 'UNSIGNED-PAYLOAD',
+  };
+  const canonQs = Object.keys(params).sort().map((k) => `${encodeRfc3986(k)}=${encodeRfc3986(params[k])}`).join('&');
+  const canonHeaders = `content-type:${mime}\nhost:${url.host}\n`;
+  const canon = ['PUT', url.pathname, canonQs, canonHeaders, signed, 'UNSIGNED-PAYLOAD'].join('\n');
+  const sts = ['AWS4-HMAC-SHA256', amz, scope, sha(canon)].join('\n');
+  const kSig = hmac(hmac(hmac(hmac('AWS4' + secretAccessKey, date), region), 's3'), 'aws4_request');
+  const sig = crypto.createHmac('sha256', kSig).update(sts).digest('hex');
+  const href = `${url.origin}${url.pathname}?${canonQs}&X-Amz-Signature=${sig}`;
+  return { url: href, method: 'PUT', headers: { 'Content-Type': mime }, expires: Number(params['X-Amz-Expires']) };
+}
+async function headObject(key) {
+  if (driver() !== 's3') return null;
+  const url = s3Url(key);
+  const r = await fetch(url, { method: 'HEAD', headers: sign('HEAD', url, {}, sha('')), signal: AbortSignal.timeout(15000) });
+  if (r.status === 404) return null;
+  if (!r.ok) throw Object.assign(new Error(`Storage could not confirm the upload (${r.status})`), { status: 502 });
+  const len = Number(r.headers.get('content-length'));
+  return { size: Number.isFinite(len) ? len : null, etag: r.headers.get('etag') || null };
+}
+
+module.exports = { save, saveStream, open, remove, publicUrl, driver, slugName, s3Settings: () => S.s3, presignPut, headObject, newId, _sign: sign };
+

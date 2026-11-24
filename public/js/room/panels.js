@@ -2,6 +2,7 @@
 // Engage (polls, Q&A, comments) and Tools (Bible, Qur’an, captions, AI, boards, content, breakouts, …).
 import { h, esc, api, toast, toastErr, avatar, timeAgo, menu, confirmDlg, promptDlg, readFileAsDataUrl, copy, debounce, md, uploadFile, sheet, profilePath, linkify as linkifyText } from '../ui.js';
 import { icon } from '../icons.js';
+import { isVideoAtt, videoPlayer } from '../video-player.js';
 import { pillComposer } from '../composer.js';
 import { searchSounds } from './sounds.js';
 import { passageCard } from '../passage.js';
@@ -81,6 +82,7 @@ export function createPanel(R) {
     else if (src) {
       const kb = a.size ? (a.size > 1048576 ? (a.size / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(a.size / 1024)) + ' KB') : '';
       if (a.kind === 'image') att = h('img', { class: 'msg-img', src, alt: a.name || 'image', loading: 'lazy', tabindex: '0' }); // opens in the lightbox
+      else if (isVideoAtt(a)) att = videoPlayer({ ...a, url: src });
       else if (a.kind === 'voice') att = h('audio', { class: 'msg-voice', controls: true, src, preload: 'metadata' });
       else att = h('a', { class: 'msg-file', href: src, target: '_blank', rel: 'noopener', download: a.name || 'file', html: icon('file', { size: 18 }) + `<span>${esc(a.name || 'file')}</span>${kb ? `<small>${kb}</small>` : ''}` });
     }
@@ -94,7 +96,7 @@ export function createPanel(R) {
     let c = composers.get(key);
     if (!c) {
       c = pillComposer({ placeholder, disabled, drafts: R.drafts, draftKey: 'draft:' + placeholder, limits: R.config.storage?.limits,
-        upload: (f, purpose) => uploadFile(f, { purpose, headers: R.headers() }),
+        upload: (f, purpose, opts) => uploadFile(f, { purpose, headers: R.headers(), ...(opts || {}) }),
         suggest: (t) => (t.length <= 24 ? searchSounds(t).map((sd) => ({ glyph: sd.emoji, label: sd.label, tip: `Play ${sd.label} for everyone`, run: () => { R.playRoomSound(sd.id); c.clear(); } })) : []),
         onSend: (text, att) => { (c.onSend)(text, att); R.justSent = true; R.focusNext = true; } });
       composers.set(key, c);

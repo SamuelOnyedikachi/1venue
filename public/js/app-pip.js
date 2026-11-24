@@ -12,6 +12,7 @@ import { QUICK, emojiPopover } from './emoji.js';
 import { bus, setPipConversation, typing as sendTyping, refreshUnread } from './messages/live.js';
 import { initLightbox } from './lightbox.js';
 import { isVoiceAtt, pickVoiceAtt, voiceSlot, hydrateVoicePlayers } from './voice-player.js';
+import { isVideoAtt, videoPlayer, videoSlot, hydrateVideoPlayers } from './video-player.js';
 
 export function pipSupported() {
   return typeof window !== 'undefined' && 'documentPictureInPicture' in window && window.top === window;
@@ -435,6 +436,7 @@ export async function popOut(existing) {
       // built <audio> in the wrong document and left an empty pill.
       if (root.ownerDocument !== win.document) return;
       hydrateVoicePlayers(root, win.document);
+      hydrateVideoPlayers(root, win.document);
     }
     function attView(a, mine) {
       if (!a) return null;
@@ -447,6 +449,7 @@ export async function popOut(existing) {
       if (a.kind === 'image' || (a.mime || '').startsWith('image/')) {
         return h('img', { class: 'app-pip-att msg-img', src: url, alt: a.name || 'image', loading: 'lazy', tabindex: '0' });
       }
+      if (isVideoAtt(a)) return videoSlot({ ...a, url });
       return h('a', { class: 'app-pip-file', href: url, target: '_blank', rel: 'noopener', download: a.name || 'file' },
         h('span', { class: 'i', html: icon('file', { size: 18 }) }),
         h('span', { class: 'grow min-w-0' },
@@ -628,7 +631,7 @@ export async function popOut(existing) {
             dictate: true,
             dictateEnd: true,
             limits,
-            upload: (f, purpose) => uploadFile(f, { purpose: purpose === 'voice' ? 'voice' : 'chat' }),
+            upload: (f, purpose, opts) => uploadFile(f, { purpose: purpose === 'voice' ? 'voice' : 'chat', ...(opts || {}) }),
             onActivity: (st) => sendTyping(c.id, st === 'recording' ? 'recording' : 'typing'),
             onSend: async (text, att) => {
               await api(`/api/messages/conversations/${c.id}/messages`, { method: 'POST', body: { text, attachment: att || undefined, replyToId: th.replyTo ? th.replyTo.id : undefined } });

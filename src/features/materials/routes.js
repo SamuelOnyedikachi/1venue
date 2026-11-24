@@ -26,6 +26,12 @@ module.exports = function routes(route, kit) {
     return { ok: true };
   });
 
+  route('GET', '/api/market', async (ctx) => {
+    const u = await getAuthUser(ctx.req, ctx.res);
+    const s = ctx.url.searchParams;
+    return data.listMarket(u && u.id, Object.fromEntries(s.entries()));
+  });
+
   // ------------------------------------------------------------ materials (preload decks)
   route('GET', '/api/materials', async (ctx) => {
     const u = await requireUser(ctx.req, ctx.res);
@@ -143,7 +149,7 @@ module.exports = function routes(route, kit) {
     const u = await requireUser(ctx.req, ctx.res);
     const b = await ctx.body();
     const m = await data.updateMaterial(Number(id), u.id, {
-      forSale: b.forSale, priceKobo: b.priceKobo, callDiscountPct: b.callDiscountPct,
+      forSale: b.forSale, priceKobo: b.priceKobo, callDiscountPct: b.callDiscountPct, listed: b.listed, category: b.category,
     });
     if (!m) throw httpError(404, 'Material not found');
     return m;

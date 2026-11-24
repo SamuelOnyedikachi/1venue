@@ -12496,3 +12496,11 @@ body[data-page="session"] .main {
   .wb-ai-actions .btn { flex: 1 1 auto; }
 }
 /* --- src/30-responsive.css --- */
+
+
+/* Marketplace + inline video */
+.market-filters { display: flex; flex-direction: column; gap: .7rem; margin: 1rem 0; }
+.v-player { width: 100%; max-width: 42rem; }
+.v-player-el { width: 100%; border-radius: 12px; background: #111; max-height: 70vh; }
+.v-player-cap { margin-top: .35rem; }
+.msg .v-player, .app-pip-att.v-player { max-width: 22rem; }

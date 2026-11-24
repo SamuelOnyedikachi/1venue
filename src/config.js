@@ -204,9 +204,10 @@ const UPLOADS = {
   maxImageBytes: mb('UPLOAD_MAX_IMAGE_MB', 8),
   maxPdfBytes: mb('UPLOAD_MAX_PDF_MB', 20),
   maxAudioBytes: mb('UPLOAD_MAX_AUDIO_MB', 10),
-  maxVideoBytes: mb('UPLOAD_MAX_VIDEO_MB', 0), // video uploads are off: they would stream through the app server
+  maxVideoBytes: mb('UPLOAD_MAX_VIDEO_MB', 200), // 15-min videos go direct to R2, not through Node
   maxOtherBytes: mb('UPLOAD_MAX_OTHER_MB', 10),
   maxBoardBytes: mb('UPLOAD_MAX_BOARD_MB', 25), // .mwb whiteboard files (images inline)
+  maxVideoSeconds: int('UPLOAD_MAX_VIDEO_SEC', 900),
   userQuotaBytes: mb('UPLOAD_USER_QUOTA_MB', 250),
   guestQuotaBytes: mb('UPLOAD_GUEST_QUOTA_MB', 30),
   meetingCapBytes: mb('UPLOAD_MEETING_CAP_MB', 150),

@@ -5,7 +5,7 @@ const { AsyncLocalStorage } = require('node:async_hooks');
 const transactionContext = new AsyncLocalStorage();
 
 const JSON_COLUMNS = new Set(['attachments', 'actions', 'data', 'ev_theme', 'extra', 'host_answers', 'media', 'moderation', 'options', 'payload', 'placements', 'settings', 'socials', 'state', 'tags', 'theme', 'transcript']);
-const BOOL_COLUMNS = new Set(['anonymous', 'is_custom', 'is_following', 'is_live', 'is_public', 'is_system', 'multi', 'ok', 'peer_is_guest', 'reduce_motion', 'requested', 'rsvped', 'phone_verified', 'needs_password_setup', 'active', 'is_seed', 'cancel_at_period_end', 'verified_active', 'reminders', 'muted', 'archived', 'pinned']);
+const BOOL_COLUMNS = new Set(['anonymous', 'listed', 'for_sale', 'is_custom', 'is_following', 'is_live', 'is_public', 'is_system', 'multi', 'ok', 'peer_is_guest', 'reduce_motion', 'requested', 'rsvped', 'phone_verified', 'needs_password_setup', 'active', 'is_seed', 'cancel_at_period_end', 'verified_active', 'reminders', 'muted', 'archived', 'pinned']);
 const MIGRATIONS = path.join(__dirname, '..', '..', 'migrations', 'sqlite');
 const DB_PATH = path.resolve(process.env.SQLITE_PATH || path.join(__dirname, '..', '..', 'data', 'venue.sqlite'));
 let handle = null;

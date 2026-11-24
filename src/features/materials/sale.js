@@ -17,10 +17,12 @@ function saleFields(r) {
   const priceKobo = rawPrice == null ? null : Number(rawPrice);
   const rawDisc = r.call_discount_pct != null ? r.call_discount_pct : r.callDiscountPct;
   const callDiscountPct = Math.min(90, Math.max(0, Number(rawDisc) || 0));
-  return { forSale, priceKobo, callDiscountPct };
+  const listed = asBool(r.listed);
+  const category = r.category ? String(r.category).slice(0, 40) : null;
+  return { forSale, priceKobo, callDiscountPct, listed, category };
 }
 
-function sanitizeSale({ forSale, priceKobo, callDiscountPct } = {}) {
+function sanitizeSale({ forSale, priceKobo, callDiscountPct, listed, category } = {}) {
   const out = {};
   if (forSale != null) out.for_sale = asBool(forSale) ? (USE_PG ? true : 1) : (USE_PG ? false : 0);
   if (priceKobo !== undefined) {
@@ -39,6 +41,12 @@ function sanitizeSale({ forSale, priceKobo, callDiscountPct } = {}) {
   }
   if (asBool(out.for_sale) && (out.price_kobo == null && priceKobo === undefined)) {
     /* existing price kept by caller */
+  }
+  if (listed != null) out.listed = asBool(listed) ? (USE_PG ? true : 1) : (USE_PG ? false : 0);
+  if (category !== undefined) {
+    const CAT = ['Teaching', 'Worship', 'Study', 'Music', 'Training', 'Kids', 'Business', 'Other'];
+    const c = category == null || category === '' ? null : String(category).trim();
+    out.category = c && CAT.includes(c) ? c : (c ? 'Other' : null);
   }
   return out;
 }

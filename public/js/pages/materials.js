@@ -73,7 +73,7 @@ export async function mount(view) {
   const drop = h('button', { class: 'mat-drop', type: 'button', onclick: () => fileIn.click() },
     h('span', { class: 'ico-tile', 'data-group': 'content', html: icon('upload', { size: 20 }) }),
     h('b', null, 'Upload materials'),
-    h('span', { class: 'tiny muted' }, 'PDF, PowerPoint, Word, CSV, Excel or images · drop files here'));
+    h('span', { class: 'tiny muted' }, 'PDF, PowerPoint, Word, CSV, Excel, video or images · drop files here'));
   drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
   drop.addEventListener('dragleave', () => drop.classList.remove('over'));
   drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); saveFromFiles(Array.from(e.dataTransfer?.files || [])); });

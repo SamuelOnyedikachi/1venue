@@ -2,7 +2,7 @@
 // library, the material page and the Create page's materials picker.
 import { api, uploadFile, deckKind } from './ui.js';
 
-export const ACCEPT = 'application/pdf,image/*,.pdf,.ppt,.pptx,.doc,.docx,.csv,.xls,.xlsx,'
+export const ACCEPT = 'application/pdf,image/*,video/*,.mp4,.webm,.mov,.m4v,.pdf,.ppt,.pptx,.doc,.docx,.csv,.xls,.xlsx,'
   + 'application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint,'
   + 'application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,'
   + 'text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -15,6 +15,8 @@ export const KIND = {
   pptx: { label: 'PowerPoint', icon: 'presentation' },
   doc: { label: 'Word', icon: 'file' },
   sheet: { label: 'Spreadsheet', icon: 'grid' },
+  video: { label: 'Video', icon: 'video' },
+  audio: { label: 'Audio', icon: 'volume' },
 };
 export const kindLabel = (k) => (KIND[k] ? KIND[k].label : k);
 export const kindIcon = (k) => (KIND[k] ? KIND[k].icon : 'file');
@@ -23,6 +25,7 @@ export function materialThumb(m) {
   if (!m) return null;
   if (m.kind === 'youtube' && m.payload?.videoId) return `https://i.ytimg.com/vi/${m.payload.videoId}/mqdefault.jpg`;
   if (m.kind === 'image' && m.payload?.url) return m.payload.url;
+  if ((m.kind === 'video' || m.kind === 'audio') && (m.payload?.posterUrl || m.payload?.url)) return m.payload.posterUrl || null;
   const pages = m.payload?.pages;
   return Array.isArray(pages) && pages[0] ? pages[0] : null;
 }
@@ -30,6 +33,8 @@ export function materialSub(m) {
   const pages = m.payload?.pages || [];
   if (m.kind === 'youtube') return 'YouTube video';
   if (m.kind === 'image') return 'Image';
+  if (m.kind === 'video') return m.payload?.durationSec ? `Video · ${Math.round(m.payload.durationSec / 60) || 1} min` : 'Video';
+  if (m.kind === 'audio') return 'Audio';
   if (m.kind === 'doc' || m.kind === 'sheet') return `${kindLabel(m.kind)}${m.payload?.sourceName ? ' · ' + m.payload.sourceName : ''}`;
   return `${kindLabel(m.kind)} · ${pages.length} page${pages.length === 1 ? '' : 's'}`;
 }
@@ -40,6 +45,8 @@ const DOC_MIME = { doc: 'application/msword', docx: 'application/vnd.openxmlform
 export async function fileKind(f) {
   const n = String(f.name || '').toLowerCase(), t = String(f.type || '').toLowerCase();
   const ext = n.split('.').pop();
+  if (t.startsWith('video/') || ['mp4','webm','mov','m4v','mkv'].includes(ext)) return 'video';
+  if (t.startsWith('audio/') || ['mp3','wav','m4a','ogg','aac'].includes(ext)) return 'audio';
   if (DOC_MIME[ext] || t.includes('wordprocessingml') || t === 'application/msword') return 'doc';
   if (SHEET_MIME[ext] || t.includes('spreadsheetml') || t === 'text/csv' || t === 'application/vnd.ms-excel') return 'sheet';
   const k = await deckKind(f);
@@ -83,6 +90,12 @@ export async function uploadMaterial(files, { title = '', onStatus = () => {}, o
     try { const r = await uploadFile(f, { purpose: 'content' }); return { sourceUrl: r.url, sourceName: f.name, sourceMime: f.type || r.mime, sourceSize: f.size }; }
     catch (e) { if (required) throw e; notes.push('The original file could not be stored, so this material can’t be analysed.'); return { sourceName: f.name, sourceMime: f.type }; }
   };
+  if (kind === 'video' || kind === 'audio') {
+    onStep('upload video'); onStatus(kind === 'video' ? 'Compressing and uploading video…' : 'Uploading audio…');
+    const { uploadVideo } = await import('./video-upload.js');
+    const r = kind === 'video' ? await uploadVideo(f, { purpose: 'content', profile: 'material', onProgress: (p, phase) => onStatus(`${phase === 'compress' ? 'Compressing' : 'Uploading'}… ${Math.round(p * 100)}%`) }) : await uploadFile(f, { purpose: 'content' });
+    return { material: await save({ title: t, kind, payload: { url: r.url, posterUrl: r.posterUrl || null, durationSec: r.durationSec, mime: r.mime, size: r.size || f.size, width: r.width, height: r.height, sourceUrl: r.url, sourceName: f.name, sourceMime: f.type || r.mime, sourceSize: r.size || f.size } }), notes };
+  }
   if (kind === 'doc' || kind === 'sheet') return { material: await save({ title: t, kind, payload: await source(true) }), notes };
   if (kind === 'image') {
     onStep('upload image'); onStatus('Uploading…');
@@ -114,5 +127,5 @@ export async function uploadMaterial(files, { title = '', onStatus = () => {}, o
     if (data.truncated) notes.push(`Only the first ${data.pages.length} of ${data.total} slides were saved`);
     return { material: await save({ title: data.title || t, kind: 'pptx', payload: { pages: data.pages, ...src } }), notes };
   }
-  throw new Error(`“${f.name}” isn’t a supported file. Use PDF, PowerPoint, Word, CSV, Excel or an image.`);
+  throw new Error(`“${f.name}” isn’t a supported file. Use PDF, PowerPoint, Word, CSV, Excel, a video or an image.`);
 }
