@@ -428,6 +428,8 @@ Object.assign(Room.prototype, {
       saveWorkingPair(devicePrefs());
       this.stopDeviceWatch && this.stopDeviceWatch();
       this.stopDeviceWatch = startWatchdog(this);
+      // Register after media is up — auto enterpictureinpicture needs a live mic or camera track.
+      bindMediaSession(this);
     });
     this.registerCmds();
     this.tick = setInterval(() => this.paintHead(), 1000);
@@ -624,6 +626,7 @@ Object.assign(Room.prototype, {
     if (on && this.meP()?.mutedByHost && !this.isMod()) this.send('unmute-self', {});
     try { await this.media.setMic(on); this.captioner.onMic(on); this.captioner.autoSync(); roomMicChanged(); } catch (e) { toastErr(e); }
     this.changed();
+    bindMediaSession(this);
     syncChrome(this);
   },
   setCallMuted(on, { silent } = {}) {
@@ -655,6 +658,7 @@ Object.assign(Room.prototype, {
     if (on && !this.perm('camera') && !this.isMod()) { toast('The host has disabled cameras', { icon: 'videoOff' }); return; }
     try { await this.media.setCam(on); } catch (e) { toastErr(e); }
     this.changed();
+    bindMediaSession(this);
   },
   async toggleShare(force) {
     if (typeof force !== 'boolean' && this.media.sharing) return this.confirmStopShare();
@@ -1217,7 +1221,7 @@ Object.assign(Room.prototype, {
     const cmds = [
       { id: 'r-mic', label: 'Microphone on/off', short: () => (R.media.mic ? 'Mute' : 'Unmute'), icon: () => (R.media.mic ? 'mic' : 'micOff'), group: 'media', kbd: 'M', active: () => R.media.mic, keywords: 'mute unmute audio voice talk sound', run: () => R.toggleMic() },
       { id: 'r-cam', label: 'Camera on/off', short: () => (R.media.cam ? 'Stop video' : 'Video'), icon: () => (R.media.cam ? 'video' : 'videoOff'), group: 'media', kbd: 'V', active: () => R.media.cam, keywords: 'camera webcam face video', run: () => R.toggleCam() },
-      { id: 'r-spk', label: 'Mute call audio', short: () => (R.callMuted ? 'Call muted' : 'Mute call'), icon: () => (R.callMuted ? 'volumeOff' : 'volume'), group: 'media', active: () => !R.callMuted, keywords: 'speaker volume mute call audio listen headphone deafen', run: () => R.toggleCallAudio() },
+      { id: 'r-spk', label: 'Mute call audio', short: () => (R.callMuted ? 'Call muted' : 'Mute call'), icon: () => (R.callMuted ? 'volumeOff' : 'volume'), group: 'media', active: () => !!R.callMuted, keywords: 'speaker volume mute call audio listen headphone deafen', run: () => R.toggleCallAudio() },
       { id: 'r-share', label: 'Share screen', short: () => (R.media.sharing ? 'Stop share' : 'Share'), icon: () => (R.media.sharing ? 'screenOff' : 'screen'), group: 'media', kbd: 'S', active: () => R.media.sharing, keywords: 'present screen share display slides', when: () => !R.stage.enabled || R.isSpeaker(R.me.id), run: () => R.toggleShare() },
       { id: 'r-hand', label: 'Raise hand / request to speak', short: () => (R.stage.enabled && !R.isSpeaker(R.me.id) ? ((R.stage.requests || []).some((q) => q.id === R.me.id) ? 'Queued' : 'Ask to speak') : R.meP()?.handRaised ? 'Lower' : 'Hand'), icon: () => (R.stage.enabled && !R.isSpeaker(R.me.id) ? 'stage' : 'hand'), group: 'engage', kbd: 'H', active: () => !!R.meP()?.handRaised || (R.stage.requests || []).some((q) => q.id === R.me.id), keywords: 'raise hand question speak stage queue mic request', run: () => R.raiseHand() },
       { id: 'r-react', label: 'React', short: 'React', icon: 'smile', group: 'engage', keywords: 'emoji reaction clap love like', run: () => R.reactMenu() },

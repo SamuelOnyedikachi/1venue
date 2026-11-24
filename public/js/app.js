@@ -7,6 +7,7 @@ import { surahCommands, loadSurahs, looksLikeQuran } from './quran-cmd.js';
 import { initPwa, promptInstall } from './pwa.js';
 import { accentButtonColors, accentInk } from './appearance.mjs';
 import './messages/tones.js'; // install audio-unlock handlers before any incoming call or message arrives
+import { installAutoPipGuards, bindShell, primeAutoPip } from './room/session.js';
 
 export const state = { config: null, user: null, session: null, prefs: null, route: null, inRoom: false };
 const LS_PREFS = 'venue.prefs';
@@ -179,6 +180,8 @@ const RAILS = [[/^\/discover\/?$/, 'discover', false], [/^\/venues\/?$/, 'venues
 let currentPage = null;
 let routeSeq = 0;
 export function navigate(to, { replace = false } = {}) {
+  // Request Document PiP in this same turn, while the click/key is still a user gesture.
+  primeAutoPip('navigate', to);
   if (to === location.pathname + location.search && !replace) { route(); return; }
   history[replace ? 'replaceState' : 'pushState']({}, '', to);
   route();
@@ -504,6 +507,8 @@ function showShortcuts() {
 async function boot() {
   state.prefs = loadLocalPrefs(); applyPrefs();
   buildShell(); initTooltips(); registerGlobal();
+  bindShell({ setRoomMode });
+  installAutoPipGuards();
   document.addEventListener('click', (e) => {
     const a = e.target.closest('a[href]');
     if (!a || a.target || a.hasAttribute('download') || e.metaKey || e.ctrlKey || e.shiftKey) return;

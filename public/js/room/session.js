@@ -2,22 +2,35 @@
 import { h } from '../ui.js';
 import { icon } from '../icons.js';
 import { fmtCode } from './intent.js';
-import { setRoomMode } from '../app.js';
 
 let live = null;
+let shell = { setRoomMode() {} };
+let pendingWin = null;
+let noGesture = false;
+let guardsOn = false;
 
+export function bindShell(s) { if (s) shell = { ...shell, ...s }; }
 export function getLive() { return live; }
 export function liveUrl(room) { return '/' + fmtCode((room && room.code) || (live && live.code) || ''); }
+export function isLiveMeeting(room) {
+  const r = room || (live && live.room);
+  return !!(r && r.alive && r.inRoom && r.root && !r._leaving);
+}
 export function canResume(params) {
   if (!live || !live.room || !live.room.alive || !live.room.inRoom) return false;
   const code = params && params.code ? fmtCode(params.code) : '';
   return !!(code && fmtCode(live.code) === code);
 }
+export function isMeetingDest(dest) {
+  if (!dest || !isLiveMeeting()) return false;
+  const path = String(dest).split('#')[0].split('?')[0].replace(/\/$/, '') || '/';
+  return fmtCode(path) === fmtCode(live.code || (live.room && live.room.code));
+}
 
 export function pageApi(room) {
   return {
     unmount() { room.destroy(); },
-    canParkLive() { return !!(room.alive && room.inRoom && room.root && !room._leaving); },
+    canParkLive() { return isLiveMeeting(room); },
     parkLive() { return park(room); },
   };
 }
@@ -31,16 +44,100 @@ export function holder() {
   return el;
 }
 
+function dbg(...args) { try { console.debug('[auto-pip]', ...args); } catch { /* */ } }
+
+export function destFromClick(e) {
+  if (!e || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (e.button && e.button !== 0)) return null;
+  const t = e.target;
+  const a = t && t.closest ? t.closest('a[href]') : null;
+  if (!a || a.target) return null;
+  if (a.hasAttribute && a.hasAttribute('download')) return null;
+  let url;
+  try { url = new URL(a.getAttribute('href') || a.href, location.href); } catch { return null; }
+  if (url.origin !== location.origin) return null;
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/files/') || url.pathname.startsWith('/auth/')) return null;
+  if (/^\/(privacy|terms)(\.html)?\/?$/.test(url.pathname)) return null;
+  return url.pathname + url.search + url.hash;
+}
+
+/** Call requestWindow in the same turn as the user gesture. Never await before this. */
+export function primeAutoPip(reason, dest) {
+  dbg(reason, dest || '');
+  if (!isLiveMeeting()) { dbg('skip: not-in-call'); return null; }
+  if (dest && isMeetingDest(dest)) { dbg('skip: dest-is-meeting'); return null; }
+  if (noGesture || reason === 'popstate') {
+    dbg('no-gesture', reason);
+    return null;
+  }
+  if (pendingWin) { dbg('already-pending'); return pendingWin; }
+  if (hasPip()) { dbg('already-open'); return Promise.resolve(currentPip()); }
+  const api = typeof documentPictureInPicture !== 'undefined' ? documentPictureInPicture : null;
+  if (!api || typeof api.requestWindow !== 'function') { dbg('unsupported'); return null; }
+  try {
+    dbg('requestWindow', reason);
+    const p = api.requestWindow({ width: 420, height: 300 });
+    pendingWin = Promise.resolve(p).then((w) => {
+      if (live) live.autoPip = w;
+      return w;
+    }).catch((err) => {
+      dbg('request-rejected', err && (err.message || err));
+      pendingWin = null;
+      return null;
+    });
+    return pendingWin;
+  } catch (err) {
+    dbg('request-threw', err && (err.message || err));
+    return null;
+  }
+}
+
+export function installAutoPipGuards(root) {
+  const doc = root || (typeof document !== 'undefined' ? document : null);
+  const win = (root && root.defaultView) || (typeof window !== 'undefined' ? window : null);
+  if (!doc || !doc.addEventListener) return;
+  if (doc._autoPipGuards) return;
+  doc._autoPipGuards = true;
+  guardsOn = true;
+  doc.addEventListener('click', (e) => {
+    const dest = destFromClick(e);
+    if (!dest) return;
+    if (!isLiveMeeting()) return;
+    if (isMeetingDest(dest)) return;
+    // Synchronous, capturing, before any navigate/route await.
+    primeAutoPip('click', dest);
+  }, true);
+  if (win && win.addEventListener) {
+    win.addEventListener('popstate', () => {
+      if (!isLiveMeeting()) return;
+      noGesture = true;
+      dbg('popstate');
+    }, true);
+  }
+}
+
 export function park(room) {
-  if (!room || !room.alive || !room.inRoom) return false;
+  if (!isLiveMeeting(room) && !(room && room.alive && room.inRoom && room.root && !room._leaving)) {
+    dbg('park-skipped', 'not-live');
+    return false;
+  }
   if (live && live.room && live.room !== room) {
     try { live.room.destroy(); } catch { /* ignore */ }
   }
   if (room.root && room.root.parentNode !== holder()) holder().append(room.root);
-  try { setRoomMode(false); } catch { /* ignore */ }
-  live = { room, code: room.code, url: liveUrl(room) };
-  // Request Document PiP in the same turn as the click (user gesture).
-  startAutoPip(room);
+  try { shell.setRoomMode && shell.setRoomMode(false); } catch { /* ignore */ }
+  live = live && live.room === room ? live : { room, code: room.code, url: liveUrl(room), autoPip: live && live.autoPip };
+  live.room = room;
+  live.code = room.code;
+  live.url = liveUrl(room);
+  const skipWin = noGesture;
+  noGesture = false;
+  if (skipWin) {
+    dbg('park-mini-fallback');
+    restoreStage(room);
+    showMini(room);
+  } else {
+    attachAutoPip(room, pendingWin || primeAutoPip('park'));
+  }
   syncChrome(room);
   return true;
 }
@@ -49,34 +146,53 @@ export async function resume(view, params) {
   if (!canResume(params)) return null;
   const room = live.room;
   room.view = view;
+  restoreStage(room);
   if (room.root) view.append(room.root);
   closeMini();
   closeAutoPip();
-  try { setRoomMode(true); } catch { /* ignore */ }
+  try { shell.setRoomMode && shell.setRoomMode(true); } catch { /* ignore */ }
   try { room.renderStage(true); room.paintHead(true); } catch { /* ignore */ }
   return pageApi(room);
 }
 
 export function release(room) {
   if (!live || (room && live.room !== room)) return;
+  restoreStage(live.room);
   closeMini();
   closeAutoPip();
   const hold = document.getElementById('live-meeting-hold');
   if (hold) hold.remove();
   unbindMediaSession();
   live = null;
+  pendingWin = null;
+  noGesture = false;
 }
 
 export function bindMediaSession(room) {
-  if (!room || !navigator.mediaSession) return;
+  if (!room || typeof navigator === 'undefined' || !navigator.mediaSession) {
+    dbg('mediasession-missing');
+    return;
+  }
   try {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: room.roomName || '1venue meeting',
       artist: '1venue',
       artwork: [{ src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }],
     });
-    navigator.mediaSession.setActionHandler('enterpictureinpicture', () => startAutoPip(room));
-  } catch { /* browser may not support the action */ }
+  } catch { /* */ }
+  try {
+    if (navigator.mediaSession.setMicrophoneActive) navigator.mediaSession.setMicrophoneActive(!!(room.media && room.media.mic));
+    if (navigator.mediaSession.setCameraActive) navigator.mediaSession.setCameraActive(!!(room.media && room.media.cam));
+  } catch { /* */ }
+  try {
+    navigator.mediaSession.setActionHandler('enterpictureinpicture', () => {
+      dbg('mediasession');
+      return startAutoPip(room, 'mediasession');
+    });
+    dbg('mediasession-registered', !!(room.media && (room.media.mic || room.media.cam)));
+  } catch (err) {
+    dbg('mediasession-unsupported', err && (err.message || err));
+  }
   if (room._visPip) return;
   room._visPip = () => {
     if (document.visibilityState !== 'hidden') return;
@@ -84,6 +200,7 @@ export function bindMediaSession(room) {
     setTimeout(() => {
       if (document.visibilityState !== 'hidden' || !room.alive || room._leaving) return;
       if (hasPip()) return;
+      dbg('visibility-fallback-notify');
       notifyReturn(room);
     }, 500);
   };
@@ -91,79 +208,109 @@ export function bindMediaSession(room) {
 }
 
 function unbindMediaSession() {
-  if (!navigator.mediaSession) return;
+  if (typeof navigator === 'undefined' || !navigator.mediaSession) return;
   try { navigator.mediaSession.setActionHandler('enterpictureinpicture', null); } catch { /* */ }
 }
 
 function hasPip() {
   try {
-    const w = window.documentPictureInPicture && window.documentPictureInPicture.window;
+    const w = currentPip();
     return !!(w && !w.closed);
   } catch { return false; }
 }
-
-export function startAutoPip(room) {
-  if (!room || !room.alive) return Promise.resolve('none');
-  if (hasPip()) {
-    const w = window.documentPictureInPicture.window;
-    if (w && w.document && w.document.querySelector('.app-pip-call')) {
-      mountBar(w.document.querySelector('.app-pip-call'), room, w.document);
-      return Promise.resolve('app');
-    }
-    if (live && live.autoPip && !live.autoPip.closed) return Promise.resolve('auto');
-    // An unrelated PiP (e.g. the app pop-out without a call slot) is already open;
-    // Chrome will replace it if we request another, so use the in-page mini bar.
-    showMini(room);
-    return Promise.resolve('mini');
-  }
-  if (typeof documentPictureInPicture === 'undefined' || !documentPictureInPicture.requestWindow) {
-    showMini(room);
-    return Promise.resolve('mini');
-  }
+function currentPip() {
   try {
-    const p = documentPictureInPicture.requestWindow({ width: 380, height: 132 });
-    return p.then((w) => {
-      live && (live.autoPip = w);
-      fillAutoPip(w, room);
-      closeMini();
+    if (live && live.autoPip && !live.autoPip.closed) return live.autoPip;
+    const w = typeof documentPictureInPicture !== 'undefined' && documentPictureInPicture.window;
+    return (w && !w.closed) ? w : null;
+  } catch { return null; }
+}
+
+export function startAutoPip(room, reason = 'start') {
+  if (!room || !room.alive) return Promise.resolve('none');
+  if (reason === 'popstate' || noGesture) {
+    noGesture = false;
+    showMini(room);
+    return Promise.resolve('mini');
+  }
+  const p = pendingWin || primeAutoPip(reason);
+  return attachAutoPip(room, p);
+}
+
+function attachAutoPip(room, winP) {
+  if (!winP) { showMini(room); return Promise.resolve('mini'); }
+  return Promise.resolve(winP).then((w) => {
+    pendingWin = null;
+    if (!w || w.closed) { dbg('window-missing'); showMini(room); return 'mini'; }
+    if (live) live.autoPip = w;
+    fillAutoPip(w, room);
+    moveStage(w, room);
+    closeMini();
+    if (!w._autoPipHide) {
+      w._autoPipHide = true;
       w.addEventListener('pagehide', () => {
         if (live) live.autoPip = null;
-        if (room.alive && room.inRoom && !room._leaving && (!room.root || !document.getElementById('view')?.contains(room.root))) showMini(room);
+        restoreStage(room);
+        if (room.alive && room.inRoom && !room._leaving && (!room.root || !document.getElementById('view') || !document.getElementById('view').contains(room.root))) showMini(room);
       });
-      return 'auto';
-    }).catch(() => { showMini(room); return 'mini'; });
-  } catch {
-    showMini(room);
-    return Promise.resolve('mini');
-  }
+    }
+    return 'auto';
+  }).catch((err) => { dbg('attach-failed', err && (err.message || err)); showMini(room); return 'mini'; });
+}
+
+function copyStyles(win) {
+  try {
+    [...document.styleSheets].forEach((ss) => {
+      try {
+        const st = win.document.createElement('style');
+        st.textContent = [...ss.cssRules].map((r) => r.cssText).join('\n');
+        win.document.head.append(st);
+      } catch {
+        if (ss.href) { const l = win.document.createElement('link'); l.rel = 'stylesheet'; l.href = ss.href; win.document.head.append(l); }
+      }
+    });
+  } catch { /* */ }
 }
 
 function copyTheme(doc) {
   try { doc.documentElement.dataset.theme = document.documentElement.dataset.theme; } catch { /* */ }
-  const src = getComputedStyle(document.documentElement);
-  const root = doc.documentElement.style;
-  for (const k of ['--bg', '--text', '--muted', '--line', '--s1', '--s2', '--accent', '--accent-2', '--accent-ink', '--accent-action']) {
-    try { const v = src.getPropertyValue(k); if (v) root.setProperty(k, v); } catch { /* */ }
-  }
+  try {
+    const src = getComputedStyle(document.documentElement);
+    const root = doc.documentElement.style;
+    for (const k of ['--bg', '--text', '--muted', '--line', '--s1', '--s2', '--accent', '--accent-2', '--accent-ink', '--accent-action']) {
+      const v = src.getPropertyValue(k); if (v) root.setProperty(k, v);
+    }
+  } catch { /* */ }
 }
 
 function fillAutoPip(win, room) {
   const doc = win.document;
-  copyTheme(doc);
-  doc.documentElement.style.height = '100%';
-  doc.body.style.cssText = 'margin:0;height:100%;background:var(--bg,#111);color:var(--text,#eee);font:14px/1.4 system-ui,sans-serif;';
-  const style = doc.createElement('style');
-  style.textContent = pipCss();
-  doc.head.append(style);
-  const slot = doc.createElement('div');
-  slot.className = 'meet-pip';
-  doc.body.append(slot);
+  if (!doc.body.querySelector('.meet-pip')) {
+    copyTheme(doc);
+    copyStyles(win);
+    doc.documentElement.style.height = '100%';
+    doc.body.style.cssText = 'margin:0;height:100%;background:var(--bg,#111);color:var(--text,#eee);font:14px/1.4 system-ui,sans-serif;overflow:hidden;';
+    const style = doc.createElement('style');
+    style.textContent = pipCss();
+    doc.head.append(style);
+    const root = doc.createElement('div');
+    root.className = 'meet-pip';
+    const stageHost = doc.createElement('div');
+    stageHost.className = 'meet-pip-stage';
+    const slot = doc.createElement('div');
+    slot.className = 'meet-pip-bar';
+    root.append(stageHost, slot);
+    doc.body.append(root);
+  }
+  const slot = doc.body.querySelector('.meet-pip-bar') || doc.body.querySelector('.meet-pip');
   mountBar(slot, room, doc);
 }
 
 function pipCss() {
-  return `.meet-pip,.live-call-bar{display:flex;align-items:center;gap:.45rem;width:100%;box-sizing:border-box;padding:.45rem .55rem;background:var(--s1,#1a1a1a);color:inherit}
-.meet-pip{height:100%}
+  return `.meet-pip{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--bg,#111);color:inherit}
+.meet-pip-stage{flex:1;min-height:0;overflow:hidden;position:relative;background:#0b0d12}
+.meet-pip-stage > *{width:100%;height:100%}
+.meet-pip-bar,.live-call-bar{display:flex;align-items:center;gap:.45rem;width:100%;box-sizing:border-box;padding:.45rem .55rem;background:var(--s1,#1a1a1a);color:inherit;flex:none}
 .lcb-dot{width:8px;height:8px;border-radius:99px;background:#16a34a;flex:none;box-shadow:0 0 0 4px color-mix(in srgb,#16a34a 25%,transparent)}
 .lcb-who{flex:1;min-width:0;display:flex;flex-direction:column}
 .lcb-who b{font-size:.86rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -174,6 +321,42 @@ function pipCss() {
 .lcb-btns button.off{opacity:.7}
 .lcb-btns button.danger{background:#dc2626;color:#fff}
 .lcb-btns button.primary{background:var(--accent-action,var(--accent,#2563eb));color:#fff}`;
+}
+
+function moveStage(win, room) {
+  const stageEl = room && room.stageR && room.stageR.el;
+  if (!stageEl || !win || !win.document) return;
+  try {
+    const host = win.document.querySelector('.meet-pip-stage');
+    if (!host) return;
+    if (stageEl.parentNode !== host) {
+      if (!live.placeholder) {
+        const ph = stageEl.ownerDocument.createElement('div');
+        ph.className = 'pip-placeholder';
+        ph.textContent = 'Playing in picture-in-picture';
+        live.placeholder = ph;
+      }
+      if (stageEl.parentNode) stageEl.replaceWith(live.placeholder);
+      host.append(stageEl);
+      live.stageEl = stageEl;
+      host.querySelectorAll('video, audio').forEach((el) => { try { el.play && el.play(); } catch { /* */ } });
+      try { room.renderStage && room.renderStage(true); } catch { /* */ }
+      dbg('stage-moved');
+    }
+  } catch (err) { dbg('stage-move-failed', err && (err.message || err)); }
+}
+
+function restoreStage(room) {
+  const r = room || (live && live.room);
+  const stageEl = (live && live.stageEl) || (r && r.stageR && r.stageR.el);
+  const ph = live && live.placeholder;
+  if (!stageEl || !ph || !ph.parentNode) {
+    if (live) { live.stageEl = null; live.placeholder = null; }
+    return;
+  }
+  try { ph.replaceWith(stageEl); } catch { /* */ }
+  if (live) { live.stageEl = null; live.placeholder = null; }
+  try { r && r.renderStage && r.renderStage(true); } catch { /* */ }
 }
 
 function mountBar(host, room, doc) {
@@ -236,7 +419,7 @@ export function syncChrome(room) {
   const mini = document.getElementById('live-call-mini');
   if (mini) nodes.push(mini);
   try {
-    const w = window.documentPictureInPicture && window.documentPictureInPicture.window;
+    const w = currentPip();
     if (w && w.document) w.document.querySelectorAll('.live-call-bar').forEach((el) => nodes.push(el));
   } catch { /* */ }
   for (const el of nodes) paintBar(el, r, el.ownerDocument);
@@ -265,6 +448,7 @@ function closeAutoPip() {
     if (live && live.autoPip && !live.autoPip.closed) live.autoPip.close();
   } catch { /* */ }
   if (live) live.autoPip = null;
+  pendingWin = null;
 }
 
 export function returnToMeeting(pipDoc) {
@@ -287,4 +471,11 @@ function notifyReturn(room) {
     });
     n.onclick = () => { try { window.focus(); } catch { /* */ } returnToMeeting(); n.close(); };
   } catch { /* */ }
+}
+
+/** Test hook: install a live meeting without joining one. */
+export function _testSetLive(room) {
+  live = room ? { room, code: room.code, url: liveUrl(room) } : null;
+  pendingWin = null;
+  noGesture = false;
 }
