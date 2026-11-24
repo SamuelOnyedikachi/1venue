@@ -1,6 +1,8 @@
 // Small UI toolkit: DOM builder, API, toasts, sheets, menus, tooltips, formatting.
 import { icon } from './icons.js';
 import { menuPosition } from './menu-pos.js';
+import { kidsOf, installSafeDom } from './safe-text.js';
+installSafeDom();
 
 export const $ = (s, r = document) => r.querySelector(s);
 export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -50,9 +52,9 @@ export function h(tag, props, ...kids) {
     else if (k in el && typeof v !== 'string') el[k] = v;
     else el.setAttribute(k, v === true ? '' : v);
   }
-  for (const kid of kids.flat(Infinity)) {
-    if (kid == null || kid === false) continue;
-    el.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+  for (const kid of kidsOf(...kids)) {
+    if (kid && (kid instanceof Node || kid.nodeType)) el.append(kid);
+    else if (typeof kid === 'string' || typeof kid === 'number') el.append(document.createTextNode(String(kid)));
   }
   return el;
 }

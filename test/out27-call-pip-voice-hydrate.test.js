@@ -178,9 +178,9 @@ describe('out27 incoming call keeps the app pop-out, STT alignment, voice hydrat
   });
 
   it('bumps the service worker and cache-bust query', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v76-2026-11-23'/);
-    assert.match(read('public/index.html'), /app\.css\?v=62/);
-    assert.match(read('public/index.html'), /app\.js\?v=62/);
+    assert.match(read('public/sw.js'), /VERSION = 'v77-2026-11-23'/);
+    assert.match(read('public/index.html'), /app\.css\?v=63/);
+    assert.match(read('public/index.html'), /app\.js\?v=63/);
   });
 
   it('never opens a second Document PiP when the app pop-out is already open', () => {

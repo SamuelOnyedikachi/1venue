@@ -20,6 +20,26 @@ export function safeText(v, max = 4000) {
   return JUNK.test(s) ? '' : s.slice(0, max);
 }
 export const safeList = (v, limit = 20) => (Array.isArray(v) ? v : v == null ? [] : [v]).map((x) => safeText(x, 400)).filter(Boolean).slice(0, limit);
+/** Drop values that Element.append / replaceChildren would otherwise print as "null" / "false" / "true". */
+export function isDomChild(k) { return k != null && k !== false && k !== true; }
+export function kidsOf(...kids) { return kids.flat(Infinity).filter(isDomChild); }
+
 /** Element.append / replaceChildren print "null" for null kids; this drops empty ones. */
-export function put(el, ...kids) { el.replaceChildren(...kids.flat(Infinity).filter((k) => k != null && k !== false && k !== '')); return el; }
-export function add(el, ...kids) { el.append(...kids.flat(Infinity).filter((k) => k != null && k !== false && k !== '')); return el; }
+export function put(el, ...kids) { el.replaceChildren(...kidsOf(...kids).filter((k) => k !== '')); return el; }
+export function add(el, ...kids) { el.append(...kidsOf(...kids).filter((k) => k !== '')); return el; }
+
+/** Wrap ParentNode methods so a missed `null` child can never become the text "null" again. */
+export function installSafeDom() {
+  if (typeof Element === 'undefined') return;
+  const mark = '__venueSafeKids';
+  for (const proto of [Element.prototype, Document.prototype, DocumentFragment.prototype]) {
+    if (!proto || proto[mark]) continue;
+    Object.defineProperty(proto, mark, { value: true, configurable: true });
+    for (const name of ['append', 'prepend', 'replaceChildren', 'before', 'after']) {
+      const orig = proto[name];
+      if (typeof orig !== 'function') continue;
+      proto[name] = function (...args) { return orig.apply(this, kidsOf(...args)); };
+    }
+  }
+}
+if (typeof window !== 'undefined') installSafeDom();

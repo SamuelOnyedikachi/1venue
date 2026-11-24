@@ -1,5 +1,6 @@
 import { icon } from '../icons.js';
 import { h, api, fmtNum, fmtDur, timeAgo, avatar } from '../ui.js';
+import { add } from '../safe-text.js';
 import { state, requireLogin } from '../app.js';
 import { eventCard, personRow } from '../components.js';
 import { panel, table, iconBtn, stat, stats, empty, pill, rangePicker, rangeLabel } from '../host-kit.js';
@@ -131,8 +132,13 @@ export async function mount(view) {
   const d = await api('/api/dashboard');
   view.innerHTML = '';
   const s = d.stats || {};
+  const hosting = d.hosting || [];
+  const going = d.going || [];
+  const history = d.history || [];
+  const people = d.people || [];
+  const live = d.live || [];
 
-  view.append(
+  add(view,
     h('section', { class: 'dash-hero card' },
       avatar(state.user.displayName, state.user.avatarUrl, 'xl ring'),
       h('div', { class: 'grow dash-hero-copy' },
@@ -149,26 +155,26 @@ export async function mount(view) {
     panel({ icon: 'chart', title: 'Analytics', desc: 'Your activity over a date range - hosted and joined sessions, audience and RSVPs.' },
       analyticsBlock()),
 
-    d.live?.length ? panel({ icon: 'radio', title: 'Live now', actions: h('a', { class: 'btn sm ghost', href: '/discover?status=live', 'data-link': '' }, 'All') },
+    live.length ? panel({ icon: 'radio', title: 'Live now', actions: h('a', { class: 'btn sm ghost', href: '/discover?status=live', 'data-link': '' }, 'All') },
       h('div', { class: 'hscroll cards-row' }, d.live.map((e) => eventCard(e)))) : null,
 
     h('div', { class: 'dash-split' },
       h('div', { class: 'col dash-main-col' },
         h('div', { id: 'hosting' },
           panel({ icon: 'calendar', title: 'Your events', actions: h('a', { class: 'btn sm', href: '/create', 'data-link': '', html: icon('plus', { size: 15 }) + 'New' }) },
-            d.hosting.length ? h('div', { class: 'grid-cards' }, d.hosting.map((e) => eventCard(e)))
+            hosting.length ? h('div', { class: 'grid-cards' }, hosting.map((e) => eventCard(e)))
               : empty('calendar', 'You haven’t hosted yet', 'Your talk shows, seminars and services will live here.', h('a', { class: 'btn sm primary', href: '/create', 'data-link': '' }, 'Create an event')))),
         panel({ icon: 'ticket', title: 'Going' },
-          d.going.length ? h('div', { class: 'grid-cards' }, d.going.map((e) => eventCard(e)))
+          going.length ? h('div', { class: 'grid-cards' }, going.map((e) => eventCard(e)))
             : empty('ticket', 'No RSVPs yet', 'Tap RSVP on any event to save it here.', h('a', { class: 'btn sm', href: '/discover', 'data-link': '' }, 'Discover')))),
       h('aside', { class: 'col dash-side-col' },
         panel({ icon: 'history', title: 'Recent sessions', actions: h('a', { class: 'tiny', href: '/sessions', 'data-link': '' }, 'All') },
-          d.history.length
-            ? listMore(d.history, sessionRow, { limit: 5, moreHref: '/sessions' })
+          history.length
+            ? listMore(history, sessionRow, { limit: 5, moreHref: '/sessions' })
             : empty('history', 'No sessions yet', 'Transcripts and AI summaries of your sessions appear here.')),
         panel({ icon: 'userPlus', title: 'People to follow' },
-          d.people.length
-            ? listMore(d.people, (u) => personRow(u), { limit: 5, moreHref: '/discover', moreLabel: 'See more' })
+          people.length
+            ? listMore(people, (u) => personRow(u), { limit: 5, moreHref: '/discover', moreLabel: 'See more' })
             : empty('users', 'No suggestions yet')),
         panel({ icon: 'board', title: 'Personal whiteboard', actions: h('a', { class: 'btn sm', href: '/whiteboard', 'data-link': '' }, 'Open board') }))),
   );

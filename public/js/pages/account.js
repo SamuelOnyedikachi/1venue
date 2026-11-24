@@ -2,6 +2,7 @@
 // and the Danger zone (delete account: password → emailed code → final confirm).
 import { icon } from '../icons.js';
 import { h, api, toast, toastErr, sheet, confirmDlg, timeAgo } from '../ui.js';
+import { put } from '../safe-text.js';
 import { logout, refreshSession, navigate } from '../app.js';
 import { passwordInput, notice, GOOGLE_G, APPLE_LOGO, usernameField, phoneField } from './login.js';
 
@@ -112,15 +113,15 @@ export async function accountCard(card, row) {
       await refreshSession(); toast('Signed out everywhere', { icon: 'logout' }); navigate('/login');
     };
 
-    box.replaceChildren(
-      row('user', 'people', u.displayName, '@' + u.username, h('a', { class: 'btn sm', href: '/me?edit=1', 'data-link': '' }, 'Edit profile')),
-      row('user', 'people', 'Username', '@' + u.username, h('button', { class: 'btn sm', type: 'button', onclick: changeUsername }, 'Change')),
+    put(box,
+      row('user', 'people', u.displayName || 'Account', '@' + (u.username || 'user'), h('a', { class: 'btn sm', href: '/me?edit=1', 'data-link': '' }, 'Edit profile')),
+      row('user', 'people', 'Username', '@' + (u.username || 'user'), h('button', { class: 'btn sm', type: 'button', onclick: changeUsername }, 'Change')),
       row('mail', 'people', 'Phone', u.phone || 'Not set', h('button', { class: 'btn sm', type: 'button', onclick: changePhone }, u.phone ? 'Change' : 'Add')),
-      row('mail', 'people', h('span', { class: 'row', style: { gap: '.4rem', flexWrap: 'wrap' } }, 'Email', chip), h('span', { style: { wordBreak: 'break-all' } }, u.email),
+      row('mail', 'people', h('span', { class: 'row', style: { gap: '.4rem', flexWrap: 'wrap' } }, 'Email', chip), h('span', { style: { wordBreak: 'break-all' } }, u.email || 'Not set'),
         h('div', { class: 'col', style: { gap: '.3rem', alignItems: 'flex-end' } }, h('button', { class: 'btn sm', type: 'button', onclick: changeEmail }, 'Change'), resend)),
       row('key', 'admin', 'Password', u.hasPassword ? 'Used with your email or username' : `Not set: you sign in with ${appleId && !google ? 'Apple' : 'Google'}`, h('button', { class: 'btn sm', type: 'button', onclick: changePassword }, u.hasPassword ? 'Change' : 'Set password')),
       acc.apple || appleId ? row('login', 'nav', 'Apple', appleId ? `Connected (${appleId.email || 'Apple ID'})` : 'Use “Continue with Apple” with this same email to connect it', appleId ? h('span', { class: 'chip', html: APPLE_LOGO + ' Connected' }) : null) : null,
-      acc.google || google ? row('login', 'nav', 'Google', google ? `Connected (${google.email})` : 'Use “Continue with Google” with this same email to connect it', google ? h('span', { class: 'chip', html: GOOGLE_G + ' Connected' }) : null) : null,
+      acc.google || google ? row('login', 'nav', 'Google', google ? `Connected (${google.email || 'Google'})` : 'Use “Continue with Google” with this same email to connect it', google ? h('span', { class: 'chip', html: GOOGLE_G + ' Connected' }) : null) : null,
       h('div', { class: 'set-row', style: { alignItems: 'flex-start' } },
         h('span', { class: 'ico', style: { '--g': 'var(--g-admin)' }, html: icon('shield') }),
         h('div', { class: 'grow col', style: { gap: '.5rem' } },

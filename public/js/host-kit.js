@@ -46,12 +46,12 @@ export function chips(opts, value, onPick, { label = 'Filter' } = {}) {
 }
 export const stat = (value, label, { ic, tone = '' } = {}) => h('div', { class: `ht-stat ${tone}`.trim() },
   ic ? h('span', { class: 'ht-stat-ic', html: icon(ic, { size: 16 }) }) : null,
-  h('strong', null, String(value)), h('span', { class: 'tiny muted' }, label));
+  h('strong', null, value == null || value === '' ? '—' : String(value)), h('span', { class: 'tiny muted' }, label));
 export const stats = (...tiles) => h('div', { class: 'ht-stats' }, ...tiles);
 export const empty = (ic, title, text, action = null) => h('div', { class: 'ht-empty' },
   h('span', { class: 'ht-empty-ic', html: icon(ic, { size: 22 }) }), h('div', null, h('strong', null, title), text ? h('p', { class: 'small muted' }, text) : null), action);
 /** A status pill. tone: ok | wait | bad | muted | accent */
-export const pill = (text, tone = 'muted', ic = null) => h('span', { class: `ht-pill ${tone}`, html: (ic ? icon(ic, { size: 13 }) : '') + `<span>${String(text).replace(/</g, '&lt;')}</span>` });
+export const pill = (text, tone = 'muted', ic = null) => { const t = (text == null || text === false || text === true) ? '' : String(text); return h('span', { class: `ht-pill ${tone}`, html: (ic ? icon(ic, { size: 13 }) : '') + `<span>${t.replace(/</g, '&lt;')}</span>` }); };
 export const field = (label, input, hint = null) => h('label', { class: 'ht-field' }, h('span', { class: 'ht-field-l' }, label), input, hint);
 export const actionBtn = (text, fn, { primary = false, ic = null, cls = '' } = {}) => {
   const b = h('button', { class: `btn${primary ? ' primary' : ''} ${cls}`.trim(), type: 'button', html: (ic ? icon(ic, { size: 16 }) : '') + `<span>${text}</span>` });
