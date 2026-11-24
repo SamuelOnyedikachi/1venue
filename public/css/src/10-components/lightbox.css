@@ -3,7 +3,8 @@
 img[data-lightbox],
 img.msg-img,
 img.feed-post-img,
-img.mat-page-img {
+img.mat-page-img,
+img.app-pip-att {
   cursor: zoom-in;
 }
 .lb {
@@ -33,6 +34,11 @@ img.mat-page-img {
   justify-content: space-between;
   padding: 0.75rem 0.9rem;
   gap: 1rem;
+}
+.lb-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 .lb-count {
   color: rgb(255 255 255 / 0.85);

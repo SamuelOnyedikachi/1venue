@@ -71,6 +71,10 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
       h('button', { class: 'wa-ib sm', type: 'button', 'aria-label': 'Remove attachment', html: icon('x', { size: 16 }), onclick: () => { pending = null; paintPrev(); paintAct(); } }));
   };
   const act = h('button', { class: 'wa-act', type: 'button', disabled: !!disabled });
+  act.append(
+    h('span', { class: 'wa-act-ic ic-mic', 'aria-hidden': 'true', html: icon('mic', { size: 19 }) }),
+    h('span', { class: 'wa-act-ic ic-send', 'aria-hidden': 'true', html: icon('send', { size: 19 }) }),
+  );
   const hasContent = () => !!(ta.value.trim() || (pending && !pending.uploading));
   function paintAct() {
     const mode = rec ? 'stop' : hasContent() || !voice ? 'send' : 'mic';
@@ -79,7 +83,6 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
     act.classList.toggle('ready', hasContent());
     act.setAttribute('aria-label', mode === 'mic' ? 'Record voice note' : mode === 'stop' ? 'Stop and send voice note' : 'Send');
     act.dataset.tip = mode === 'mic' ? 'Voice note' : mode === 'stop' ? 'Send voice note' : 'Send (Enter)';
-    act.innerHTML = icon(mode === 'mic' ? 'mic' : mode === 'stop' ? 'send' : 'send', { size: 19 });
   }
   // Suggestions row: sounds for the whole text, emoji for a trailing “:word”.
   const sugg = h('div', { class: 'wa-sugg', hidden: true });
@@ -178,7 +181,18 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
   act.onclick = () => { const m = act.dataset.mode; if (m === 'mic') startRec(); else if (m === 'stop') rec && rec.stop(); else send(); };
 
   let dictating = false;
-  const dictateBtn = dictate ? ib('mic', 'Voice typing', () => toggleDictate(), dictateEnd ? 'dictate-end sm' : '') : null;
+  const dictateBtn = dictate ? ib('mic', 'Voice typing', () => toggleDictate(), 'wa-dictate sm' + (dictateEnd ? ' dictate-end' : '')) : null;
+  if (dictateBtn) {
+    ta.classList.add('no-vmic');
+    dictateBtn.addEventListener('mousedown', (e) => e.preventDefault());
+  }
+  function paintDictateVis() {
+    if (!dictateBtn) return;
+    const doc = ta.ownerDocument || document;
+    const show = dictating || doc.activeElement === ta;
+    dictateBtn.classList.toggle('in', show);
+    dictateBtn.setAttribute('aria-hidden', show ? 'false' : 'true');
+  }
   function paintDictate() {
     if (!dictateBtn) return;
     dictateBtn.classList.toggle('on', dictating);
@@ -186,6 +200,11 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
     dictateBtn.setAttribute('aria-pressed', String(dictating));
     dictateBtn.setAttribute('aria-label', dictating ? 'Stop voice typing' : 'Voice typing');
     dictateBtn.dataset.tip = dictating ? 'Stop voice typing' : 'Voice typing';
+    paintDictateVis();
+  }
+  if (dictateBtn) {
+    ta.addEventListener('focus', paintDictateVis);
+    ta.addEventListener('blur', () => setTimeout(paintDictateVis, 0));
   }
   async function toggleDictate() {
     try {
@@ -200,9 +219,9 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
     ta.value = ta.value.slice(0, s) + t + ta.value.slice(en); ta.selectionStart = ta.selectionEnd = s + t.length;
     ta.dispatchEvent(new Event('input')); ta.focus({ preventScroll: true });
   }
-  const pill = h('div', { class: 'wa-pill' + (dictateEnd ? ' dictate-end' : '') }, emojiBtn, upload ? ib('paperclip', 'Attach photo or file', () => pickFile()) : null, dictateEnd ? null : dictateBtn, ta, recBar, dictateEnd ? dictateBtn : null);
+  const pill = h('div', { class: 'wa-pill' + (dictate ? ' has-dictate' : '') + (dictateEnd ? ' dictate-end' : '') }, emojiBtn, upload ? ib('paperclip', 'Attach photo or file', () => pickFile()) : null, ta, recBar, dictateBtn);
   const el = h('div', { class: `wa${disabled ? ' off' : ''}` }, sugg, prev, h('div', { class: 'wa-row' }, pill, act));
-  paintAct(); requestAnimationFrame(fit);
+  paintAct(); if (dictateBtn) paintDictateVis(); requestAnimationFrame(fit);
   const clear = () => { ta.value = ''; ta.dispatchEvent(new Event('input')); };
   return { el, ta, clear, focus: () => ta.focus(), insert: insertAtCaret, attachFile, setText: (v) => { ta.value = v; ta.dispatchEvent(new Event('input')); } };
 }

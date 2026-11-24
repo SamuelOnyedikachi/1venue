@@ -38,7 +38,15 @@
   flex: 1; min-height: 0; overflow: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text) 30%, transparent) transparent;
 }
+.app-pip-scroll::-webkit-scrollbar,
+.app-pip-msgs::-webkit-scrollbar { width: 6px; }
+.app-pip-scroll::-webkit-scrollbar-track,
+.app-pip-msgs::-webkit-scrollbar-track { background: transparent; }
+.app-pip-scroll::-webkit-scrollbar-thumb,
+.app-pip-msgs::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--text) 30%, transparent); border-radius: 99px; }
 .app-pip-search { display: flex; align-items: center; gap: .4rem; flex: none; padding: .4rem .55rem; border-bottom: 1px solid var(--line); background: var(--s1); }
 .app-pip-search-box { display: flex; align-items: center; gap: .4rem; flex: 1; min-width: 0; height: 36px; padding: 0 .7rem; border: 1px solid var(--line); border-radius: 999px; background: var(--bg, var(--s1)); }
 .app-pip-search-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
@@ -64,10 +72,10 @@
 .app-pip-head-name .who-name { flex: 1 1 auto; display: flex; min-width: 0; }
 .app-pip-pin { display: inline-flex; color: var(--muted); opacity: .8; }
 .app-pip-continue { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .45rem; padding: .5rem .7rem; border-top: 1px solid var(--line); background: var(--s1); font-size: .8rem; z-index: 20; }
-.app-pip-msgs { padding: .55rem .7rem .4rem; display: flex; flex-direction: column; gap: .35rem; }
-.app-pip-msg { display: flex; align-items: flex-end; gap: .35rem; max-width: 92%; align-self: flex-start; position: relative; }
-.app-pip-msg.mine { align-self: flex-end; }
-.app-pip-col { display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
+.app-pip-msgs { padding: .85rem .45rem .4rem .55rem; display: flex; flex-direction: column; gap: .35rem; }
+.app-pip-msg { display: flex; align-items: flex-end; gap: .35rem; max-width: calc(100% - 4px); align-self: flex-start; position: relative; }
+.app-pip-msg.mine { align-self: flex-end; margin-right: 0; }
+.app-pip-col { display: flex; flex-direction: column; gap: .2rem; min-width: 0; position: relative; }
 .app-pip-av-gap { width: 28px; flex: none; }
 .app-pip-bubble { padding: .4rem .65rem; border-radius: 14px; background: var(--s1); border: 1px solid var(--line); overflow-wrap: anywhere; min-width: 0; }
 .app-pip-msg.mine .app-pip-bubble, .app-pip-msg.mine .app-pip-bubble a, .app-pip-msg.mine .msg-quote, .app-pip-msg.mine .msg-quote b { color: #fff; }
@@ -75,15 +83,19 @@
 .app-pip-msg .msg-quote { display: flex; flex-direction: column; align-items: flex-start; gap: .05rem; width: 100%; min-width: 0; margin: .05rem 0 .3rem; padding: .3rem .55rem; border-radius: 10px; border: 0; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); color: inherit; text-align: left; font: inherit; font-size: .8rem; line-height: 1.3; cursor: pointer; }
 .app-pip-msg .msg-quote b { color: var(--accent); font-size: .74rem; }
 .app-pip-msg.mine .msg-quote { border-left-color: #fff; background: color-mix(in srgb, #fff 16%, transparent); }
-.app-pip-hover { display: flex; gap: .1rem; align-self: center; padding: .15rem; border-radius: var(--r-pill, 999px); background: var(--s1); border: 1px solid var(--line); box-shadow: var(--shadow-1); opacity: 0; transform: scale(.92); transition: opacity .12s, transform .12s; pointer-events: none; }
+.app-pip-hover { display: flex; gap: .1rem; position: absolute; top: -14px; right: 2px; z-index: 3; padding: .15rem; border-radius: var(--r-pill, 999px); background: var(--s1); border: 1px solid var(--line); box-shadow: var(--shadow-1); opacity: 0; transform: scale(.92); transition: opacity .12s, transform .12s; pointer-events: none; }
+.app-pip-msg:not(.mine) .app-pip-hover { left: 2px; right: auto; }
 .app-pip-msg:hover .app-pip-hover, .app-pip-hover:focus-within { opacity: 1; transform: none; pointer-events: auto; }
 .app-pip-hover .msg-hb, .app-pip-hover .icon-btn { width: 28px; height: 28px; }
 .app-pip-msg.swipe-ready .app-pip-col { }
 .app-pip-who { display: flex; align-items: center; gap: .2rem; font-size: .75rem; margin-bottom: .1rem; }
 .app-pip-att-link { display: block; max-width: 100%; }
 .app-pip-att { display: block; max-width: min(280px, 100%); border-radius: 10px; margin-top: .25rem; cursor: zoom-in; }
-.app-pip-voice-wrap { display: flex; flex-direction: column; margin-top: .25rem; width: min(230px, 100%); }
+.app-pip-voice-wrap, .app-pip-bubble .vp { display: flex; flex-direction: column; margin-top: .25rem; width: min(230px, 100%); }
 .app-pip-voice { display: block; width: 100%; height: 40px; max-width: 100%; }
+.app-pip-msg.mine .vp, .app-pip-msg.mine .vp-time, .app-pip-msg.mine .vp-play { color: #fff; }
+.app-pip-msg.mine .vp-play { background: color-mix(in srgb, #fff 18%, transparent); border-color: color-mix(in srgb, #fff 28%, transparent); }
+.app-pip-msg.mine .vp-wave i { background: #fff; }
 .app-pip-file { display: flex; align-items: center; gap: .45rem; padding: .5rem .65rem; border-radius: 12px; background: color-mix(in srgb, currentColor 9%, transparent); margin-top: .25rem; color: inherit; text-decoration: none; min-width: 140px; max-width: 100%; }
 .app-pip-file .i { flex: none; }
 .app-pip-file span { display: flex; flex-direction: column; min-width: 0; }
@@ -99,6 +111,7 @@
 .app-pip-foot { flex: none; display: flex; flex-wrap: wrap; gap: .4rem; align-items: flex-end; padding: .4rem .5rem calc(.4rem + var(--safe-b, 0px)); border-top: 1px solid var(--line); background: var(--s1); }
 .app-pip-foot .wa { flex: 1; min-width: 0; }
 .app-pip-foot .wa-pill textarea { max-height: 80px; min-height: 36px; font-size: .9rem; padding: .4rem .25rem; }
+.app-pip-foot .wa-pill.has-dictate textarea { padding-right: 2.05rem; }
 .app-pip-sugg { display: flex; flex-direction: column; }
 .app-pip .min-w-0 { min-width: 0; }
 

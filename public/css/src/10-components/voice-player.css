@@ -1,0 +1,71 @@
+/* Custom voice-note player (public/js/voice-player.js). */
+.vp {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.45rem;
+  width: min(230px, 100%);
+  margin-top: 4px;
+  min-height: 36px;
+  color: inherit;
+}
+.vp-play {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  color: inherit;
+  cursor: pointer;
+}
+.vp-play svg { display: block; }
+.vp-wave {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+}
+.vp-wave i {
+  flex: 1;
+  min-width: 2px;
+  max-width: 4px;
+  background: currentColor;
+  opacity: 0.32;
+  border-radius: 2px;
+  align-self: center;
+}
+.vp-wave i.on { opacity: 1; }
+.vp-time {
+  flex: none;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+  min-width: 2.1rem;
+  text-align: right;
+}
+.vp.on-accent,
+.msg-row.mine .vp,
+.page-messages .msg-row.mine .vp {
+  color: #fff;
+}
+.msg-row.mine .vp-play,
+.page-messages .msg-row.mine .vp-play,
+.vp.on-accent .vp-play {
+  color: #fff;
+  background: color-mix(in srgb, #fff 18%, transparent);
+  border-color: color-mix(in srgb, #fff 28%, transparent);
+}
+.msg-row.mine .vp-wave i,
+.page-messages .msg-row.mine .vp-wave i,
+.vp.on-accent .vp-wave i { background: #fff; }

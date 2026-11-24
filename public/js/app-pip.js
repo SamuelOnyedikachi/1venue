@@ -10,6 +10,8 @@ import { verifiedDot } from './components.js';
 import { pillComposer } from './composer.js';
 import { QUICK, emojiPopover } from './emoji.js';
 import { bus, setPipConversation, typing as sendTyping, refreshUnread } from './messages/live.js';
+import { initLightbox } from './lightbox.js';
+import { isVoiceAtt, voicePlayer } from './voice-player.js';
 
 export function pipSupported() {
   return typeof window !== 'undefined' && 'documentPictureInPicture' in window && window.top === window;
@@ -175,6 +177,7 @@ export async function popOut() {
     copyStyles(win.document);
     win.document.title = '1venue';
     watchTheme(win.document, win);
+    initLightbox(win.document);
     const root = h('div', { class: 'app-pip' });
     win.document.body.append(root);
     let current = 'chats';
@@ -391,18 +394,27 @@ export async function popOut() {
         n.addEventListener('loadedmetadata', go, { once: true });
       });
     }
-    function attView(a) {
+    function mountVoicePlayers(root) {
+      const doc = (root && root.ownerDocument) || win.document;
+      root.querySelectorAll('[data-voice-url]').forEach((n) => {
+        const url = n.getAttribute('data-voice-url') || '';
+        const player = voicePlayer({ kind: 'voice', name: n.getAttribute('data-voice-name') || 'Voice note', url }, { doc, onAccent: n.getAttribute('data-on-accent') === '1' });
+        n.replaceWith(player);
+      });
+    }
+    function attView(a, mine) {
       if (!a) return null;
       if (a.kind === 'passage') return h('div', { class: 'tiny muted' }, a.reference || 'Passage');
-      const url = a.url ? absUrl(a.url) : (a.dataUrl || '');
-      if (!url) return h('div', { class: 'tiny muted' }, a.name || a.kind || 'Attachment');
+      const url = a.url ? absUrl(a.url) : (a.dataUrl || a.href || a.src || '');
+      if (!url && !isVoiceAtt(a)) return h('div', { class: 'tiny muted' }, a.name || a.kind || 'Attachment');
       if (a.kind === 'image' || (a.mime || '').startsWith('image/')) {
-        return h('a', { class: 'app-pip-att-link', href: url, target: '_blank', rel: 'noopener' },
-          h('img', { class: 'app-pip-att', src: url, alt: a.name || 'image', loading: 'lazy' }));
+        return h('img', { class: 'app-pip-att msg-img', src: url, alt: a.name || 'image', loading: 'lazy', tabindex: '0' });
       }
-      if (a.kind === 'voice' || (a.mime || '').startsWith('audio/')) {
-        return h('div', { class: 'app-pip-voice-wrap' },
-          h('audio', { class: 'app-pip-voice', controls: true, src: url, preload: 'metadata' }));
+      if (isVoiceAtt(a) || a.kind === 'voice' || (a.mime || '').startsWith('audio/')) {
+        // Placeholder only: native <audio> built in the opener is adopted into the
+        // about:blank PiP document and its controls often never paint. The real
+        // player is mounted into win.document after the row is inserted.
+        return h('div', { class: 'app-pip-voice-wrap', 'data-voice-url': url, 'data-voice-name': a.name || 'Voice note', 'data-on-accent': mine ? '1' : '0' });
       }
       return h('a', { class: 'app-pip-file', href: url, target: '_blank', rel: 'noopener', download: a.name || 'file' },
         h('span', { class: 'i', html: icon('file', { size: 18 }) }),
@@ -497,7 +509,7 @@ export async function popOut() {
         m.payload && m.payload.forwarded ? h('span', { class: 'msg-fwd tiny' }, 'Forwarded') : null,
         m.replyTo ? quoteEl(m.replyTo) : null,
         m.text ? h('div', { html: linkify(m.text, { siteBase }) }) : null,
-        attView(m.attachment),
+        attView(m.attachment, m.mine),
         !m.text && !m.attachment && m.kind === 'card' ? h('div', { class: 'tiny muted' }, (m.payload && m.payload.title) || 'Card') : null);
       const hover = m.deleted ? null : h('div', { class: 'app-pip-hover' },
         c.canSend ? h('button', { class: 'icon-btn msg-hb', type: 'button', 'aria-label': 'Reply', title: 'Reply', html: icon('reply', { size: 16 }), onclick: () => startReply(th, m) }) : null,
@@ -505,8 +517,7 @@ export async function popOut() {
         h('button', { class: 'icon-btn msg-hb', type: 'button', 'aria-label': 'Message actions', title: 'More', html: icon('moreHorizontal', { size: 16 }), onclick: (e) => pipMsgMenu(e.currentTarget, th, m) }));
       const row = h('div', { class: 'app-pip-msg' + (m.mine ? ' mine' : '') + (grouped ? ' grouped' : ''), 'data-id': m.id },
         showAv ? (grouped ? h('span', { class: 'app-pip-av-gap' }) : memberAv(c, m.fromUserId, m.fromName)) : null,
-        h('div', { class: 'app-pip-col' }, bubble, reacts),
-        hover);
+        h('div', { class: 'app-pip-col' }, bubble, reacts, hover));
       if (!m.deleted) bindSwipe(row, th, m, c);
       return row;
     }
@@ -519,6 +530,7 @@ export async function popOut() {
       let prev = null;
       for (const m of th.msgs) { out.push(msgNode(th.conv, m, prev, th)); prev = m; }
       el.replaceChildren(...out);
+      mountVoicePlayers(el);
       if (jump) {
         const n = el.querySelector(`[data-id="${jump}"]`);
         if (n) { n.classList.add('app-pip-jump'); n.scrollIntoView({ block: 'center' }); }

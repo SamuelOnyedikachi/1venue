@@ -3,6 +3,7 @@
 import { h, esc, api, toast, toastErr, avatar, timeAgo, fmtDate, menu, sheet, confirmDlg, promptDlg, uploadFile, copy, isMobile, debounce, linkify as linkifyText } from '../ui.js';
 import { icon } from '../icons.js';
 import { pillComposer } from '../composer.js';
+import { isVoiceAtt, voicePlayer } from '../voice-player.js';
 import { QUICK, emojiPopover } from '../emoji.js';
 import { passageCard } from '../passage.js';
 import { state, navigate } from '../app.js';
@@ -227,6 +228,7 @@ export async function mount(view, params) {
   function composerEl() {
     if (!composer) {
       composer = pillComposer({ placeholder: S.conv.type === 'dm' && !isMobile() ? `Message ${S.conv.title}` : 'Message', maxLength: 4000,
+        dictate: true,
         upload: (f, purpose) => uploadFile(f, { purpose: purpose === 'voice' ? 'voice' : 'chat' }),
         suggest: quickSuggest,
         onActivity: (st) => { if (S.conv) sendTyping(S.conv.id, st === 'recording' ? 'recording' : 'typing'); },
@@ -254,10 +256,10 @@ export async function mount(view, params) {
     if (!a) return null;
     if (a.kind === 'passage') return passageCard(a, { compact: true });
     const src = a.url || a.dataUrl; if (!src) return null;
-    if (a.kind === 'image') return h('img', { class: 'msg-img', src, alt: a.name || 'image', loading: 'lazy', tabindex: '0' });
-    const audio = a.kind === 'voice' || /^audio\//.test(a.mime || '');
+    if (a.kind === 'image' || (a.mime || '').startsWith('image/')) return h('img', { class: 'msg-img', src, alt: a.name || 'image', loading: 'lazy', tabindex: '0' });
+    const audio = isVoiceAtt(a) || a.kind === 'voice' || /^audio\//.test(a.mime || '');
     if (audio) {
-      const out = h('div', { class: 'msg-voice-wrap' }, h('audio', { class: 'msg-voice', controls: true, src, preload: 'metadata' }));
+      const out = h('div', { class: 'msg-voice-wrap' }, voicePlayer({ ...a, url: src }, { doc: document, onAccent: !!(m && m.mine) }));
       const tx = transcripts.get(m && m.id);
       if (tx) add(out, h('div', { class: 'msg-transcript' }, I('fileText', 14), h('span', null, tx)));
       return out;

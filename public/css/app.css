@@ -1926,8 +1926,10 @@ a.ev-tile:focus-visible {
 }
 .wa-act {
   flex: none;
+  position: relative;
   width: 44px;
   height: 44px;
+  overflow: hidden;
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -1936,9 +1938,37 @@ a.ev-tile:focus-visible {
   background: color-mix(in srgb, var(--accent) 10%, var(--s1));
   color: var(--accent);
   transition:
-    transform 0.18s var(--spring),
     background 0.2s,
-    color 0.2s;
+    color 0.2s,
+    border-color 0.2s;
+}
+.wa-act .wa-act-ic {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+.wa-act .ic-mic {
+  opacity: 1;
+  transform: scale(1);
+}
+.wa-act .ic-send {
+  opacity: 0;
+  transform: scale(0.78);
+}
+.wa-act[data-mode="send"] .ic-mic,
+.wa-act[data-mode="stop"] .ic-mic {
+  opacity: 0;
+  transform: scale(0.78);
+}
+.wa-act[data-mode="send"] .ic-send,
+.wa-act[data-mode="stop"] .ic-send {
+  opacity: 1;
+  transform: none;
 }
 .wa-act:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent) 16%, var(--s1));
@@ -1951,8 +1981,8 @@ a.ev-tile:focus-visible {
   background: var(--s2);
   border-color: var(--line);
 }
-.wa-act.ready svg {
-  animation: wa-pop 0.22s var(--spring);
+.wa-act.ready {
+  background: color-mix(in srgb, var(--accent) 14%, var(--s1));
 }
 .wa-act.rec {
   color: #dc2626;
@@ -1963,10 +1993,9 @@ a.ev-tile:focus-visible {
   opacity: 0.5;
   cursor: default;
 }
-@keyframes wa-pop {
-  from {
-    transform: scale(0.6) rotate(-12deg);
-    opacity: 0.3;
+@media (prefers-reduced-motion: reduce) {
+  .wa-act .wa-act-ic {
+    transition: none;
   }
 }
 .wa-rec {
@@ -2299,6 +2328,58 @@ a.ev-tile:focus-visible {
 }
 @keyframes wa-listen {
   50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 28%, transparent); }
+}
+
+/* Voice-typing mic sits inside the field, after the placeholder, and only shows while focused (or listening). */
+.wa-pill.has-dictate {
+  position: relative;
+}
+.wa-pill.has-dictate textarea {
+  padding-right: 2.05rem;
+}
+.wa-ib.wa-dictate {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  width: 26px;
+  height: 26px;
+  margin: 0;
+  z-index: 1;
+  opacity: 0;
+  transform: translateY(-50%) scale(0.85);
+  pointer-events: none;
+  color: var(--muted);
+  transition:
+    opacity 0.15s,
+    transform 0.15s var(--ease),
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+.wa-ib.wa-dictate svg {
+  width: 14px;
+  height: 14px;
+}
+.wa-ib.wa-dictate.in {
+  opacity: 1;
+  transform: translateY(-50%);
+  pointer-events: auto;
+}
+.wa-ib.wa-dictate.on,
+.wa-ib.wa-dictate.listening {
+  color: #fff;
+  background: var(--accent-action, var(--accent));
+  border: 1px solid var(--accent-action, var(--accent));
+  animation: vmicRing 1.6s ease-out infinite;
+  opacity: 1;
+  transform: translateY(-50%);
+  pointer-events: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wa-ib.wa-dictate.on,
+  .wa-ib.wa-dictate.listening {
+    animation: none;
+  }
 }
 /* --- src/10-components/credit-badge.css --- */
 /* Private wallet balance, shared by the application and meeting headers. */
@@ -2763,7 +2844,8 @@ select.tr-select:focus {
 img[data-lightbox],
 img.msg-img,
 img.feed-post-img,
-img.mat-page-img {
+img.mat-page-img,
+img.app-pip-att {
   cursor: zoom-in;
 }
 .lb {
@@ -2793,6 +2875,11 @@ img.mat-page-img {
   justify-content: space-between;
   padding: 0.75rem 0.9rem;
   gap: 1rem;
+}
+.lb-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 .lb-count {
   color: rgb(255 255 255 / 0.85);
@@ -3998,7 +4085,15 @@ html.menu-lock body {
   flex: 1; min-height: 0; overflow: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text) 30%, transparent) transparent;
 }
+.app-pip-scroll::-webkit-scrollbar,
+.app-pip-msgs::-webkit-scrollbar { width: 6px; }
+.app-pip-scroll::-webkit-scrollbar-track,
+.app-pip-msgs::-webkit-scrollbar-track { background: transparent; }
+.app-pip-scroll::-webkit-scrollbar-thumb,
+.app-pip-msgs::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--text) 30%, transparent); border-radius: 99px; }
 .app-pip-search { display: flex; align-items: center; gap: .4rem; flex: none; padding: .4rem .55rem; border-bottom: 1px solid var(--line); background: var(--s1); }
 .app-pip-search-box { display: flex; align-items: center; gap: .4rem; flex: 1; min-width: 0; height: 36px; padding: 0 .7rem; border: 1px solid var(--line); border-radius: 999px; background: var(--bg, var(--s1)); }
 .app-pip-search-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
@@ -4024,10 +4119,10 @@ html.menu-lock body {
 .app-pip-head-name .who-name { flex: 1 1 auto; display: flex; min-width: 0; }
 .app-pip-pin { display: inline-flex; color: var(--muted); opacity: .8; }
 .app-pip-continue { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .45rem; padding: .5rem .7rem; border-top: 1px solid var(--line); background: var(--s1); font-size: .8rem; z-index: 20; }
-.app-pip-msgs { padding: .55rem .7rem .4rem; display: flex; flex-direction: column; gap: .35rem; }
-.app-pip-msg { display: flex; align-items: flex-end; gap: .35rem; max-width: 92%; align-self: flex-start; position: relative; }
-.app-pip-msg.mine { align-self: flex-end; }
-.app-pip-col { display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
+.app-pip-msgs { padding: .85rem .45rem .4rem .55rem; display: flex; flex-direction: column; gap: .35rem; }
+.app-pip-msg { display: flex; align-items: flex-end; gap: .35rem; max-width: calc(100% - 4px); align-self: flex-start; position: relative; }
+.app-pip-msg.mine { align-self: flex-end; margin-right: 0; }
+.app-pip-col { display: flex; flex-direction: column; gap: .2rem; min-width: 0; position: relative; }
 .app-pip-av-gap { width: 28px; flex: none; }
 .app-pip-bubble { padding: .4rem .65rem; border-radius: 14px; background: var(--s1); border: 1px solid var(--line); overflow-wrap: anywhere; min-width: 0; }
 .app-pip-msg.mine .app-pip-bubble, .app-pip-msg.mine .app-pip-bubble a, .app-pip-msg.mine .msg-quote, .app-pip-msg.mine .msg-quote b { color: #fff; }
@@ -4035,15 +4130,19 @@ html.menu-lock body {
 .app-pip-msg .msg-quote { display: flex; flex-direction: column; align-items: flex-start; gap: .05rem; width: 100%; min-width: 0; margin: .05rem 0 .3rem; padding: .3rem .55rem; border-radius: 10px; border: 0; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); color: inherit; text-align: left; font: inherit; font-size: .8rem; line-height: 1.3; cursor: pointer; }
 .app-pip-msg .msg-quote b { color: var(--accent); font-size: .74rem; }
 .app-pip-msg.mine .msg-quote { border-left-color: #fff; background: color-mix(in srgb, #fff 16%, transparent); }
-.app-pip-hover { display: flex; gap: .1rem; align-self: center; padding: .15rem; border-radius: var(--r-pill, 999px); background: var(--s1); border: 1px solid var(--line); box-shadow: var(--shadow-1); opacity: 0; transform: scale(.92); transition: opacity .12s, transform .12s; pointer-events: none; }
+.app-pip-hover { display: flex; gap: .1rem; position: absolute; top: -14px; right: 2px; z-index: 3; padding: .15rem; border-radius: var(--r-pill, 999px); background: var(--s1); border: 1px solid var(--line); box-shadow: var(--shadow-1); opacity: 0; transform: scale(.92); transition: opacity .12s, transform .12s; pointer-events: none; }
+.app-pip-msg:not(.mine) .app-pip-hover { left: 2px; right: auto; }
 .app-pip-msg:hover .app-pip-hover, .app-pip-hover:focus-within { opacity: 1; transform: none; pointer-events: auto; }
 .app-pip-hover .msg-hb, .app-pip-hover .icon-btn { width: 28px; height: 28px; }
 .app-pip-msg.swipe-ready .app-pip-col { }
 .app-pip-who { display: flex; align-items: center; gap: .2rem; font-size: .75rem; margin-bottom: .1rem; }
 .app-pip-att-link { display: block; max-width: 100%; }
 .app-pip-att { display: block; max-width: min(280px, 100%); border-radius: 10px; margin-top: .25rem; cursor: zoom-in; }
-.app-pip-voice-wrap { display: flex; flex-direction: column; margin-top: .25rem; width: min(230px, 100%); }
+.app-pip-voice-wrap, .app-pip-bubble .vp { display: flex; flex-direction: column; margin-top: .25rem; width: min(230px, 100%); }
 .app-pip-voice { display: block; width: 100%; height: 40px; max-width: 100%; }
+.app-pip-msg.mine .vp, .app-pip-msg.mine .vp-time, .app-pip-msg.mine .vp-play { color: #fff; }
+.app-pip-msg.mine .vp-play { background: color-mix(in srgb, #fff 18%, transparent); border-color: color-mix(in srgb, #fff 28%, transparent); }
+.app-pip-msg.mine .vp-wave i { background: #fff; }
 .app-pip-file { display: flex; align-items: center; gap: .45rem; padding: .5rem .65rem; border-radius: 12px; background: color-mix(in srgb, currentColor 9%, transparent); margin-top: .25rem; color: inherit; text-decoration: none; min-width: 140px; max-width: 100%; }
 .app-pip-file .i { flex: none; }
 .app-pip-file span { display: flex; flex-direction: column; min-width: 0; }
@@ -4059,6 +4158,7 @@ html.menu-lock body {
 .app-pip-foot { flex: none; display: flex; flex-wrap: wrap; gap: .4rem; align-items: flex-end; padding: .4rem .5rem calc(.4rem + var(--safe-b, 0px)); border-top: 1px solid var(--line); background: var(--s1); }
 .app-pip-foot .wa { flex: 1; min-width: 0; }
 .app-pip-foot .wa-pill textarea { max-height: 80px; min-height: 36px; font-size: .9rem; padding: .4rem .25rem; }
+.app-pip-foot .wa-pill.has-dictate textarea { padding-right: 2.05rem; }
 .app-pip-sugg { display: flex; flex-direction: column; }
 .app-pip .min-w-0 { min-width: 0; }
 
@@ -4588,6 +4688,78 @@ input.has-vmic {
 textarea.has-vmic {
   padding-right: 2.4rem !important;
 }
+/* --- src/10-components/voice-player.css --- */
+/* Custom voice-note player (public/js/voice-player.js). */
+.vp {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.45rem;
+  width: min(230px, 100%);
+  margin-top: 4px;
+  min-height: 36px;
+  color: inherit;
+}
+.vp-play {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  color: inherit;
+  cursor: pointer;
+}
+.vp-play svg { display: block; }
+.vp-wave {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+}
+.vp-wave i {
+  flex: 1;
+  min-width: 2px;
+  max-width: 4px;
+  background: currentColor;
+  opacity: 0.32;
+  border-radius: 2px;
+  align-self: center;
+}
+.vp-wave i.on { opacity: 1; }
+.vp-time {
+  flex: none;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+  min-width: 2.1rem;
+  text-align: right;
+}
+.vp.on-accent,
+.msg-row.mine .vp,
+.page-messages .msg-row.mine .vp {
+  color: #fff;
+}
+.msg-row.mine .vp-play,
+.page-messages .msg-row.mine .vp-play,
+.vp.on-accent .vp-play {
+  color: #fff;
+  background: color-mix(in srgb, #fff 18%, transparent);
+  border-color: color-mix(in srgb, #fff 28%, transparent);
+}
+.msg-row.mine .vp-wave i,
+.page-messages .msg-row.mine .vp-wave i,
+.vp.on-accent .vp-wave i { background: #fff; }
 /* --- src/20-pages/admin.css --- */
 /* /admin: sticky section nav (feed rail + filter styles) beside the section cards. */
 .main.admin-view {
