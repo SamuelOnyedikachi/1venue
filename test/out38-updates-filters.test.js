@@ -9,12 +9,12 @@ const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 const skip = !process.env.DATABASE_URL && process.env.DB_DRIVER !== 'sqlite' ? 'set DATABASE_URL or DB_DRIVER=sqlite' : false;
 
 describe('out38 auto-update and marketplace filter icons', () => {
-  it('cache versions are v88 / ?v=74', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v88-2026-11-23'/);
-    assert.match(read('public/index.html'), /app\.css\?v=74/);
-    assert.match(read('public/index.html'), /app\.js\?v=74/);
-    assert.match(read('public/index.html'), /name="app-version" content="v88-2026-11-23"/);
-    assert.match(read('public/index.html'), /data-asset="74"/);
+  it('cache versions are v89 / ?v=75', () => {
+    assert.match(read('public/sw.js'), /VERSION = 'v89-2026-11-23'/);
+    assert.match(read('public/index.html'), /app\.css\?v=75/);
+    assert.match(read('public/index.html'), /app\.js\?v=75/);
+    assert.match(read('public/index.html'), /name="app-version" content="v89-2026-11-23"/);
+    assert.match(read('public/index.html'), /data-asset="75"/);
   });
 
   it('service worker still skipWaiting and clients.claim', () => {
@@ -92,16 +92,16 @@ describe('out38 auto-update and marketplace filter icons', () => {
   it('import map remaps every public/js module to the asset query', () => {
     const { injectShell, importMapJson, readBuild, moduleUrls } = require(path.join(root, 'src/lib/build'));
     const b = readBuild();
-    assert.equal(b.version, 'v88-2026-11-23');
-    assert.equal(b.asset, '74');
+    assert.equal(b.version, 'v89-2026-11-23');
+    assert.equal(b.asset, '75');
     const map = importMapJson();
-    assert.equal(map.imports['/js/app.js'], '/js/app.js?v=74');
-    assert.equal(map.imports['/js/material-sale.js'], '/js/material-sale.js?v=74');
-    assert.equal(map.imports['/js/pages/market.js'], '/js/pages/market.js?v=74');
+    assert.equal(map.imports['/js/app.js'], '/js/app.js?v=75');
+    assert.equal(map.imports['/js/material-sale.js'], '/js/material-sale.js?v=75');
+    assert.equal(map.imports['/js/pages/market.js'], '/js/pages/market.js?v=75');
     assert.ok(moduleUrls().includes('/js/updates.js'));
     const html = injectShell(read('public/index.html'));
-    assert.match(html, /"\/js\/material-sale\.js":"\/js\/material-sale\.js\?v=74"/);
-    assert.match(html, /name="app-version" content="v88-2026-11-23"/);
+    assert.match(html, /"\/js\/material-sale\.js":"\/js\/material-sale\.js\?v=75"/);
+    assert.match(html, /name="app-version" content="v89-2026-11-23"/);
   });
 
   it('GET /api/version and the served shell include the versioned import map', { skip }, async () => {
@@ -110,14 +110,14 @@ describe('out38 auto-update and marketplace filter icons', () => {
     try {
       const ver = await client(s.base).get('/api/version');
       assert.equal(ver.status, 200);
-      assert.equal(ver.body.version, 'v88-2026-11-23');
-      assert.equal(String(ver.body.asset), '74');
+      assert.equal(ver.body.version, 'v89-2026-11-23');
+      assert.equal(String(ver.body.asset), '75');
       const home = await fetch(s.base + '/', { headers: { 'Accept-Encoding': 'identity' } });
       assert.equal(home.status, 200);
       const html = await home.text();
-      assert.match(html, /"\/js\/material-sale\.js":"\/js\/material-sale\.js\?v=74"/);
-      assert.match(html, /"\/js\/pages\/market\.js":"\/js\/pages\/market\.js\?v=74"/);
-      assert.match(html, /src="\/js\/app\.js\?v=74"/);
+      assert.match(html, /"\/js\/material-sale\.js":"\/js\/material-sale\.js\?v=75"/);
+      assert.match(html, /"\/js\/pages\/market\.js":"\/js\/pages\/market\.js\?v=75"/);
+      assert.match(html, /src="\/js\/app\.js\?v=75"/);
     } finally {
       await s.stop();
     }

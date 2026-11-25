@@ -99,6 +99,10 @@
 .mat-head > div {
   flex: 1;
 }
+.mat-head .mat-buy {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
 .mat-title {
   margin: 0;
   font-size: 1.4rem;

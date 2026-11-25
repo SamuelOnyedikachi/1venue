@@ -12,6 +12,76 @@ export function priceLabel(m) {
   return fmtMoney(m.priceKobo);
 }
 
+const PRICE_PER_CREDIT_KOBO = 50000;
+const RETURN_KEY = 'venue.matReturn';
+
+export function creditsFromKobo(k) {
+  return k > 0 ? Math.max(1, Math.round(Number(k) / PRICE_PER_CREDIT_KOBO)) : 0;
+}
+
+export function buyLabel(m) {
+  const kobo = (m && m.promoPriceKobo != null && m.promoPriceKobo !== m.priceKobo) ? m.promoPriceKobo : (m && m.priceKobo);
+  const price = priceLabel(m);
+  const cr = creditsFromKobo(kobo);
+  if (price && cr) return `Buy · ${price} or ${cr} credit${cr === 1 ? '' : 's'}`;
+  if (price) return 'Buy · ' + price;
+  return 'Buy';
+}
+
+export function stashMaterialReturn(id, { href, label, scroll } = {}) {
+  const rec = {
+    id: Number(id),
+    href: href || (location.pathname + location.search),
+    label: label || 'Materials',
+    scroll: scroll != null ? Number(scroll) : Math.round(window.scrollY || 0),
+    at: Date.now(),
+  };
+  try { sessionStorage.setItem(RETURN_KEY, JSON.stringify(rec)); } catch { /* private mode */ }
+  return rec;
+}
+
+export function readMaterialReturn(id) {
+  try {
+    const rec = JSON.parse(sessionStorage.getItem(RETURN_KEY) || 'null');
+    if (!rec || (id != null && Number(rec.id) !== Number(id))) return null;
+    if (rec.at && Date.now() - rec.at > 6 * 3600e3) return null;
+    return rec;
+  } catch { return null; }
+}
+
+/** Consume a saved scroll position when returning to /market or /materials. */
+export function takeMaterialReturnScroll(prefix) {
+  const rec = readMaterialReturn();
+  if (!rec || !rec.href || !String(rec.href).startsWith(prefix) || rec.scroll == null) return null;
+  const y = Number(rec.scroll);
+  try {
+    rec.scroll = null;
+    sessionStorage.setItem(RETURN_KEY, JSON.stringify(rec));
+  } catch { /* ignore */ }
+  return Number.isFinite(y) ? y : null;
+}
+
+export function resolveMaterialBack(m, { id, search, state: hist, stashed } = {}) {
+  const from = String((search instanceof URLSearchParams ? search : new URLSearchParams(search || '')).get('from') || (hist && hist.from) || '');
+  const rec = stashed !== undefined ? stashed : readMaterialReturn(id != null ? id : (m && m.id));
+  const marketHref = (rec && rec.href && rec.href.startsWith('/market')) ? rec.href : '/market';
+  const matsHref = (rec && rec.href && /^\/materials\/?(\?|$)/.test(rec.href)) ? rec.href : '/materials';
+  if (from === 'market' || (rec && rec.label === 'Marketplace')) return { href: marketHref, label: 'Marketplace', scroll: rec && rec.scroll };
+  if (from === 'materials' || (rec && rec.label === 'Materials')) return { href: matsHref, label: 'Materials', scroll: rec && rec.scroll };
+  if (m && (m.owner || m.canEdit)) return { href: '/materials', label: 'Materials' };
+  if (m && m.listed) return { href: '/market', label: 'Marketplace' };
+  return { href: '/materials', label: 'Materials' };
+}
+
+export function materialOpenAttrs(id, from) {
+  const label = from === 'market' ? 'Marketplace' : 'Materials';
+  return {
+    href: `/materials/${id}?from=${from}`,
+    'data-link': '',
+    onclick: () => stashMaterialReturn(id, { href: location.pathname + location.search, label }),
+  };
+}
+
 export const MARKET_CATEGORIES = ['Teaching', 'Worship', 'Study', 'Music', 'Training', 'Kids', 'Business', 'Other'];
 
 export function saleEditor(m, { onSaved } = {}) {
@@ -45,12 +115,13 @@ export function saleEditor(m, { onSaved } = {}) {
 }
 
 
-export function materialCard(m, { buy = false } = {}) {
+export function materialCard(m, { buy = false, from } = {}) {
   const th = materialThumb(m);
   const price = m.forSale && m.priceKobo ? priceLabel(m) : 'Free';
-  const href = '/materials/' + m.id;
+  const href = '/materials/' + m.id + (from ? ('?from=' + encodeURIComponent(from)) : '');
   const go = (ev) => {
-    if (buy && m.forSale && m.locked) {
+    if (from) stashMaterialReturn(m.id, { href: location.pathname + location.search, label: from === 'market' ? 'Marketplace' : 'Materials' });
+    if (!from && buy && m.forSale && m.locked) {
       ev.preventDefault();
       openBuySheet(m, { onBought: () => navigate(href) });
     }
@@ -83,14 +154,14 @@ export async function openBuySheet(m, { eventId, meetingCode, returnPath, onBoug
     : h('b', null, fmtMoney(q.priceKobo));
   const go = async (method) => {
     try {
-      const r = await api(`/api/materials/${m.id}/buy`, { method: 'POST', body: { method, eventId, meetingCode, returnPath: returnPath || location.pathname } });
+      const r = await api(`/api/materials/${m.id}/buy`, { method: 'POST', body: { method, eventId, meetingCode, returnPath: returnPath || (location.pathname + location.search) } });
       if (method === 'paystack') {
         if (r.authorizationUrl) location.assign(r.authorizationUrl);
         else toast('Could not start checkout', { icon: 'alert' });
         return;
       }
       m.purchased = true; m.locked = false;
-      toast('You now have this material', { icon: 'check', action: { label: 'Open', run: () => navigate('/materials/' + m.id) } });
+      toast('You now have this material', { icon: 'check', action: onBought ? null : { label: 'Open', run: () => navigate('/materials/' + m.id) } });
       s.close();
       onBought && onBought(m);
     } catch (e) { toastErr(e); }

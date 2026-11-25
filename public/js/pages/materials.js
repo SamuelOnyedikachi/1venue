@@ -2,7 +2,7 @@
 // links, and open any material on its own page (/materials/:id) for a preview and AI analysis.
 import { icon } from '../icons.js';
 import { h, api, toast, toastErr, reportClientError } from '../ui.js';
-import { MARKET_CATEGORIES, priceLabel } from '../material-sale.js';
+import { MARKET_CATEGORIES, priceLabel, materialOpenAttrs, takeMaterialReturnScroll } from '../material-sale.js';
 import { requireLogin } from '../app.js';
 import { ytId } from '../room/youtube.js';
 import { ACCEPT, kindIcon, materialThumb, materialSub, uploadMaterial } from '../materials-lib.js';
@@ -78,14 +78,19 @@ function saleRow(m, { onSaved }) {
   return { price, credits, disc, listed, cat };
 }
 
-export async function mount(view) {
+export async function mount(view, params = {}) {
   if (!requireLogin('Sign in to manage materials')) return;
   view.append(h('div', { class: 'page-head' },
     h('h1', { html: `<span class="ico-tile" data-group="content">${icon('folder', { size: 20 })}</span> Materials` }),
     h('p', { class: 'muted small' }, 'Slides, documents and spreadsheets you can attach to events and present in calls. Open one to preview it or get an AI summary.')));
 
   const listEl = h('div', { class: 'mat-lib' });
-  let tab = 'library';
+  let tab = (params.tab || new URLSearchParams(location.search).get('tab')) === 'purchased' ? 'purchased' : 'library';
+  const syncTabUrl = () => {
+    const href = tab === 'purchased' ? '/materials?tab=purchased' : '/materials';
+    if (location.pathname + location.search !== href) history.replaceState(history.state || {}, '', href);
+  };
+  syncTabUrl();
   let items = [];
 
   async function reload() {
@@ -146,9 +151,9 @@ export async function mount(view) {
     if (tab === 'purchased') {
       const rows = items.map((m) => h('tr', null,
         h('td', { class: 'mat-lib-td-thumb' }, thumbCell(m)),
-        h('td', null, h('a', { href: `/materials/${m.id}`, 'data-link': '', class: 'mat-lib-title' }, m.title || 'Untitled'), h('div', { class: 'tiny muted' }, materialSub(m) + (priceLabel(m) ? ' · ' + priceLabel(m) : ''))),
+        h('td', null, h('a', { class: 'mat-lib-title', ...materialOpenAttrs(m.id, 'materials') }, m.title || 'Untitled'), h('div', { class: 'tiny muted' }, materialSub(m) + (priceLabel(m) ? ' · ' + priceLabel(m) : ''))),
         h('td', { class: 'hide-sm' }, m.kind || ''),
-        h('td', { class: 'mat-lib-td-act' }, h('a', { class: 'btn sm ghost', href: `/materials/${m.id}`, 'data-link': '' }, 'Open'))));
+        h('td', { class: 'mat-lib-td-act' }, h('a', { class: 'btn sm ghost', ...materialOpenAttrs(m.id, 'materials') }, 'Open'))));
       listEl.replaceChildren(h('div', { class: 'mat-lib-wrap' },
         h('table', { class: 'mat-lib-table' },
           h('thead', null, h('tr', null, h('th', { class: 'mat-lib-td-thumb' }, ''), h('th', null, 'Title'), h('th', { class: 'hide-sm' }, 'Type'), h('th', null, ''))),
@@ -199,14 +204,14 @@ export async function mount(view) {
       return h('tr', null,
         h('td', { class: 'mat-lib-td-mark' }, mark),
         h('td', { class: 'mat-lib-td-thumb' }, thumbCell(m)),
-        h('td', null, h('a', { href: `/materials/${m.id}`, 'data-link': '', class: 'mat-lib-title' }, m.title || 'Untitled'), h('div', { class: 'tiny muted' }, materialSub(m))),
+        h('td', null, h('a', { class: 'mat-lib-title', ...materialOpenAttrs(m.id, 'materials') }, m.title || 'Untitled'), h('div', { class: 'tiny muted' }, materialSub(m))),
         h('td', { class: 'hide-sm' }, m.kind || ''),
         h('td', null, fields.cat),
         h('td', null, fields.price),
         h('td', { class: 'hide-sm' }, fields.credits),
         h('td', { class: 'hide-sm' }, fields.disc),
         h('td', { class: 'mat-lib-td-sw' }, h('span', { class: 'switch sm' }, fields.listed, h('span'))),
-        h('td', { class: 'mat-lib-td-act' }, h('a', { class: 'btn sm ghost', href: `/materials/${m.id}`, 'data-link': '' }, 'Open'), del));
+        h('td', { class: 'mat-lib-td-act' }, h('a', { class: 'btn sm ghost', ...materialOpenAttrs(m.id, 'materials') }, 'Open'), del));
     });
 
     listEl.replaceChildren(
@@ -229,10 +234,12 @@ export async function mount(view) {
   }
 
   const tabs = h('div', { class: 'tabs', style: { margin: '0 0 .85rem' } },
-    h('button', { class: 'tab on', type: 'button', onclick: ev => { tab = 'library'; ev.currentTarget.parentNode.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b === ev.currentTarget)); reload(); } }, 'Library'),
-    h('button', { class: 'tab', type: 'button', onclick: ev => { tab = 'purchased'; ev.currentTarget.parentNode.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b === ev.currentTarget)); reload(); } }, 'Purchased'));
+    h('button', { class: 'tab' + (tab === 'library' ? ' on' : ''), type: 'button', onclick: ev => { tab = 'library'; ev.currentTarget.parentNode.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b === ev.currentTarget)); syncTabUrl(); reload(); } }, 'Library'),
+    h('button', { class: 'tab' + (tab === 'purchased' ? ' on' : ''), type: 'button', onclick: ev => { tab = 'purchased'; ev.currentTarget.parentNode.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b === ev.currentTarget)); syncTabUrl(); reload(); } }, 'Purchased'));
   view.append(tabs, listEl);
   reload();
+  const y = takeMaterialReturnScroll('/materials');
+  if (y != null) requestAnimationFrame(() => window.scrollTo(0, y));
 
   const drop = h('div', { class: 'mat-drop', tabindex: '0', role: 'button', 'aria-label': 'Upload a file', html: `${icon('upload', { size: 28 })}<b>Drop a file here or click to upload</b><span class="tiny muted">PDF, PowerPoint, Word, Excel, CSV, images, or a video up to 15 minutes</span>` });
   const file = h('input', { type: 'file', accept: ACCEPT, hidden: true });
