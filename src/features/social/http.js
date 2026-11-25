@@ -14,7 +14,7 @@ function indexHtml() {
   const file = path.join(config.PUBLIC, 'index.html');
   const st = fs.statSync(file);
   if (st.mtimeMs !== shell.mtimeMs) shell = { mtimeMs: st.mtimeMs, html: fs.readFileSync(file, 'utf8') };
-  return shell.html;
+  return require('../../lib/build').injectShell(shell.html);
 }
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 

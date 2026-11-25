@@ -71,6 +71,7 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
     prev.replaceChildren(thumb, h('span', { class: 'grow ellipsis' }, label),
       h('button', { class: 'wa-ib sm', type: 'button', 'aria-label': pending.uploading ? 'Cancel upload' : 'Remove attachment', html: icon('x', { size: 16 }), onclick: () => { if (pending && pending.cancel) pending.cancel(); pending = null; paintPrev(); paintAct(); } }));
   };
+  let el = null;
   const act = h('button', { class: 'wa-act', type: 'button', disabled: !!disabled });
   act.append(
     h('span', { class: 'wa-act-ic ic-mic', 'aria-hidden': 'true', html: icon('mic', { size: 19 }) }),
@@ -84,6 +85,11 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
     act.classList.toggle('ready', hasContent());
     act.setAttribute('aria-label', mode === 'mic' ? 'Record voice note' : mode === 'stop' ? 'Stop and send voice note' : 'Send');
     act.dataset.tip = mode === 'mic' ? 'Voice note' : mode === 'stop' ? 'Send voice note' : 'Send (Enter)';
+    markWork();
+  }
+  function markWork() {
+    if (!el) return;
+    el.dataset.work = (pending || rec || busy || dictating || !!(ta.value && ta.value.trim())) ? '1' : '';
   }
   // Suggestions row: sounds for the whole text, emoji for a trailing “:word”.
   const sugg = h('div', { class: 'wa-sugg', hidden: true });
@@ -223,8 +229,8 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
     ta.dispatchEvent(new Event('input')); ta.focus({ preventScroll: true });
   }
   const pill = h('div', { class: 'wa-pill' + (dictate ? ' has-dictate' : '') + (dictateEnd ? ' dictate-end' : '') }, emojiBtn, upload ? ib('paperclip', 'Attach photo or file', () => pickFile()) : null, ta, recBar, dictateBtn);
-  const el = h('div', { class: `wa${disabled ? ' off' : ''}` }, sugg, prev, h('div', { class: 'wa-row' }, pill, act));
-  paintAct(); if (dictateBtn) paintDictateVis(); requestAnimationFrame(fit);
+  el = h('div', { class: `wa${disabled ? ' off' : ''}` }, sugg, prev, h('div', { class: 'wa-row' }, pill, act));
+  paintAct(); markWork(); if (dictateBtn) paintDictateVis(); requestAnimationFrame(fit);
   const clear = () => { ta.value = ''; ta.dispatchEvent(new Event('input')); };
   return { el, ta, clear, focus: () => ta.focus(), insert: insertAtCaret, attachFile, setText: (v) => { ta.value = v; ta.dispatchEvent(new Event('input')); } };
 }

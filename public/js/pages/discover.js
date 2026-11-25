@@ -89,7 +89,10 @@ export function filterBar({ fields, values, onChange, extra } = {}) {
       const btn = h('button', {
         type: 'button', class: 'dz-dd' + (set ? ' on' : ''),
         'aria-haspopup': 'listbox', 'aria-label': f.title,
-      }, ico ? icon(ico, 14) : null, lab, icon('chevronDown', { size: 12 }));
+      },
+        ico ? h('span', { class: 'dz-ic', html: icon(ico, { size: 14 }) }) : null,
+        lab,
+        h('span', { class: 'dz-car', html: icon('chevronDown', { size: 12 }) }));
       btn.onclick = (ev) => {
         ev.stopPropagation();
         const m = menu(btn, opts.map(([v, l, ic]) => ({

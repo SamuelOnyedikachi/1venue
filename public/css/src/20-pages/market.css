@@ -39,6 +39,14 @@ body[data-page="market"] .mk-filters .dz-dd {
   border: 1px solid var(--line);
   border-radius: 999px;
 }
+body[data-page="market"] .mk-filters .dz-dd .dz-ic {
+  display: inline-flex;
+  color: var(--accent);
+}
+body[data-page="market"] .mk-filters .dz-dd .dz-car {
+  display: inline-flex;
+  color: var(--faint);
+}
 .dz-num-wrap {
   display: inline-flex;
   align-items: center;
@@ -48,12 +56,13 @@ body[data-page="market"] .mk-filters .dz-dd {
   border-radius: 999px;
   background: color-mix(in srgb, var(--bg-2) 88%, var(--bg));
   border: 1px solid var(--line);
-  font-size: 0.8rem;
+  font-size: 0.84rem;
+  font-weight: 600;
   color: var(--muted);
 }
 .dz-num-wrap::before {
   content: attr(data-lab);
-  font-weight: 650;
+  font-weight: 600;
   font-size: 0.72rem;
   letter-spacing: 0.02em;
 }
@@ -64,7 +73,7 @@ body[data-page="market"] .mk-filters .dz-dd {
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-weight: 650;
+  font-weight: 600;
   padding: 0;
   outline: none;
 }

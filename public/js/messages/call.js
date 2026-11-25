@@ -11,6 +11,7 @@ let ringing = null;  // { call, el, stop }
 const ib = (ic, label, run, cls = '') => h('button', { class: `icon-btn ${cls}`, type: 'button', 'aria-label': label, 'data-tip': label, onclick: run, html: icon(ic, { size: 20 }) });
 const me = () => import('../app.js').then((a) => a.state.user);
 export const inCall = () => !!cur;
+export const isRinging = () => !!ringing;
 
 /** The Document PiP window, if the app-wide pop-out is open. */
 function pipWin() {

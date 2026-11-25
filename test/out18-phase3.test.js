@@ -78,9 +78,9 @@ describe('out18 gift note, materials, certs, perks, pip', () => {
   });
 
   it('bumps the cache versions', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v86-2026-11-23'/);
-    assert.match(read('public/index.html'), /app\.css\?v=72/);
-    assert.match(read('public/index.html'), /app\.js\?v=72/);
+    assert.match(read('public/sw.js'), /VERSION = 'v87-2026-11-23'/);
+    assert.match(read('public/index.html'), /app\.css\?v=73/);
+    assert.match(read('public/index.html'), /app\.js\?v=73/);
   });
 });
 

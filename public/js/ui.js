@@ -93,7 +93,7 @@ export function toast(msg, { icon: ic = 'info', group = '', ms = 3200, action = 
   if (action) t.append(h('button', { class: 'btn sm toast-act', type: 'button', onclick: () => { t.remove(); action.run(); } }, action.label));
   host.append(t);
   while (host.children.length > 3) host.firstChild.remove();
-  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 260); }, ms);
+  if (ms > 0) setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 260); }, ms);
   return t;
 }
 const HTTP_MSG = { 401: 'Please sign in to continue', 403: 'You don’t have permission to do that', 404: 'We couldn’t find that', 413: 'That file is too large', 429: 'Slow down a little - try again in a moment' };

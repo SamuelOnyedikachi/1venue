@@ -5,6 +5,7 @@ import { h, $, api, toast, sheet, menu, avatar, initTooltips, debounce, closeTop
 import { mountCommandBar, registerCommands, setBarContext, barVisible, focusBar, refreshBar } from './commands.js';
 import { surahCommands, loadSurahs, looksLikeQuran } from './quran-cmd.js';
 import { initPwa, promptInstall } from './pwa.js';
+import { initUpdates, applyPendingIfSafe, reloadForImportError, noteRouteOk } from './updates.js';
 import { accentButtonColors, accentInk } from './appearance.mjs';
 import './messages/tones.js'; // install audio-unlock handlers before any incoming call or message arrives
 import { installAutoPipGuards, bindShell, primeAutoPip } from './room/session.js';
@@ -183,6 +184,7 @@ const RAILS = [[/^\/discover\/?$/, 'discover', false], [/^\/venues\/?$/, 'venues
 let currentPage = null;
 let routeSeq = 0;
 export function navigate(to, { replace = false } = {}) {
+  if (applyPendingIfSafe()) return;
   // Request Document PiP in this same turn, while the click/key is still a user gesture.
   primeAutoPip('navigate', to);
   if (to === location.pathname + location.search && !replace) { route(); return; }
@@ -238,6 +240,7 @@ export function titleForPath(path) {
   return '1venue';
 }
 async function route() {
+  if (applyPendingIfSafe()) return;
   const path = location.pathname;
   closeTopSheet();
   claimCommerceReturn();
@@ -249,6 +252,7 @@ async function route() {
       state.route = { path, params, mod: state.route && state.route.mod };
       highlightNav(path);
       try { await currentPage.update(params); } catch (e) { console.error(e); }
+      noteRouteOk();
       return;
     }
     setPageTitle(titleForPath(path));
@@ -276,6 +280,7 @@ async function route() {
           const res = await session.resume(view, params);
           if (seq !== routeSeq) { try { res && res.unmount && res.unmount(); } catch { /* ignore */ } return; }
           currentPage = res;
+          noteRouteOk();
           return;
         }
       }
@@ -291,11 +296,13 @@ async function route() {
       const res = await mod.mount(view, params);
       if (seq !== routeSeq) { try { (res || mod).unmount?.(); } catch { /* ignore */ } return; }
       currentPage = res || mod;
+      noteRouteOk();
       if (!isRoom) setBarContext(globalBarContext(mod.barPinned));
       const rail = RAILS.find(([re]) => re.test(path));
       if (rail && !params.search) import('./promo.js').then((m) => { if (seq === routeSeq) m.attachPromoRail(view, rail[1], { inline: rail[2] !== false }); }).catch(() => {});
     } catch (e) {
       if (seq !== routeSeq) return;
+      if (reloadForImportError(e)) return;
       view.replaceChildren();
       if (e?.status === 404) { setPageTitle('Page not found'); view.append(h('div', { class: 'empty' }, frag404())); window.scrollTo(0, 0); return; }
       if (e?.status === 401) {
@@ -585,9 +592,9 @@ async function boot() {
   await refreshSession();
   await route();
   initPwa();
+  initUpdates();
   import('./voice.js').then((m) => m.initVoice()).catch(() => {}); // voice typing in every eligible text box
   import('./lightbox.js').then((m) => m.initLightbox()).catch(() => {}); // full-screen viewer for content images
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 if (!window.__1venueBooted) { window.__1venueBooted = true; boot(); }
 export { focusBar, barVisible, toastErr };

@@ -7,6 +7,8 @@
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
+const crypto = require('crypto');
+const build = require('../lib/build');
 const config = require('../config');
 const clientAssets = require('../core/client-assets');
 
@@ -26,7 +28,38 @@ function cacheControl(urlPath, ext) {
   return 'public, max-age=300, must-revalidate';
 }
 
+function sendIndex(req, res) {
+  const html = build.injectShell(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'));
+  const buf = Buffer.from(html);
+  const etag = `W/"${crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16)}"`;
+  const headers = {
+    'Content-Type': config.MIME['.html'] || 'text/html; charset=utf-8',
+    'Cache-Control': 'no-cache',
+    ETag: etag,
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'camera=(self), microphone=(self), display-capture=(self), picture-in-picture=(self)',
+  };
+  if (req.headers['if-none-match'] === etag) {
+    res.writeHead(304, headers);
+    return res.end();
+  }
+  const wantsGz = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+  if (wantsGz && buf.length > 1024) {
+    const gz = zlib.gzipSync(buf, { level: 7 });
+    headers['Content-Encoding'] = 'gzip';
+    headers.Vary = 'Accept-Encoding';
+    headers['Content-Length'] = gz.length;
+    res.writeHead(200, headers);
+    return res.end(req.method === 'HEAD' ? undefined : gz);
+  }
+  headers['Content-Length'] = buf.length;
+  res.writeHead(200, headers);
+  res.end(req.method === 'HEAD' ? undefined : buf);
+}
+
 function send(req, res, filePath, urlPath) {
+  if (urlPath === '/' || urlPath === '/index.html' || path.basename(filePath) === 'index.html') return sendIndex(req, res);
   fs.stat(filePath, (err, st) => {
     if (err || !st.isFile()) return notFound(req, res, urlPath);
     const ext = path.extname(filePath).toLowerCase();

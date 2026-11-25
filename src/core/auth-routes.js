@@ -10,6 +10,10 @@ const {
 module.exports = async function handle(req, res, parsed) {
   const urlPath = parsed.pathname;
 
+  if (urlPath === '/api/version' && req.method === 'GET') {
+    return sendJSON(res, 200, require('../lib/build').readBuild());
+  }
+
   if (urlPath === '/api/config' && req.method === 'GET') {
     // Auth flags are computed first so a failure in AI/STT/covers cannot hide "Continue with Google".
     const safe = (fn, fallback) => { try { return fn(); } catch (e) { console.warn('[config]', e && e.message); return fallback; } };
