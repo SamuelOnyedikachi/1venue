@@ -204,7 +204,7 @@ const UPLOADS = {
   maxImageBytes: mb('UPLOAD_MAX_IMAGE_MB', 8),
   maxPdfBytes: mb('UPLOAD_MAX_PDF_MB', 20),
   maxAudioBytes: mb('UPLOAD_MAX_AUDIO_MB', 10),
-  maxVideoBytes: mb('UPLOAD_MAX_VIDEO_MB', 200), // 15-min videos go direct to R2, not through Node
+  maxVideoBytes: mb('UPLOAD_MAX_VIDEO_MB', 200), // 15-min videos go direct to R2. Unset/empty → 200; an explicit 0 disables video.
   maxOtherBytes: mb('UPLOAD_MAX_OTHER_MB', 10),
   maxBoardBytes: mb('UPLOAD_MAX_BOARD_MB', 25), // .mwb whiteboard files (images inline)
   maxVideoSeconds: int('UPLOAD_MAX_VIDEO_SEC', 900),

@@ -21,7 +21,25 @@ function kindOf(mime) {
 const LIMIT = { image: 'maxImageBytes', pdf: 'maxPdfBytes', audio: 'maxAudioBytes', video: 'maxVideoBytes', board: 'maxBoardBytes', other: 'maxOtherBytes' };
 const LABEL = { image: 'Images', pdf: 'PDFs', audio: 'Audio files', video: 'Videos', board: 'Whiteboard files', other: 'Files' };
 const fmtMB = (b) => { const v = b / 1048576; return (v >= 10 ? Math.round(v) : Math.round(v * 10) / 10) + ' MB'; };
-function limitFor(mime) { return Math.min(U[LIMIT[kindOf(mime)]], config.STORAGE.maxUploadBytes); }
+/** Seconds, or 0 if unknown. Values that look like milliseconds (e.g. MediaRecorder metadata) are converted. */
+function normalizeDurationSec(d) {
+  let n = Number(d);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  if (n > 10_000 && n < 24 * 3600 * 1000) n = n / 1000;
+  return n;
+}
+function videoMaxSeconds() { return (U.maxVideoSeconds > 0 ? U.maxVideoSeconds : 900); }
+/**
+ * Per-type cap. Videos go direct to object storage, so they are not capped by the
+ * through-Node MAX_UPLOAD_MB (default 25). Pass throughNode: true when the body
+ * will be buffered by this server (POST /api/files). 0 still disables a type.
+ */
+function limitFor(mime, { throughNode = false } = {}) {
+  const kind = kindOf(mime);
+  const cap = U[LIMIT[kind]] || 0;
+  if (kind === 'video') return (throughNode && cap) ? Math.min(cap, config.STORAGE.maxUploadBytes) : cap;
+  return Math.min(cap, config.STORAGE.maxUploadBytes);
+}
 const err = (status, message) => Object.assign(new Error(message), { status, expose: true });
 
 const hours = new Map();
@@ -33,9 +51,9 @@ function hourly(key, limit = U.perHour) {
 }
 
 /** Cheap pre-checks before the body is read. */
-function precheck({ mime, declaredSize, rateKey, contentBatch = false }) {
+function precheck({ mime, declaredSize, rateKey, contentBatch = false, throughNode = true }) {
   const kind = kindOf(mime);
-  const max = limitFor(mime);
+  const max = limitFor(mime, { throughNode });
   if (/html|javascript|svg|x-msdownload|x-sh\b/i.test(mime)) throw err(415, 'That file type is not allowed');
   if (!max) throw err(415, kind === 'video' ? 'Video uploads are turned off - share a YouTube link instead.' : `${LABEL[kind]} can’t be uploaded here`);
   if (declaredSize && declaredSize > max) throw err(413, `${LABEL[kind]} can be up to ${fmtMB(max)} (this one is ${fmtMB(declaredSize)})`);
@@ -64,8 +82,8 @@ async function quota(data, { size, userId, ownerKey, roomCode }) {
 function publicLimits() {
   return {
     image: limitFor('image/png'), pdf: limitFor('application/pdf'), audio: limitFor('audio/webm'), video: limitFor('video/mp4'), board: limitFor('application/x-mwb'), other: limitFor('application/octet-stream'),
-    userQuota: U.userQuotaBytes, meetingCap: U.meetingCapBytes, perMinute: U.perMinute, videoSeconds: U.maxVideoSeconds || 900,
+    userQuota: U.userQuotaBytes, meetingCap: U.meetingCapBytes, perMinute: U.perMinute, videoSeconds: videoMaxSeconds(),
   };
 }
 
-module.exports = { userQuotaBytes, PURPOSES, normalizePurpose, kindOf, limitFor, precheck, quota, publicLimits, fmtMB };
+module.exports = { userQuotaBytes, PURPOSES, normalizePurpose, kindOf, limitFor, precheck, quota, publicLimits, fmtMB, normalizeDurationSec, videoMaxSeconds };

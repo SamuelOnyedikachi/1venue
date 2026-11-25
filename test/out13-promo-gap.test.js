@@ -17,7 +17,7 @@ describe('out13 profile promoted card spacing', () => {
   });
 
   it('bumps the cache versions', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v89-2026-11-23'/);
-    assert.match(read('public/index.html'), /app\.css\?v=75/);
+    assert.match(read('public/sw.js'), /VERSION = 'v90-2026-11-23'/);
+    assert.match(read('public/index.html'), /app\.css\?v=76/);
   });
 });

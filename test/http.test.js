@@ -72,16 +72,23 @@ async function signup() {
   const r = await fetch(base + '/api/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(signupPayload({ username: u, email: `${u}@example.test`, password: 'Passw0rd!long' })) });
   return (r.headers.getSetCookie ? r.headers.getSetCookie() : [r.headers.get('set-cookie')]).map((c) => c.split(';')[0]).join('; ');
 }
-test('uploads: content purpose accepted, unknown purpose normalised, video refused, limits exposed', { skip }, async () => {
+test('uploads: content purpose accepted, unknown purpose normalised, video limits and through-node size, limits exposed', { skip }, async () => {
   const cookie = await signup();
   const png = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
   const up = (purpose, type, body) => fetch(`${base}/api/files?purpose=${purpose}`, { method: 'POST', headers: { cookie, 'content-type': type, 'x-file-name': 'a.png' }, body });
   assert.equal((await up('content', 'image/png', png)).status, 200);
   assert.equal((await up('weird-thing', 'image/png', png)).status, 200);
-  const v = await up('content', 'video/mp4', png); assert.equal(v.status, 415); assert.match((await v.json()).error, /YouTube/);
+  // A tiny video body may go through Node; large videos use /api/files/presign. Not refused with the old YouTube message when video is enabled.
+  const v = await up('content', 'video/mp4', png);
+  assert.notEqual(v.status, 401);
+  const vj = await v.json();
+  if (v.status === 415) assert.doesNotMatch(String(vj.error || ''), /YouTube/);
+  else assert.ok(v.status === 200, JSON.stringify(vj));
   const big = await up('post', 'image/png', Buffer.alloc(9 * 1024 * 1024)); assert.equal(big.status, 413); assert.match((await big.json()).error, /MB/);
   const cfg = await (await fetch(base + '/api/config')).json();
   assert.equal(typeof cfg.storage.limits.image, 'number');
+  assert.ok(cfg.storage.limits.video > 0, 'video should be enabled by default (200 MB)');
+  assert.equal(cfg.storage.limits.videoSeconds, 900);
   assert.ok(cfg.ai.providers.every((p) => typeof p === 'object'));
 });
 test('whiteboards: create, list, rename, save pages, delete', { skip }, async () => {

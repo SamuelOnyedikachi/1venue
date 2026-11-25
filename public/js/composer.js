@@ -1,12 +1,13 @@
 // WhatsApp-style composer used by meeting chat, DMs, groups and feed comments.
 // One pill: [emoji][attach] text… - then a round action button that is a mic when empty
 // and turns into send as soon as there is text or an attachment.
-import { h, toast, toastErr } from './ui.js';
+import { h, toast, toastErr, isVideoFile } from './ui.js';
 import { icon } from './icons.js';
 import { emojiPopover, searchEmoji, emojiName, pushRecent } from './emoji.js';
 
 const fmtMB = (b) => (b / 1048576 >= 10 ? Math.round(b / 1048576) : Math.round(b / 104857.6) / 10) + ' MB';
 const kindOf = (m) => (m.startsWith('image/') ? 'image' : m === 'application/pdf' ? 'pdf' : m.startsWith('audio/') ? 'audio' : m.startsWith('video/') ? 'video' : m === 'application/x-mwb' ? 'board' : 'other');
+const kindOfFile = (f) => (isBoardFile(f) ? 'board' : isVideoFile(f) ? 'video' : kindOf((f && f.type) || ''));
 /** 1venue whiteboard export (.mwb, see wbcore.js). Browsers report no MIME type for it. */
 export const isBoardFile = (f) => !!f && (/\.mwb$/i.test(f.name || '') || f.type === 'application/x-mwb' || f.mime === 'application/x-mwb');
 const MWB = 'application/x-mwb';
@@ -36,7 +37,7 @@ export async function boardPreview(file) {
 /** Client-side copy of the server's upload limits, so people get a clear message before uploading. */
 export function checkLimit(file, limits) {
   if (!limits) return null;
-  const k = kindOf(file.type || '');
+  const k = kindOfFile(file);
   const max = limits[k];
   const label = { image: 'Photos', pdf: 'PDFs', audio: 'Audio', video: 'Videos', board: 'Whiteboard files', other: 'Files' }[k];
   if (max === 0) return k === 'video' ? 'Video uploads are off - share a YouTube link instead.' : `${label} can’t be uploaded here`;
@@ -140,7 +141,7 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
     const prepared = board ? new File([f], /\.mwb$/i.test(f.name) ? f.name : (f.name || 'Whiteboard') + '.mwb', { type: MWB }) : f.type.startsWith('image/') ? await shrinkImage(f) : f;
     const why = checkLimit(prepared, limits);
     if (why) { toast(why, { icon: 'alert', group: 'admin', ms: 5000 }); return; }
-    const kind = board ? 'board' : prepared.type.startsWith('image/') ? 'image' : prepared.type.startsWith('video/') ? 'video' : purpose === 'voice' ? 'voice' : 'file';
+    const kind = board ? 'board' : prepared.type.startsWith('image/') ? 'image' : isVideoFile(prepared) ? 'video' : purpose === 'voice' ? 'voice' : 'file';
     pending = { kind, name: prepared.name || 'file', mime: prepared.type || 'application/octet-stream', size: prepared.size, uploading: true, preview: kind === 'image' ? URL.createObjectURL(prepared) : null };
     const mine = pending; paintPrev(); paintAct();
     try {

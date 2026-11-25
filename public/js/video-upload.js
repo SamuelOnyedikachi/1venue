@@ -8,18 +8,49 @@ export const PROFILES = {
   material: { maxW: 1280, maxH: 720, bps: 1_500_000, label: '720p' },
 };
 
+/** Seconds, or 0 if unknown. Values that look like milliseconds are converted. */
+export function parseDurationSec(d) {
+  let n = Number(d);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  if (n > 10_000 && n < 24 * 3600 * 1000) n = n / 1000;
+  return n;
+}
+
+/**
+ * Read width/height/duration. MediaRecorder webm often reports Infinity or NaN until
+ * we seek to the end (the 1e101 trick). Unknown duration becomes 0 — size still caps the upload.
+ */
 export function probeVideo(file) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const v = document.createElement('video');
     v.preload = 'metadata';
     v.muted = true;
-    v.onloadedmetadata = () => {
-      const info = { duration: v.duration || 0, width: v.videoWidth || 0, height: v.videoHeight || 0 };
+    v.playsInline = true;
+    let done = false;
+    const finish = (dur) => {
+      if (done) return;
+      done = true;
+      const info = { duration: parseDurationSec(dur), width: v.videoWidth || 0, height: v.videoHeight || 0 };
       URL.revokeObjectURL(url);
+      try { v.removeAttribute('src'); v.load(); } catch { /* ignore */ }
       resolve(info);
     };
-    v.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that video')); };
+    v.onerror = () => { if (done) return; done = true; URL.revokeObjectURL(url); reject(new Error('Could not read that video')); };
+    v.onloadedmetadata = () => {
+      const d = v.duration;
+      if (Number.isFinite(d) && d > 0) return finish(d);
+      // Seek to a huge time so the browser computes the real duration (classic Infinity/NaN webm case).
+      const onSeek = () => finish(v.duration);
+      v.addEventListener('seeked', onSeek, { once: true });
+      v.addEventListener('durationchange', () => {
+        if (Number.isFinite(v.duration) && v.duration > 0) finish(v.duration);
+      });
+      try { v.currentTime = 1e101; } catch {
+        try { v.currentTime = Number.MAX_VALUE; } catch { /* some browsers throw */ }
+      }
+      setTimeout(() => finish(v.duration), 800);
+    };
     v.src = url;
   });
 }
@@ -92,14 +123,14 @@ async function compressMediaRecorder(file, profile, { onProgress, signal } = {})
     v.onerror = rej;
     if (signal) signal.addEventListener('abort', () => { v.pause(); rej(Object.assign(new Error('Cancelled'), { cancelled: true })); }, { once: true });
   });
+  const measured = parseDurationSec(v.duration) || parseDurationSec(v.currentTime) || parseDurationSec((performance.now() - start) / 1000);
   if (rec.state !== 'inactive') rec.stop();
   await done;
   URL.revokeObjectURL(url);
-  void start;
   const blob = new Blob(chunks, { type: mime.split(';')[0] });
   if (!blob.size) throw new Error('Compression produced an empty file');
   const name = (file.name || 'video').replace(/\.[^.]+$/, '') + '.webm';
-  return new File([blob], name, { type: blob.type });
+  return Object.assign(new File([blob], name, { type: blob.type }), { durationSec: measured });
 }
 
 async function compressWebCodecs(file, profile, { onProgress, signal } = {}) {
@@ -141,15 +172,19 @@ async function putWithProgress(url, file, headers, { onProgress, signal } = {}) 
 export async function uploadVideo(file, { purpose = 'chat', profile, headers = {}, onProgress, signal } = {}) {
   const info = await probeVideo(file);
   const maxSec = VIDEO_MAX_SEC;
-  if (info.duration > maxSec + 0.5) throw new Error(`Videos can be up to ${Math.round(maxSec / 60)} minutes`);
+  let dur = parseDurationSec(info.duration);
+  if (dur && dur > maxSec + 0.5) throw new Error(`Videos can be up to ${Math.round(maxSec / 60)} minutes`);
   let out = file;
   const want = profile || (purpose === 'content' || purpose === 'material' ? 'material' : 'chat');
   try {
     if (onProgress) onProgress(0, 'compress');
     out = await compressVideo(file, { profile: want, onProgress, signal });
     if (onProgress) onProgress(1, 'compress');
+    if (!dur) dur = parseDurationSec(out.durationSec);
+    if (dur && dur > maxSec + 0.5) throw new Error(`Videos can be up to ${Math.round(maxSec / 60)} minutes`);
   } catch (e) {
     if (e && e.cancelled) throw e;
+    if (e && /up to .* minutes/.test(e.message || '')) throw e;
     if (file.size > VIDEO_MAX_BYTES) throw new Error(`Videos can be up to ${Math.round(VIDEO_MAX_BYTES / 1048576)} MB`);
     out = file;
     toast('Could not compress this video, so the original will be uploaded if it fits.', { icon: 'alert', ms: 4000 });
@@ -167,14 +202,14 @@ export async function uploadVideo(file, { purpose = 'chat', profile, headers = {
   try {
     signed = await api('/api/files/presign', { method: 'POST', body: {
       filename: out.name, mime: out.type || 'video/webm', size: out.size,
-      durationSec: info.duration, purpose, width: info.width, height: info.height,
+      durationSec: dur || undefined, purpose, width: info.width, height: info.height,
     }, headers });
   } catch (e) {
     if (e && e.status === 503) {
       // Local dev without R2: last resort, only if the file is modest.
       if (out.size > 25 * 1048576) throw new Error('Direct video upload needs object storage (R2).');
-      const rec = await uploadFile(out, { purpose, headers });
-      return { ...rec, kind: 'video', durationSec: info.duration, posterUrl, width: info.width, height: info.height };
+      const rec = await uploadFile(out, { purpose, headers, direct: true });
+      return { ...rec, kind: 'video', durationSec: dur || info.duration || 0, posterUrl, width: info.width, height: info.height };
     }
     throw e;
   }
@@ -182,5 +217,5 @@ export async function uploadVideo(file, { purpose = 'chat', profile, headers = {
   await putWithProgress(signed.uploadUrl, out, signed.headers, { onProgress, signal });
   const rec = await api('/api/files/complete', { method: 'POST', body: { id: signed.id }, headers });
   if (onProgress) onProgress(1, 'upload');
-  return { ...rec, kind: 'video', durationSec: info.duration, posterUrl, width: info.width, height: info.height };
+  return { ...rec, kind: 'video', durationSec: dur || info.duration || 0, posterUrl, width: info.width, height: info.height };
 }

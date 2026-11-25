@@ -341,9 +341,15 @@ export async function deckKind(f) {
   return null;
 }
 export const DECK_HELP = { ppt: 'Old .ppt files aren’t supported. Save it as PPTX or PDF and try again.', keynote: 'Keynote files aren’t supported. Export it as PDF or PPTX and try again.' };
-/** Upload a File/Blob to /api/files (raw body). headers: room credentials when uploading as a guest. */
-export async function uploadFile(file, { purpose = 'attachment', headers = {}, onProgress, signal } = {}) {
-  if (file && String(file.type || '').startsWith('video/')) {
+/** True for a video by MIME type or a common extension (phones sometimes send no type). */
+export function isVideoFile(file) {
+  if (!file) return false;
+  if (String(file.type || '').toLowerCase().startsWith('video/')) return true;
+  return /\.(mp4|webm|mov|m4v|mkv|ogv)$/i.test(file.name || '');
+}
+/** Upload a File/Blob to /api/files (raw body). Videos go through the direct-to-R2 presign path. headers: room credentials when uploading as a guest. */
+export async function uploadFile(file, { purpose = 'attachment', headers = {}, onProgress, signal, direct = false } = {}) {
+  if (!direct && isVideoFile(file)) {
     const { uploadVideo } = await import('./video-upload.js');
     return uploadVideo(file, { purpose, headers, onProgress, signal, profile: purpose === 'content' ? 'material' : 'chat' });
   }
