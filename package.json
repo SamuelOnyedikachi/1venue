@@ -13,12 +13,13 @@
     "seed:remove": "node scripts/seed.js remove",
     "build:css": "node scripts/build-css.js",
     "check:css": "node scripts/build-css.js --check",
-    "test": "npm run check:css && node --test test/*.test.js",
-    "test:sqlite": "npm run check:css && DB_DRIVER=sqlite node --test test/*.test.js",
+    "test": "npm run check:css && npm run check:esm && node --test test/*.test.js",
+    "test:sqlite": "npm run check:css && npm run check:esm && DB_DRIVER=sqlite node --test test/*.test.js",
     "icons": "python3 scripts/build-icons.py",
     "migrate:sqlite-to-pg": "node scripts/migrate-sqlite-to-pg.js",
     "livekit:check": "node scripts/livekit-check.js",
-    "migration:new": "node scripts/new-migration.js"
+    "migration:new": "node scripts/new-migration.js",
+    "check:esm": "node scripts/check-esm-exports.js"
   },
   "license": "MIT",
   "dependencies": {

@@ -38,7 +38,7 @@ async function live(placement, { limit = 3, viewerId = 0 } = {}) {
       LEFT JOIN users u ON u.id = e.host_user_id
       LEFT JOIN posts po ON po.id = p.post_id
      WHERE p.active AND p.starts_at <= NOW() AND (p.ends_at IS NULL OR p.ends_at > NOW())
-       AND ${USE_PG ? '$1 = ANY(p.placements)' : 'EXISTS (SELECT 1 FROM json_each(p.placements) WHERE value=$1)'}
+       AND ${USE_PG ? '$1::text = ANY(p.placements)' : 'EXISTS (SELECT 1 FROM json_each(p.placements) WHERE value=$1)'}
        AND ((p.target_type = 'event' AND e.visibility = 'public' AND e.status IN ('scheduled','live','ended'))
          OR (p.target_type = 'post' AND po.id IS NOT NULL))
      ORDER BY p.weight DESC, random()
@@ -69,21 +69,24 @@ async function liveForProfile(profileUserId, { limit = 2, viewerId = 0 } = {}) {
      WHERE p.active AND p.starts_at <= NOW() AND (p.ends_at IS NULL OR p.ends_at > NOW())
        AND ((p.target_type = 'event' AND e.visibility = 'public' AND e.status IN ('scheduled','live','ended'))
          OR (p.target_type = 'post' AND po.id IS NOT NULL))`;
-  const own = `(COALESCE(p.owner_user_id,0) = $1 OR COALESCE(e.host_user_id,0) = $1 OR COALESCE(po.user_id,0) = $1)`;
   async function fetchRows({ placement, excludeOwn, excludeIds, take }) {
-    const params = [ownerId];
+    const params = [];
     const clauses = [base];
     if (placement) {
       params.push(placement);
-      clauses.push(USE_PG ? `AND $${params.length} = ANY(p.placements)` : `AND EXISTS (SELECT 1 FROM json_each(p.placements) WHERE value=$${params.length})`);
+      clauses.push(USE_PG ? `AND $${params.length}::text = ANY(p.placements)` : `AND EXISTS (SELECT 1 FROM json_each(p.placements) WHERE value=$${params.length})`);
     }
-    if (excludeOwn) clauses.push(`AND NOT ${own}`);
+    if (excludeOwn) {
+      params.push(ownerId);
+      const n = params.length;
+      clauses.push(`AND NOT (COALESCE(p.owner_user_id,0) = $${n}::int OR COALESCE(e.host_user_id,0) = $${n}::int OR COALESCE(po.user_id,0) = $${n}::int)`);
+    }
     if (excludeIds && excludeIds.length) {
       params.push(excludeIds);
       clauses.push(`AND NOT (p.id = ANY($${params.length}::int[]))`);
     }
     params.push(take);
-    const rows = await many(`${clauses.join(' ')} ORDER BY p.weight DESC, random() LIMIT $${params.length}`, params);
+    const rows = await many(`${clauses.join(' ')} ORDER BY p.weight DESC, random() LIMIT $${params.length}::int`, params);
     return rows;
   }
   async function pack(rows) {
@@ -150,11 +153,11 @@ function adminWhere(f, now = new Date()) {
   if (f.type) where.push(`p.target_type = ${arg(f.type)}`);
   if (f.status === 'paused') where.push(`p.active = ${arg(false)}`);
   if (f.status === 'pending') where.push(`p.review_status = ${arg('pending')}`);
-  if (f.status === 'live') { const n = arg(now); where.push(`p.active = ${arg(true)} AND p.starts_at <= ${n} AND (p.ends_at IS NULL OR p.ends_at > ${n})`); }
-  if (f.status === 'scheduled') where.push(`p.active = ${arg(true)} AND p.starts_at > ${arg(now)}`);
-  if (f.status === 'ended') where.push(`p.active = ${arg(true)} AND p.ends_at IS NOT NULL AND p.ends_at <= ${arg(now)}`);
-  if (f.from) where.push(`p.starts_at >= ${arg(new Date(f.from + 'T00:00:00Z'))}`);
-  if (f.to) where.push(`p.starts_at < ${arg(new Date(new Date(f.to + 'T00:00:00Z').getTime() + 86400000))}`);
+  if (f.status === 'live') { const n = arg(now) + '::timestamptz'; where.push(`p.active = ${arg(true)} AND p.starts_at <= ${n} AND (p.ends_at IS NULL OR p.ends_at > ${n})`); }
+  if (f.status === 'scheduled') where.push(`p.active = ${arg(true)} AND p.starts_at > ${arg(now)}::timestamptz`);
+  if (f.status === 'ended') where.push(`p.active = ${arg(true)} AND p.ends_at IS NOT NULL AND p.ends_at <= ${arg(now)}::timestamptz`);
+  if (f.from) where.push(`p.starts_at >= ${arg(new Date(f.from + 'T00:00:00Z'))}::timestamptz`);
+  if (f.to) where.push(`p.starts_at < ${arg(new Date(new Date(f.to + 'T00:00:00Z').getTime() + 86400000))}::timestamptz`);
   return { sql: where.length ? 'WHERE ' + where.join(' AND ') : '', args };
 }
 const LIST_FROM = `FROM promotions p LEFT JOIN events e ON e.id = p.event_id LEFT JOIN posts po ON po.id = p.post_id LEFT JOIN users pu ON pu.id = po.user_id`;
@@ -233,11 +236,11 @@ async function candidates(type, term) {
   const t = String(term || '').trim().slice(0, 80);
   if (type === 'post') {
     const rows = await many(`SELECT p.id, p.body, p.created_at, COALESCE(u.display_name, u.username) AS author FROM posts p JOIN users u ON u.id=p.user_id
-      WHERE p.kind='post' AND ($1 = '' OR p.body ILIKE '%' || $1 || '%' OR u.username ILIKE '%' || $1 || '%') ORDER BY p.created_at DESC LIMIT 12`, [t]);
+      WHERE p.kind='post' AND ($1::text = '' OR p.body ILIKE '%' || $1::text || '%' OR u.username ILIKE '%' || $1::text || '%') ORDER BY p.created_at DESC LIMIT 12`, [t]);
     return rows.map((r) => ({ id: Number(r.id), title: String(r.body || '(photo post)').slice(0, 90), sub: `${r.author} · post` }));
   }
   const rows = await many(`SELECT id, title, status, starts_at, host_name FROM events
-    WHERE visibility='public' AND status NOT IN ('draft','cancelled') AND ($1 = '' OR title ILIKE '%' || $1 || '%' OR host_name ILIKE '%' || $1 || '%' OR slug = $1)
+    WHERE visibility='public' AND status NOT IN ('draft','cancelled') AND ($1::text = '' OR title ILIKE '%' || $1::text || '%' OR host_name ILIKE '%' || $1::text || '%' OR slug = $1::text)
     ORDER BY (status='live') DESC, COALESCE(starts_at, created_at) DESC LIMIT 12`, [t]);
   return rows.map((r) => ({ id: Number(r.id), title: r.title, sub: `${r.host_name || 'host'} · ${r.status}` }));
 }

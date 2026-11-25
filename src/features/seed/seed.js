@@ -32,9 +32,43 @@ async function uniqueCode(c) {
   throw new Error('Could not allocate a code');
 }
 
+/** Wipe seed users' wallets, purchases, gifts and paid-meeting rows so an admin
+ *  demo reload is not blocked by the user-facing account-deletion guard.
+ *  Real (non-seed) accounts still go through assertCanDelete. */
+async function purgeSeedFinance(c, ids) {
+  if (!ids.length) return;
+  const p = [ids];
+  await c.query(`DELETE FROM credit_ledger WHERE user_id = ANY($1::int[])
+    OR paid_entry_id IN (SELECT e.id FROM paid_meeting_entries e JOIN paid_meeting_sessions s ON s.code=e.code
+      WHERE e.user_id = ANY($1::int[]) OR s.host_user_id = ANY($1::int[]))
+    OR paid_extension_id IN (SELECT id FROM paid_meeting_extensions WHERE host_user_id = ANY($1::int[])
+      OR code IN (SELECT code FROM paid_meeting_sessions WHERE host_user_id = ANY($1::int[])))
+    OR paid_transfer_id IN (SELECT id FROM paid_meeting_transfers WHERE user_id = ANY($1::int[]))
+    OR billing_session_id IN (SELECT id FROM credit_billing_sessions WHERE user_id = ANY($1::int[]))
+    OR payment_id IN (SELECT id FROM credit_payments WHERE user_id = ANY($1::int[]))`, p);
+  await c.query(`DELETE FROM paid_usage_meters WHERE user_id = ANY($1::int[])
+    OR code IN (SELECT code FROM paid_meeting_sessions WHERE host_user_id = ANY($1::int[]))`, p);
+  await c.query(`DELETE FROM paid_meeting_earnings WHERE host_user_id = ANY($1::int[])
+    OR entry_id IN (SELECT id FROM paid_meeting_entries WHERE user_id = ANY($1::int[]))
+    OR code IN (SELECT code FROM paid_meeting_sessions WHERE host_user_id = ANY($1::int[]))`, p);
+  await c.query(`DELETE FROM paid_meeting_extensions WHERE host_user_id = ANY($1::int[])
+    OR code IN (SELECT code FROM paid_meeting_sessions WHERE host_user_id = ANY($1::int[]))`, p);
+  await c.query(`DELETE FROM paid_meeting_entries WHERE user_id = ANY($1::int[])
+    OR code IN (SELECT code FROM paid_meeting_sessions WHERE host_user_id = ANY($1::int[]))`, p);
+  await c.query('DELETE FROM paid_meeting_transfers WHERE user_id = ANY($1::int[])', p);
+  await c.query('DELETE FROM paid_meeting_sessions WHERE host_user_id = ANY($1::int[])', p);
+  await c.query('DELETE FROM credit_billing_sessions WHERE user_id = ANY($1::int[])', p);
+  await c.query('DELETE FROM credit_payments WHERE user_id = ANY($1::int[])', p);
+  await c.query(`DELETE FROM material_purchases WHERE user_id = ANY($1::int[])
+    OR material_id IN (SELECT id FROM materials WHERE owner_user_id = ANY($1::int[]))`, p);
+  await c.query('DELETE FROM host_ledger WHERE host_user_id = ANY($1::int[])', p);
+  await c.query('DELETE FROM credit_wallets WHERE user_id = ANY($1::int[])', p);
+}
+
 async function removeIn(c) {
   const ids = (await c.query('SELECT id FROM users WHERE is_seed ORDER BY id FOR UPDATE')).rows.map((r) => r.id);
-  for (const id of ids) await require('../wallet/data').assertCanDelete(c, id);
+  // Admin-only demo wipe: do not call assertCanDelete (that message is for real users).
+  await purgeSeedFinance(c, ids);
   const tracked = async (tbl) => (await c.query('SELECT row_id FROM seed_rows WHERE tbl=$1', [tbl])).rows.map((r) => r.row_id);
   const histIds = [...new Set([...(await tracked('meeting_history')).map(Number),
     ...(await c.query('SELECT id FROM meeting_history WHERE host_user_id = ANY($1::int[])', [ids])).rows.map((r) => r.id)])];

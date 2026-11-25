@@ -513,7 +513,7 @@ function registerGlobal() {
     { id: 'billing', label: 'Plan & billing', short: 'Billing', icon: 'crown', group: 'settings', keywords: ['upgrade', 'premium', 'organisation', 'subscription', 'plan', 'pricing'], when: () => !!state.user, run: go('/billing') },
     { id: 'upgrade', label: 'Plans and pricing', icon: 'crown', group: 'settings', keywords: ['upgrade', 'premium', 'price'], when: () => true, run: go('/upgrade') },
     { id: 'wallet', label: 'Credit wallet', short: 'Credits', icon: 'creditCard', group: 'settings', keywords: ['credits', 'balance', 'payments', 'paystack', 'top up', 'buy credits'], when: () => !!state.user, run: go('/wallet') },
-    { id: 'market', label: 'Marketplace', short: 'Marketplace', icon: 'grid', group: 'content', keywords: ['marketplace', 'explore', 'browse', 'materials', 'store', 'shop', 'free', 'buy'], run: go('/market') },
+    { id: 'market', label: 'Marketplace', short: 'Marketplace', icon: 'cart', group: 'content', keywords: ['marketplace', 'explore', 'browse', 'materials', 'store', 'shop', 'free', 'buy'], run: go('/market') },
     { id: 'materials', label: 'Materials library', short: 'Materials', icon: 'folder', group: 'content', keywords: ['decks', 'slides', 'pdf', 'pptx', 'present', 'library', 'uploads'], when: () => !!state.user, run: go('/materials') },
     { id: 'profile', label: 'My profile', icon: 'user', group: 'people', keywords: ['me', 'account', 'timeline', 'public page'], run: () => navigate(state.user ? profilePath(state.user) : '/me') },
     { id: 'edit-profile', label: 'Edit profile', icon: 'pen', group: 'people', keywords: ['bio', 'avatar', 'name', 'handle'], run: go('/me?edit=1') },

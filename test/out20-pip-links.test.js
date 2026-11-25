@@ -107,9 +107,9 @@ describe('out20 pip theme, chat actions, links, google, events', () => {
   });
 
   it('bumps the cache versions', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v85-2026-11-23'/);
-    assert.match(read('public/index.html'), /app\.css\?v=71/);
-    assert.match(read('public/index.html'), /app\.js\?v=71/);
+    assert.match(read('public/sw.js'), /VERSION = 'v86-2026-11-23'/);
+    assert.match(read('public/index.html'), /app\.css\?v=72/);
+    assert.match(read('public/index.html'), /app\.js\?v=72/);
     assert.match(read('public/index.html'), /room\.css\?v=21/);
   });
 });

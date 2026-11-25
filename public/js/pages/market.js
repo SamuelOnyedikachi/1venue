@@ -93,7 +93,7 @@ export async function mount(view) {
   });
   view.append(
     h('div', { class: 'dz-head mk-head' },
-      h('h1', { class: 'dz-title', html: icon('grid') + 'Marketplace' }),
+      h('h1', { class: 'dz-title', html: icon('cart') + 'Marketplace' }),
       h('form', { class: 'search-line', onsubmit: ev => { ev.preventDefault(); run(); } }, search),
       filters),
     results);

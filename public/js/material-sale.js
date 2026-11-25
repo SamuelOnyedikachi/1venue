@@ -3,6 +3,7 @@ import { h, api, toast, toastErr, sheet } from './ui.js';
 import { fmtMoney } from './money.js';
 import { icon } from './icons.js';
 import { navigate } from './app.js';
+import { kindIcon, materialThumb, materialSub } from './materials-lib.js';
 
 export function priceLabel(m) {
   if (!m || !m.forSale || !m.priceKobo) return '';
@@ -41,6 +42,26 @@ export function saleEditor(m, { onSaved } = {}) {
       h('label', { class: 'grow' }, h('span', { class: 'tiny muted' }, 'Call discount %'), disc)),
     h('label', { class: 'grow' }, h('span', { class: 'tiny muted' }, 'Category'), cat),
     h('button', { class: 'btn sm', type: 'button', onclick: save }, 'Save sale'));
+}
+
+
+export function materialCard(m, { buy = false } = {}) {
+  const th = materialThumb(m);
+  const price = m.forSale && m.priceKobo ? priceLabel(m) : 'Free';
+  const href = '/materials/' + m.id;
+  const go = (ev) => {
+    if (buy && m.forSale && m.locked) {
+      ev.preventDefault();
+      openBuySheet(m, { onBought: () => navigate(href) });
+    }
+  };
+  return h('div', { class: 'mat-card card layer' },
+    h('a', { class: 'mat-card-link', href, 'data-link': '', onclick: go },
+      h('div', { class: 'mat-card-thumb', 'data-kind': m.kind }, th ? h('img', { src: th, alt: '', loading: 'lazy' }) : h('span', { html: icon(kindIcon(m.kind), { size: 28 }) })),
+      h('div', { class: 'mat-card-body' },
+        h('b', { class: 'ellipsis' }, m.title || 'Untitled'),
+        h('div', { class: 'tiny muted ellipsis' }, materialSub(m), m.category ? ' · ' + m.category : ''),
+        h('div', { class: 'tiny muted ellipsis' }, (m.host && m.host.name) || '', (m.host && m.host.name) ? ' · ' : '', price))));
 }
 
 export async function openBuySheet(m, { eventId, meetingCode, returnPath, onBought } = {}) {
