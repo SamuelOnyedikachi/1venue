@@ -176,21 +176,25 @@ async function setEventMaterials(eventId, userId, materialIds) {
 }
 
 /**
- * A material someone may open on its own page: their own, their organisation's shared library, or one
- * attached to a public event (or an event they host). Returns { material, canEdit } or null.
+ * A material someone may open on its own page: their own, their organisation's shared library,
+ * one they purchased, one listed on the marketplace (paid items stay locked until bought),
+ * or one attached to a public event (or an event they host). Returns { material, canEdit } or null.
  */
 async function viewableMaterial(id, userId) {
   if (userId) {
     const own = await getMaterial(id, userId);
-    if (own) return { material: own, canEdit: true };
+    if (own) return { material: await withAccess(own, userId), canEdit: true };
     if (await require('./sale').purchased(id, userId)) {
       const bought = await one('SELECT * FROM materials WHERE id=$1', [id]);
       return bought ? { material: await withAccess(materialOut(bought), userId), canEdit: false } : null;
     }
   }
   const r = await one(
-    `SELECT m.* FROM materials m WHERE m.id=$1 AND EXISTS (SELECT 1 FROM event_materials em JOIN events e ON e.id=em.event_id
-       WHERE em.material_id=m.id AND (e.visibility='public' OR e.host_user_id=$2))`,
+    `SELECT m.* FROM materials m WHERE m.id=$1 AND (
+        m.listed = TRUE
+        OR EXISTS (SELECT 1 FROM event_materials em JOIN events e ON e.id=em.event_id
+          WHERE em.material_id=m.id AND (e.visibility='public' OR e.host_user_id=$2))
+      )`,
     [id, userId || 0]
   );
   const m = r ? await withAccess(materialOut(r), userId) : null;

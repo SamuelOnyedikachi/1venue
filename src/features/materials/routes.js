@@ -55,7 +55,7 @@ module.exports = function routes(route, kit) {
     }
   });
   // One material, for its own page (/materials/:id). Owner and organisation members can edit and analyse;
-  // anyone may view a material attached to a public event (the event page already lists it).
+  // anyone may view a marketplace listing or a material attached to a public event.
   const mats = require('./data');
   async function viewable(ctx, id) {
     const u = await getAuthUser(ctx.req, ctx.res).catch(() => null);
