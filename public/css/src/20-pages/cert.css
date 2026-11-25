@@ -1,0 +1,76 @@
+/* Public certificate page, host editor extras, and signatory pad */
+.cert-page { max-width: 56rem; margin: 1.5rem auto 3rem; padding: 0 1rem; }
+.cert-verify-card {
+  display: flex; flex-direction: column; gap: 1rem;
+  padding: 1.1rem 1.15rem 1.3rem;
+  border: 1px solid var(--line, rgba(127,127,127,.2));
+  border-radius: 18px;
+  background: var(--card, var(--s1, #fff));
+  box-shadow: 0 16px 40px color-mix(in srgb, #000 8%, transparent);
+}
+.cert-badge {
+  display: flex; gap: .75rem; align-items: flex-start;
+  padding: .85rem 1rem;
+  border-radius: 14px;
+  background: color-mix(in srgb, #15803d 14%, var(--s2, var(--shade, rgba(127,127,127,.08))));
+  color: inherit;
+}
+.cert-badge svg { flex: none; stroke: #15803d; margin-top: .15rem; }
+.cert-badge-text { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.cert-badge-text strong { font-size: 1.05rem; letter-spacing: .01em; }
+.cert-badge-text span { font-size: .92rem; color: var(--muted, inherit); opacity: .9; }
+.cert-frame { border-radius: 12px; overflow: hidden; background: #f3f1ee; }
+.cert-iframe { width: 100%; height: min(70vh, 28rem); border: 0; background: #fff; border-radius: 12px; }
+.cert-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.cert-actions .btn { display: inline-flex; align-items: center; gap: .4rem; }
+.cert-details h1 { margin: .2rem 0 .3rem; font-size: 1.35rem; }
+.cert-detail-line { margin: .2rem 0; }
+.cert-detail-line .muted { display: inline-block; min-width: 6.5rem; }
+.cert-code { margin-top: .6rem; letter-spacing: .04em; }
+
+.cert-picks { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; }
+@media (max-width: 640px) { .cert-picks { grid-template-columns: repeat(2, 1fr); } }
+.cert-pick[data-design="elegant"] .cert-pick-art {
+  background: linear-gradient(160deg, #1c1916, #2a241c);
+  box-shadow: inset 0 0 0 1px #c9a227, inset 0 0 0 5px transparent;
+}
+.cert-live { display: flex; flex-direction: column; gap: .35rem; }
+.cert-live-frame-wrap {
+  border: 1px solid var(--line, rgba(127,127,127,.2));
+  border-radius: 12px; overflow: hidden; background: #f3f1ee;
+}
+.cert-live-frame { width: 100%; height: min(46vh, 20rem); border: 0; background: #fff; }
+.cert-fields, .cert-extras, .cert-sigs { gap: .55rem; }
+.cert-field { display: flex; flex-direction: column; gap: .25rem; }
+.cert-logo-preview {
+  width: 64px; height: 40px; border-radius: 8px; overflow: hidden;
+  display: grid; place-items: center;
+  background: var(--shade, rgba(127,127,127,.08));
+  border: 1px solid var(--line, rgba(127,127,127,.2));
+  flex: none;
+}
+.cert-logo-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.cert-sig-card {
+  display: flex; flex-direction: column; gap: .4rem;
+  padding: .7rem .75rem;
+  border-radius: 12px;
+  background: var(--shade, rgba(127,127,127,.07));
+  border: 1px solid var(--line, rgba(127,127,127,.16));
+}
+.cert-sig-tabs { display: flex; flex-wrap: wrap; gap: .3rem; }
+.cert-sig-ink {
+  display: block; max-width: 100%; height: 48px; width: auto;
+  object-fit: contain; object-position: left center;
+  background: transparent;
+}
+.cert-sig-ink.lg { height: 72px; }
+.cert-sign-page { max-width: 36rem; margin: 1.5rem auto 3rem; padding: 0 1rem; }
+.cert-sign-card h1 { margin: 0 0 .2rem; font-size: 1.4rem; }
+.cert-pad-wrap {
+  border: 1px dashed var(--line, rgba(127,127,127,.35));
+  border-radius: 14px;
+  background: #fbfaf7;
+  overflow: hidden;
+}
+.cert-pad { display: block; width: 100%; height: 180px; touch-action: none; cursor: crosshair; }
+.cert-sig-found { padding: .25rem 0; }

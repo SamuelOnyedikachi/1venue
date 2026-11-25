@@ -1,6 +1,7 @@
 // Room side panel: Chat (everyone / direct / groups), People (stage, waiting, hands, roster + moderation),
 // Engage (polls, Q&A, comments) and Tools (Bible, Qur’an, captions, AI, boards, content, breakouts, …).
 import { h, esc, api, toast, toastErr, avatar, timeAgo, menu, confirmDlg, promptDlg, readFileAsDataUrl, copy, debounce, md, uploadFile, sheet, profilePath, linkify as linkifyText } from '../ui.js';
+import { downloadAtt, canDownloadAtt, syncList, nearBottom, markEnter } from '../msg-sync.js';
 import { icon } from '../icons.js';
 import { isVideoAtt, videoPlayer } from '../video-player.js';
 import { pillComposer } from '../composer.js';
@@ -54,6 +55,8 @@ export function createPanel(R) {
   function badges() {
     const n = { chat: R.unread.chat + R.unread.dm, people: (R.isMod() ? R.waiting.length + (R.stage.requests || []).length : 0) + R.hands.length, engage: R.unread.engage + (R.unread.comments || 0) };
     for (const [k, b] of Object.entries(tabBtns)) { const e = b.querySelector('.badge'); const v = n[k] || 0; e.hidden = !v || tab === k; e.textContent = v > 99 ? '99+' : v; }
+    const dm = body.querySelector('[data-badge="dm"]');
+    if (dm) { const v = R.unread.dm || 0; dm.hidden = !v; dm.textContent = v > 99 ? '99+' : v; }
     R.refreshBar(); R.updateBell && R.updateBell();
   }
   let rq = 0;
@@ -71,7 +74,9 @@ export function createPanel(R) {
   }
   const isOpen = (id) => tab === id;
   const refresh = (area) => { badges(); if (!tab) return; if (!area || area === tab || (area === 'dm' && tab === 'chat')) render(); };
-  const seg = (items, cur, onPick) => h('div', { class: 'seg block' }, items.map(([v, l, n]) => h('button', { class: v === cur ? 'on' : '', type: 'button', onclick: () => onPick(v) }, l, n ? h('em', { class: 'badge' }, n) : null)));
+  const seg = (items, cur, onPick) => h('div', { class: 'seg block' }, items.map(([v, l, n]) => h('button', { class: v === cur ? 'on' : '', type: 'button', onclick: () => onPick(v) }, l, n != null ? h('em', { class: 'badge', 'data-badge': v, hidden: !n }, n > 99 ? '99+' : n) : null)));
+  let chatDom = { key: '', wrap: null, list: null, newBtn: null };
+  body.addEventListener('scroll', () => { if (chatDom.newBtn && nearBottom(body, 40)) chatDom.newBtn.hidden = true; }, { passive: true });
 
   /* ------------------------------------------------------------ CHAT */
   function msgEl(m, { mine, name, at }) {
@@ -86,8 +91,38 @@ export function createPanel(R) {
       else if (a.kind === 'voice') att = h('audio', { class: 'msg-voice', controls: true, src, preload: 'metadata' });
       else att = h('a', { class: 'msg-file', href: src, target: '_blank', rel: 'noopener', download: a.name || 'file', html: icon('file', { size: 18 }) + `<span>${esc(a.name || 'file')}</span>${kb ? `<small>${kb}</small>` : ''}` });
     }
-    return h('div', { class: `msg${mine ? ' mine' : ''}` }, mine ? null : avatar(name, null, 'sm'),
-      h('div', { class: 'bubble' }, mine ? null : h('b', { class: 'who' }, name, ticketTag(R.p(m.participantId))), m.text ? h('div', { class: 'txt', html: linkify(m.text) }) : null, att, (a && a.kind === 'material') ? buyAttachment(a, R) : null, h('time', null, fmtTime(at))));
+    const mid = String(m.id || ((at || '') + '-' + (m.participantId || m.fromId || '')));
+    const more = (canDownloadAtt(a) || m.text) ? h('div', { class: 'msg-hover room-msg-hover' },
+      h('button', { class: 'icon-btn msg-hb msg-more', type: 'button', 'aria-label': 'Message actions', 'data-tip': 'More', html: icon('moreHorizontal', { size: 16 }), onclick: (e) => {
+        e.stopPropagation();
+        menu(e.currentTarget, [
+          canDownloadAtt(a) ? { label: 'Download', icon: 'download', run: () => downloadAtt(a) } : null,
+          m.text ? { label: 'Copy text', icon: 'copy', run: () => copy(m.text) } : null,
+        ].filter(Boolean));
+      } })) : null;
+    return h('div', { class: `msg${mine ? ' mine' : ''}`, 'data-id': mid }, mine ? null : avatar(name, null, 'sm'),
+      h('div', { class: 'bubble' }, mine ? null : h('b', { class: 'who' }, name, ticketTag(R.p(m.participantId))), m.text ? h('div', { class: 'txt', html: linkify(m.text) }) : null, att, (a && a.kind === 'material') ? buyAttachment(a, R) : null, h('time', null, fmtTime(at))), more);
+  }
+  function msgSig(m) {
+    const a = m.attachment;
+    return [m.text || '', a && (a.url || a.dataUrl || a.kind) || '', m.fromName || m.name || ''].join('\t');
+  }
+  function fillMsgs(list, msgs, mapFn, emptyNode, { enter = false } = {}) {
+    const items = [];
+    if (!msgs.length && emptyNode) items.push({ key: 'slot:empty', sig: 'empty', slot: true, create: () => emptyNode() });
+    for (const m of msgs) {
+      const mid = String(m.id || ((m.at || '') + '-' + (m.participantId || m.fromId || '')));
+      items.push({ key: mid, sig: msgSig(m), create: () => mapFn(m) });
+    }
+    const { appended } = syncList(list, items);
+    if (enter && appended.length) markEnter(appended.filter((n) => n.classList && n.classList.contains('msg')));
+    const stick = R.justSent || nearBottom(body, 40);
+    if (stick) {
+      if (chatDom.newBtn) chatDom.newBtn.hidden = true;
+    } else if (appended.some((n) => n.classList && n.classList.contains('msg'))) {
+      if (chatDom.newBtn) chatDom.newBtn.hidden = false;
+    }
+    return appended;
   }
   // One composer per conversation, reused across re-renders so text, uploads and recordings survive.
   const composers = new Map();
@@ -104,31 +139,44 @@ export function createPanel(R) {
     c.onSend = onSend;
     return c.el;
   }
+  function threadChrome(list, composerEl, head) {
+    const newBtn = h('button', { class: 'chat-new-btn', type: 'button', hidden: true }, 'New messages');
+    newBtn.addEventListener('click', () => { newBtn.hidden = true; body.scrollTop = body.scrollHeight; });
+    const wrap = h('div', { class: 'chat-view' });
+    if (head) wrap.append(head);
+    wrap.append(h('div', { class: 'chat-msgs-wrap' }, list, newBtn), composerEl);
+    return { wrap, list, newBtn };
+  }
   function chatView() {
     const mode = sub.chat || 'all';
     const dmN = R.unread.dm;
-    const wrap = h('div', { class: 'chat-view' }, seg([['all', 'Everyone'], ['dm', 'Direct', dmN], ['groups', 'Groups']], mode, (v) => { sub.chat = v; R.dmWith = null; R.groupOpen = null; render(); }));
+    const tabs = seg([['all', 'Everyone'], ['dm', 'Direct', dmN], ['groups', 'Groups']], mode, (v) => { sub.chat = v; R.dmWith = null; R.groupOpen = null; chatDom = { key: '', wrap: null, list: null, newBtn: null }; render(); });
     const canChat = R.perm('chat') && R.security.chat !== false || R.isMod();
+    let key = mode, msgs = [], mapFn = null, emptyFn = null, head = null, send = null, placeholder = '';
     if (mode === 'all') {
-      const list = h('div', { class: 'msgs', 'data-autoscroll': '' });
-      if (!R.data.chat.length) list.append(h('div', { class: 'empty sm' }, I('chats', 28), h('p', null, 'Say hi 👋 - messages are visible to everyone in the room.')));
-      R.data.chat.forEach((m) => list.append(msgEl(m, { mine: m.participantId === R.me.id, name: m.name, at: m.at })));
-      wrap.append(list, composer({ placeholder: 'Message everyone…', disabled: !canChat, onSend: (text, attachment) => {
+      key = 'all';
+      msgs = R.data.chat;
+      mapFn = (m) => msgEl(m, { mine: m.participantId === R.me.id, name: m.name, at: m.at });
+      emptyFn = () => h('div', { class: 'empty sm' }, I('chats', 28), h('p', null, 'Say hi 👋 - messages are visible to everyone in the room.'));
+      placeholder = 'Message everyone…';
+      send = (text, attachment) => {
         const mentions = [...text.matchAll(/@([\w.-]{2,30})/g)].map((x) => x[1].toLowerCase());
         const ids = R.people().filter((p) => mentions.some((m) => p.name.toLowerCase().replace(/\s+/g, '').startsWith(m))).map((p) => p.id);
         R.send('chat', { text, mentions: ids, attachment });
-      } }));
+      };
     } else if (mode === 'dm') {
       if (R.dmWith) {
         const p = R.p(R.dmWith) || { id: R.dmWith, name: R.dmNames[R.dmWith] || 'Participant' };
-        const list = h('div', { class: 'msgs', 'data-autoscroll': '' });
-        const msgs = R.data.dms.filter((m) => (m.fromId === p.id && m.toId === R.me.id) || (m.toId === p.id && m.fromId === R.me.id));
+        key = 'dm:' + p.id;
+        msgs = R.data.dms.filter((m) => (m.fromId === p.id && m.toId === R.me.id) || (m.toId === p.id && m.fromId === R.me.id));
         R.dmRead[p.id] = msgs.length; R.recountDm();
-        if (!msgs.length) list.append(h('div', { class: 'empty sm' }, I('lock', 26), h('p', null, `Private conversation with ${p.name}. Only you two can see this.`)));
-        msgs.forEach((m) => list.append(msgEl(m, { mine: m.fromId === R.me.id, name: m.fromName, at: m.at })));
-        wrap.append(h('div', { class: 'row sub-head' }, ibtn('chevronLeft', 'Back', () => { R.dmWith = null; render(); }), avatar(p.name, null, 'sm'), h('b', { class: 'grow' }, p.name)),
-          list, composer({ placeholder: `Message ${p.name}…`, disabled: !canChat, onSend: (text, attachment) => R.send('private-chat', { targetId: p.id, text, attachment, targetName: p.name, targetUserId: p.userId || null }) }));
+        mapFn = (m) => msgEl(m, { mine: m.fromId === R.me.id, name: m.fromName, at: m.at });
+        emptyFn = () => h('div', { class: 'empty sm' }, I('lock', 26), h('p', null, `Private conversation with ${p.name}. Only you two can see this.`));
+        placeholder = `Message ${p.name}…`;
+        send = (text, attachment) => R.send('private-chat', { targetId: p.id, text, attachment, targetName: p.name, targetUserId: p.userId || null });
+        head = h('div', { class: 'row sub-head' }, ibtn('chevronLeft', 'Back', () => { R.dmWith = null; chatDom = { key: '', wrap: null, list: null, newBtn: null }; render(); }), avatar(p.name, null, 'sm'), h('b', { class: 'grow' }, p.name));
       } else {
+        const wrap = h('div', { class: 'chat-view' }, tabs);
         const list = h('div', { class: 'list' });
         const others = R.people().filter((p) => p.id !== R.me.id);
         if (!others.length) list.append(h('div', { class: 'empty sm' }, I('users', 26), h('p', null, 'Nobody else is here yet.')));
@@ -139,33 +187,51 @@ export function createPanel(R) {
             h('div', { class: 'grow' }, h('b', null, p.name), h('div', { class: 'tiny muted ellipsis' }, last ? (last.text || 'Attachment') : 'Start a private chat')), unread > 0 ? h('em', { class: 'badge' }, unread) : null));
         });
         wrap.append(list);
+        return wrap;
       }
+    } else if (R.groupOpen && R.data.groups.get(R.groupOpen)) {
+      const g = R.data.groups.get(R.groupOpen);
+      key = 'group:' + g.id;
+      msgs = g.messages || [];
+      mapFn = (m) => msgEl(m, { mine: m.fromId === R.me.id, name: m.fromName, at: m.at });
+      emptyFn = () => h('div', { class: 'empty sm' }, I('chats', 26), h('p', null, `${(g.members || []).length} members`));
+      placeholder = `Message ${g.title}…`;
+      send = (text, attachment) => R.send('group-chat', { groupId: g.id, text, attachment });
+      head = h('div', { class: 'row sub-head' }, ibtn('chevronLeft', 'Back', () => { R.groupOpen = null; chatDom = { key: '', wrap: null, list: null, newBtn: null }; render(); }), I('hash'), h('b', { class: 'grow' }, g.title),
+        R.isMod() ? ibtn('userPlus', 'Add / remove members', (e) => menu(e.currentTarget, R.people().map((p) => { const inG = (g.members || []).some((m) => (m.id || m) === p.id); return { label: (inG ? '✓ ' : '') + p.name, icon: inG ? 'userX' : 'userPlus', run: () => R.send(inG ? 'group-remove-member' : 'group-add-member', { groupId: g.id, targetId: p.id }) }; })), { group: 'people' }) : null);
     } else {
+      const wrap = h('div', { class: 'chat-view' }, tabs);
+      const list = h('div', { class: 'list' });
       const groups = [...R.data.groups.values()];
-      if (R.groupOpen && R.data.groups.get(R.groupOpen)) {
-        const g = R.data.groups.get(R.groupOpen);
-        const list = h('div', { class: 'msgs', 'data-autoscroll': '' });
-        (g.messages || []).forEach((m) => list.append(msgEl(m, { mine: m.fromId === R.me.id, name: m.fromName, at: m.at })));
-        if (!(g.messages || []).length) list.append(h('div', { class: 'empty sm' }, I('chats', 26), h('p', null, `${(g.members || []).length} members`)));
-        wrap.append(h('div', { class: 'row sub-head' }, ibtn('chevronLeft', 'Back', () => { R.groupOpen = null; render(); }), I('hash'), h('b', { class: 'grow' }, g.title),
-          R.isMod() ? ibtn('userPlus', 'Add / remove members', (e) => menu(e.currentTarget, R.people().map((p) => { const inG = (g.members || []).some((m) => (m.id || m) === p.id); return { label: (inG ? '✓ ' : '') + p.name, icon: inG ? 'userX' : 'userPlus', run: () => R.send(inG ? 'group-remove-member' : 'group-add-member', { groupId: g.id, targetId: p.id }) }; })), { group: 'people' }) : null),
-          list, composer({ placeholder: `Message ${g.title}…`, disabled: !canChat, onSend: (text, attachment) => R.send('group-chat', { groupId: g.id, text, attachment }) }));
-      } else {
-        const list = h('div', { class: 'list' });
-        groups.forEach((g) => list.append(h('button', { class: 'list-item', type: 'button', onclick: () => { R.groupOpen = g.id; R.focusNext = true; render(); } }, h('span', { class: 'ico-tile sm', 'data-group': 'social', html: icon('hash', { size: 16 }) }), h('div', { class: 'grow' }, h('b', null, g.title), h('div', { class: 'tiny muted' }, `${(g.members || []).length} members`)))));
-        if (!groups.length) list.append(h('div', { class: 'empty sm' }, I('hash', 26), h('p', null, 'Group chats let a few people talk privately during the session.')));
-        wrap.append(list, R.isMod() ? btn('plus', 'New group', async () => {
-          const title = await promptDlg('Group name', { placeholder: 'e.g. Panelists' }); if (!title) return;
-          const others = R.people().filter((p) => p.id !== R.me.id);
-          const picked = new Set();
-          const { sheet } = await import('../ui.js');
-          const s = sheet({ title: 'Pick members', icon: 'users', group: 'people' });
-          s.body.append(h('div', { class: 'list' }, others.map((p) => h('label', { class: 'list-item' }, h('input', { type: 'checkbox', onchange: (e) => e.target.checked ? picked.add(p.id) : picked.delete(p.id) }), avatar(p.name, null, 'sm'), h('span', { class: 'grow' }, p.name)))),
-            h('button', { class: 'btn primary block', style: { marginTop: '1rem' }, onclick: () => { const groupId = 'g' + Date.now().toString(36); R.send('group-create', { groupId, title, name: title, members: [...picked] }); s.close(); R.groupOpen = groupId; } }, 'Create group'));
-        }, { group: 'social', cls: 'block' }) : null);
-      }
+      groups.forEach((g) => list.append(h('button', { class: 'list-item', type: 'button', onclick: () => { R.groupOpen = g.id; R.focusNext = true; render(); } }, h('span', { class: 'ico-tile sm', 'data-group': 'social', html: icon('hash', { size: 16 }) }), h('div', { class: 'grow' }, h('b', null, g.title), h('div', { class: 'tiny muted' }, `${(g.members || []).length} members`)))));
+      if (!groups.length) list.append(h('div', { class: 'empty sm' }, I('hash', 26), h('p', null, 'Group chats let a few people talk privately during the session.')));
+      wrap.append(list, R.isMod() ? btn('plus', 'New group', async () => {
+        const title = await promptDlg('Group name', { placeholder: 'e.g. Panelists' }); if (!title) return;
+        const others = R.people().filter((p) => p.id !== R.me.id);
+        const picked = new Set();
+        const { sheet } = await import('../ui.js');
+        const s = sheet({ title: 'Pick members', icon: 'users', group: 'people' });
+        s.body.append(h('div', { class: 'list' }, others.map((p) => h('label', { class: 'list-item' }, h('input', { type: 'checkbox', onchange: (e) => e.target.checked ? picked.add(p.id) : picked.delete(p.id) }), avatar(p.name, null, 'sm'), h('span', { class: 'grow' }, p.name)))),
+          h('button', { class: 'btn primary block', style: { marginTop: '1rem' }, onclick: () => { const groupId = 'g' + Date.now().toString(36); R.send('group-create', { groupId, title, name: title, members: [...picked] }); s.close(); R.groupOpen = groupId; } }, 'Create group'));
+      }, { group: 'social', cls: 'block' }) : null);
+      return wrap;
     }
-    return wrap;
+    if (chatDom.key !== key || !chatDom.wrap) {
+      const list = h('div', { class: 'msgs', 'data-autoscroll': '' });
+      const built = threadChrome(list, composer({ placeholder, onSend: send, disabled: !canChat }), null);
+      // tabs + optional thread head sit above the message list
+      built.wrap.prepend(tabs); if (head) built.wrap.insertBefore(head, built.list.parentNode || built.list);
+      chatDom = { key, ...built };
+    } else {
+      // Keep the existing list and composer; refresh the tab strip / thread head in place.
+      const oldHead = chatDom.wrap.querySelector('.sub-head');
+      if (head && oldHead) oldHead.replaceWith(head);
+      else if (head && !oldHead) chatDom.wrap.insertBefore(head, chatDom.list.parentNode || chatDom.list);
+      const oldTabs = chatDom.wrap.querySelector('.seg');
+      if (oldTabs) oldTabs.replaceWith(tabs);
+    }
+    fillMsgs(chatDom.list, msgs, mapFn, emptyFn, { enter: chatDom.list.childElementCount > 0 });
+    return chatDom.wrap;
   }
 
   /* ------------------------------------------------------------ PEOPLE */
@@ -446,7 +512,38 @@ export function createPanel(R) {
     return pushCaptionLine(list, line);
   }
 
-  return { el, open, close, toggle, isOpen, refresh, render, appendCaption, get tab() { return tab; }, sub };
+  function appendChat(channel, m) {
+    badges();
+    const mode = sub.chat || 'all';
+    if (tab !== 'chat') return true;
+    if ((channel === 'dm' && mode === 'dm' && !R.dmWith) || (channel === 'group' && mode === 'groups' && !R.groupOpen)) {
+      render();
+      return true;
+    }
+    const visible = (channel === 'all' && mode === 'all')
+      || (channel === 'dm' && mode === 'dm' && R.dmWith && ((m.fromId === R.dmWith && m.toId === R.me.id) || (m.toId === R.dmWith && m.fromId === R.me.id)))
+      || (channel === 'group' && mode === 'groups' && m.groupId && String(m.groupId) === String(R.groupOpen));
+    if (!visible) return true;
+    const list = (chatDom.list && chatDom.wrap && body.contains(chatDom.wrap)) ? chatDom.list : body.querySelector('.msgs');
+    if (!list) return false;
+    const empty = list.querySelector('.empty, [data-sync="slot:empty"]');
+    if (empty) empty.remove();
+    const node = channel === 'all'
+      ? msgEl(m, { mine: m.participantId === R.me.id, name: m.name, at: m.at })
+      : msgEl(m, { mine: m.fromId === R.me.id, name: m.fromName, at: m.at });
+    const mid = String(m.id || ((m.at || '') + '-' + (m.participantId || m.fromId || '')));
+    if (list.querySelector(`[data-id="${mid}"]`)) return true;
+    node.dataset.sig = msgSig(m);
+    markEnter([node]);
+    list.append(node);
+    const stick = R.justSent || nearBottom(body, 40);
+    if (stick) { body.scrollTop = body.scrollHeight; if (chatDom.newBtn) chatDom.newBtn.hidden = true; }
+    else if (chatDom.newBtn) chatDom.newBtn.hidden = false;
+    R.justSent = false;
+    return true;
+  }
+
+  return { el, open, close, toggle, isOpen, refresh, render, appendCaption, appendChat, get tab() { return tab; }, sub };
 }
 
 export async function compressImage(file, max = 1280, q = 0.8) {

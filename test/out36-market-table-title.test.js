@@ -87,10 +87,10 @@ describe('out36 marketplace filters, materials table, titles, seed', () => {
     assert.ok(cats.size >= 5);
   });
 
-  it('cache versions are v87 / ?v=76', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v90-2026-11-23'/);
-    assert.match(read('public/index.html'), /app\.css\?v=76/);
-    assert.match(read('public/index.html'), /app\.js\?v=76/);
+  it('cache versions are v87 / ?v=78', () => {
+    assert.match(read('public/sw.js'), /VERSION = 'v92-2026-11-23'/);
+    assert.match(read('public/index.html'), /app\.css\?v=78/);
+    assert.match(read('public/index.html'), /app\.js\?v=78/);
   });
 });
 

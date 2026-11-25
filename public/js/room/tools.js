@@ -586,7 +586,14 @@ export function buildTools(R) {
       if (!R.isMod()) { box.append(note('Only the host can turn certificates on.')); return box; }
       const current = (R.settings && R.settings.certs) || {};
       const accent = (R.theme && R.theme.accent) || '#2563eb';
-      const editor = certEditor(current, { accent, onChange: (c) => { R._certsDraft = c; } });
+      const editor = certEditor(current, {
+        accent,
+        eventTitle: R.eventTitle || R.name || R.title || '',
+        hostName: R.hostName || (R.host && R.host.name) || '',
+        startsAt: R.startsAt || R.eventStartsAt || '',
+        endsAt: R.endsAt || R.eventEndsAt || '',
+        onChange: (c) => { R._certsDraft = c; },
+      });
       const save = async () => {
         const certs = (editor.get && editor.get()) || R._certsDraft || current;
         try {

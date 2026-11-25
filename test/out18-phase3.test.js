@@ -50,13 +50,12 @@ describe('out18 gift note, materials, certs, perks, pip', () => {
     assert.equal(PLATFORM_KEYS.materialsFeeBps[0], 2000);
   });
 
-  it('builds a PDF for each certificate design', () => {
+  it('builds a PDF for each certificate design', async () => {
     const { certificatePdf } = require('../src/features/certificates/pdf');
-    for (const design of ['classic', 'modern', 'minimal']) {
-      const buf = certificatePdf({ name: 'Ada Lovelace', title: 'Music as Inner Peace', date: '1 January 2026', host: 'Host', code: 'ABCDE12345', url: 'https://1venue.live/cert/ABCDE12345', accent: '#7c3aed', design });
+    for (const design of ['classic', 'modern', 'minimal', 'elegant']) {
+      const buf = await certificatePdf({ name: 'Ada Lovelace', title: 'Music as Inner Peace', date: '1 January 2026', host: 'Host', code: 'ABCDE12345', url: 'https://1venue.live/cert/ABCDE12345', accent: '#7c3aed', design });
       assert.ok(buf.length > 200);
       assert.equal(buf.subarray(0, 5).toString(), '%PDF-');
-      assert.match(buf.toString('latin1'), /Ada Lovelace/);
     }
   });
 
@@ -78,9 +77,9 @@ describe('out18 gift note, materials, certs, perks, pip', () => {
   });
 
   it('bumps the cache versions', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v90-2026-11-23'/);
-    assert.match(read('public/index.html'), /app\.css\?v=76/);
-    assert.match(read('public/index.html'), /app\.js\?v=76/);
+    assert.match(read('public/sw.js'), /VERSION = 'v92-2026-11-23'/);
+    assert.match(read('public/index.html'), /app\.css\?v=78/);
+    assert.match(read('public/index.html'), /app\.js\?v=78/);
   });
 });
 

@@ -149,7 +149,14 @@ export async function mount(view, params) {
 
   // Materials: searchable picker with "Upload materials" inside it.
   const matPicker = materialPicker({ selected: materialIds, onChange: (ids) => { materialIds = ids; } });
-  const certsEl = certEditor(certs, { accent: acc, onChange: (c) => { certs = c; } });
+  const certsEl = certEditor(certs, {
+    accent: acc,
+    eventTitle: () => title.value,
+    startsAt: () => starts.value ? new Date(starts.value).toISOString() : '',
+    endsAt: () => ends.value ? new Date(ends.value).toISOString() : '',
+    hostName: ev.hostName || ev.host_name || (state.user && (state.user.displayName || state.user.name)) || '',
+    onChange: (c) => { certs = c; },
+  });
 
   const setTheme = (a, a2, { touched = true } = {}) => { acc = a; acc2 = a2; if (touched) themeTouched = true; swatches.querySelectorAll('.swatch').forEach((sw, i) => sw.classList.toggle('on', ACCENTS[i][1] === a)); certsEl.setAccent(a); preview(); };
   const swatches = h('div', { class: 'swatches' }, ACCENTS.map(([n, a, a2]) => h('button', { type: 'button', class: `swatch${acc === a ? ' on' : ''}`, 'data-tip': n, style: { background: `linear-gradient(135deg, ${a}, ${a2})` }, 'aria-label': n, onclick: () => setTheme(a, a2) })));

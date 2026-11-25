@@ -265,3 +265,42 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
 
 .page-messages .msg-calls-optin { display: flex; align-items: center; gap: .75rem; margin: 0 .75rem .55rem; padding: .7rem .85rem; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--s1); }
 .page-messages .msg-calls-optin[hidden] { display: none; }
+
+@keyframes msg-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.msg-row.msg-enter, .app-pip-msg.msg-enter, .msg.msg-enter {
+  animation: msg-enter .22s var(--ease, ease-out) both;
+}
+.msg-scroll-wrap, .app-pip-msgs-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.app-pip-msgs-wrap .app-pip-msgs { flex: 1; min-height: 0; }
+.chat-new-btn {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--s1);
+  color: var(--text);
+  font: inherit;
+  font-size: .8rem;
+  font-weight: 650;
+  padding: .35rem .75rem;
+  border-radius: 999px;
+  box-shadow: var(--shadow-2, 0 6px 18px rgba(0,0,0,.12));
+  cursor: pointer;
+  z-index: 5;
+}
+.chat-new-btn:hover { background: var(--s2); }
+.chat-new-btn[hidden] { display: none !important; }
+.page-messages .chat-new-btn,
+.app-pip-msgs-wrap .chat-new-btn {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+}

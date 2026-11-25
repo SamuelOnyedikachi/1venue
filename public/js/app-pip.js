@@ -13,6 +13,7 @@ import { bus, setPipConversation, typing as sendTyping, refreshUnread } from './
 import { initLightbox } from './lightbox.js';
 import { isVoiceAtt, pickVoiceAtt, voiceSlot, hydrateVoicePlayers } from './voice-player.js';
 import { isVideoAtt, videoPlayer, videoSlot, hydrateVideoPlayers } from './video-player.js';
+import { downloadAtt, canDownloadAtt, syncList, nearBottom, markEnter } from './msg-sync.js';
 
 export function pipSupported() {
   return typeof window !== 'undefined' && 'documentPictureInPicture' in window && window.top === window;
@@ -492,6 +493,7 @@ export async function popOut(existing) {
         c.canSend ? { label: 'React', icon: 'smile', run: () => emojiPopover(anchor, (e) => react(th, m, e)) } : null,
         c.canSend && c.editable && m.kind === 'text' ? { label: (th.pins || []).some((p) => p.id === m.id) ? 'Unpin' : 'Pin', icon: 'pin', run: () => api(`/api/messages/conversations/${c.id}/messages/${m.id}/pin`, { method: (th.pins || []).some((p) => p.id === m.id) ? 'DELETE' : 'POST' }).then((r) => { th.pins = r.pins || []; toast((th.pins || []).some((p) => p.id === m.id) ? 'Pinned' : 'Unpinned', { icon: 'pin' }); }).catch(toastErr) } : null,
         m.kind === 'text' && convList.length ? { label: 'Forward', icon: 'forward', run: () => pipForward(th, m) } : null,
+        canDownloadAtt(m.attachment) ? { label: 'Download', icon: 'download', run: () => downloadAtt(m.attachment) } : null,
         m.text ? { label: 'Copy text', icon: 'copy', run: () => navigator.clipboard.writeText(m.text).then(() => toast('Copied', { icon: 'copy' })).catch(() => {}) } : null,
         !m.mine && m.fromUserId ? { label: 'Report', icon: 'alert', group: 'admin', run: () => api('/api/messages/reports', { method: 'POST', body: { conversationId: c.id, messageId: m.id, reason: '' } }).then(() => toast('Thanks. Our team will review it.', { icon: 'check' })).catch(toastErr) } : null,
       ], { header: quick, sheet: false });
@@ -556,20 +558,62 @@ export async function popOut(existing) {
       return row;
     }
 
+    function pipMsgSig(th, m) {
+      const r = (m.reactions || []).map((x) => `${x.emoji}:${x.count}:${x.mine ? 1 : 0}`).join(',');
+      const pinned = (th.pins || []).some((p) => p.id === m.id) ? 1 : 0;
+      const att = m.attachment && (m.attachment.url || m.attachment.dataUrl || m.attachment.kind) || '';
+      return [m.deleted ? 1 : 0, m.text || '', m.editedAt || '', r, pinned, att].join('\t');
+    }
+    function patchPipRow(row, th, m) {
+      if (m.deleted) {
+        const bub = row.querySelector('.app-pip-bubble');
+        if (bub) bub.replaceChildren(h('div', { class: 'tiny muted' }, 'Message deleted'));
+        const hover = row.querySelector('.app-pip-hover'); if (hover) hover.remove();
+        const reacts0 = row.querySelector('.msg-reacts'); if (reacts0) reacts0.remove();
+        return true;
+      }
+      const bub = row.querySelector('.app-pip-bubble');
+      if (bub && m.text) {
+        const holder = [...bub.children].find((n) => n.tagName === 'DIV' && !n.classList.contains('tiny') && !n.classList.contains('msg-quote') && !n.classList.contains('msg-fwd'));
+        if (holder) {
+          const html = linkify(m.text, { siteBase });
+          if (holder.innerHTML !== html) holder.innerHTML = html;
+        }
+      }
+      const col = row.querySelector('.app-pip-col');
+      let reacts = row.querySelector('.msg-reacts');
+      if (m.reactions && m.reactions.length) {
+        const el2 = h('div', { class: 'msg-reacts' }, m.reactions.map((r) => h('button', { type: 'button', class: `msg-react${r.mine ? ' on' : ''}`, 'aria-label': `${r.emoji} ${r.count}`, onclick: () => react(th, m, r.emoji), disabled: !th.conv.canSend }, `${r.emoji} ${r.count}`)));
+        if (reacts) reacts.replaceWith(el2); else if (col) col.insertBefore(el2, col.querySelector('.app-pip-hover'));
+      } else if (reacts) reacts.remove();
+      return true;
+    }
+
     function paintMsgs(th, { stick, jump } = {}) {
       const el = th.msgsEl;
-      const atBottom = el.scrollHeight - el.clientHeight - el.scrollTop < 80;
-      const out = [];
-      if (!th.msgs.length) out.push(h('p', { class: 'muted tiny', style: { padding: '.5rem' } }, th.conv.type === 'dm' ? `Say hi to ${th.conv.title}` : 'No messages yet.'));
+      const atBottom = nearBottom(el, 80);
+      const items = [];
+      if (!th.msgs.length) items.push({ key: 'slot:empty', sig: th.conv.type, slot: true, create: () => h('p', { class: 'muted tiny', style: { padding: '.5rem' } }, th.conv.type === 'dm' ? `Say hi to ${th.conv.title}` : 'No messages yet.') });
       let prev = null;
-      for (const m of th.msgs) { out.push(msgNode(th.conv, m, prev, th)); prev = m; }
-      el.replaceChildren(...out);
-      hydrateVoice(el);
+      for (const m of th.msgs) {
+        const p = prev;
+        items.push({ key: String(m.id), sig: pipMsgSig(th, m), create: () => msgNode(th.conv, m, p, th), patch: (row) => patchPipRow(row, th, m) });
+        prev = m;
+      }
+      const { appended } = syncList(el, items);
+      if (appended.length && !stick && !jump) markEnter(appended.filter((n) => n.classList && n.classList.contains('app-pip-msg')));
+      for (const n of appended) hydrateVoice(n);
       if (jump) {
+        if (th.newBtn) th.newBtn.hidden = true;
         const n = el.querySelector(`[data-id="${jump}"]`);
         if (n) { n.classList.add('app-pip-jump'); n.scrollIntoView({ block: 'center' }); }
         else scrollEnd(el);
-      } else if (stick || atBottom) scrollEnd(el);
+      } else if (stick || atBottom) {
+        if (th.newBtn) th.newBtn.hidden = true;
+        scrollEnd(el);
+      } else if (appended.some((n) => n.classList && n.classList.contains('app-pip-msg'))) {
+        if (th.newBtn) th.newBtn.hidden = false;
+      }
     }
 
     function paintThreadTyping(th) {
@@ -617,9 +661,13 @@ export async function popOut(existing) {
           canMeet ? softBtn('calendarPlus', 'Start a meeting', () => startMeetingFor(c, win.document)) : null,
         );
         const msgsEl = h('div', { class: 'app-pip-msgs' });
+        const newBtn = h('button', { class: 'chat-new-btn', type: 'button', hidden: true }, 'New messages');
+        newBtn.addEventListener('click', () => { newBtn.hidden = true; scrollEnd(msgsEl); });
+        msgsEl.addEventListener('scroll', () => { if (nearBottom(msgsEl)) newBtn.hidden = true; }, { passive: true });
+        const msgsWrap = h('div', { class: 'app-pip-msgs-wrap' }, msgsEl, newBtn);
         const typingEl = h('div', { class: 'app-pip-typing', hidden: true });
         let foot;
-        const th = { id: c.id, conv: c, msgs, msgsEl, typingEl, typing: new Map(), composer: null, replyTo: null, replyBar: null, pins: c.pins || [] };
+        const th = { id: c.id, conv: c, msgs, msgsEl, newBtn, typingEl, typing: new Map(), composer: null, replyTo: null, replyBar: null, pins: c.pins || [] };
         thread = th;
         if (c.canSend) {
           const limits = state.config && state.config.storage && state.config.storage.limits;
@@ -642,7 +690,7 @@ export async function popOut(existing) {
         } else {
           foot = h('p', { class: 'tiny muted app-pip-foot', style: { padding: '.6rem .8rem' } }, c.reason || 'You can’t send messages here');
         }
-        wrap.replaceChildren(head, msgsEl, typingEl, foot || '');
+        wrap.replaceChildren(head, msgsWrap, typingEl, foot || '');
         paintMsgs(th, { stick: true, jump: jumpId });
         markThreadRead(th);
       } catch (e) {

@@ -1,6 +1,7 @@
 // Messages: DMs, groups and meeting chats in one inbox (/messages, /messages/:id, /messages/new?user=ID).
 // Desktop: list + thread side by side. Phone: one pane at a time; the thread hides the bottom nav.
 import { h, esc, api, toast, toastErr, avatar, timeAgo, fmtDate, menu, sheet, confirmDlg, promptDlg, uploadFile, copy, isMobile, debounce, linkify as linkifyText } from '../ui.js';
+import { downloadAtt, canDownloadAtt, syncList, nearBottom, markEnter } from '../msg-sync.js';
 import { icon } from '../icons.js';
 import { pillComposer } from '../composer.js';
 import { isVoiceAtt, pickVoiceAtt, voicePlayer } from '../voice-player.js';
@@ -131,6 +132,9 @@ export async function mount(view, params) {
 
   // ------------------------------------------------------------- thread
   const msgsEl = h('div', { class: 'msg-scroll', 'aria-live': 'polite' });
+  const newBtn = h('button', { class: 'chat-new-btn', type: 'button', hidden: true }, 'New messages');
+  newBtn.addEventListener('click', () => { newBtn.hidden = true; msgsEl.scrollTop = msgsEl.scrollHeight; });
+  const msgsWrap = h('div', { class: 'msg-scroll-wrap' }, msgsEl, newBtn);
   const typingEl = h('div', { class: 'msg-typing', hidden: true });
   let composer = null;
   function empty() {
@@ -213,7 +217,7 @@ export async function mount(view, params) {
       const calls = r.calls || {};
       if (calls.enabled) return;
       el.hidden = false;
-      el.replaceChildren(
+      put(el, 
         h('div', { class: 'grow col', style: { gap: '.15rem', minWidth: 0 } },
           h('b', null, 'Allow voice calls'),
           h('span', { class: 'tiny muted' }, 'Notification can call you in the app when something needs a conversation.')),
@@ -250,7 +254,7 @@ export async function mount(view, params) {
       ib('moreV', 'More', (e) => moreMenu(e.currentTarget)));
     const foot = c.canSend ? h('div', { class: 'msg-foot' }, replyBar, composerEl()) : h('div', { class: 'msg-readonly' }, I(c.readOnly ? 'lock' : 'info', 16), h('span', null, c.reason || 'You can’t send messages here'));
     const callsOpt = h('div', { class: 'msg-calls-optin', hidden: true });
-    put(threadPane, head, pinBar, msgsEl, typingEl, callsOpt, foot);
+    put(threadPane, head, pinBar, msgsWrap, typingEl, callsOpt, foot);
     paintPins(); paintReply();
     paintMsgs(true);
     maybeShowCallsOptIn(c, callsOpt);
@@ -412,26 +416,98 @@ export async function mount(view, params) {
     return row;
   }
   const lastMineId = () => { for (let i = S.msgs.length - 1; i >= 0; i--) if (S.msgs[i].mine) return S.msgs[i].id; return 0; };
+  function msgSig(m) {
+    const r = (m.reactions || []).map((x) => `${x.emoji}:${x.count}:${x.mine ? 1 : 0}`).join(',');
+    const read = m.mine && S.conv && S.conv.type === 'dm' && S.conv.peerReplied && S.conv.peerReadId >= m.id ? 1 : 0;
+    const pinned = (S.pins || []).some((p) => p.id === m.id) ? 1 : 0;
+    const st = (m.payload && m.payload.status) || '';
+    const att = m.attachment && (m.attachment.url || m.attachment.dataUrl || m.attachment.kind) || '';
+    return [m.deleted ? 1 : 0, m.text || '', m.editedAt || '', r, read, pinned, transcripts.get(m.id) || '', analyses.get(m.id) || '', st, att].join('\t');
+  }
+  function patchMsgRow(row, m, prev) {
+    if (m.deleted && !row.querySelector('.msg-txt.deleted')) return false;
+    const c = S.conv;
+    const grouped = prev && prev.fromUserId === m.fromUserId && prev.kind !== 'system' && prev.kind !== 'call' && new Date(m.createdAt) - new Date(prev.createdAt) < 5 * 60000;
+    row.classList.toggle('grouped', !!grouped);
+    const txt = row.querySelector('.msg-txt:not(.deleted)');
+    if (txt && m.text) {
+      const html = linkify(m.text);
+      if (txt.innerHTML !== html) txt.innerHTML = html;
+    }
+    const ticks = row.querySelector('.msg-ticks');
+    if (ticks) {
+      const read = !!(m.mine && c && c.type === 'dm' && c.peerReplied && c.peerReadId >= m.id);
+      ticks.classList.toggle('read', read);
+      ticks.setAttribute('aria-label', read ? 'Read' : c && c.type === 'dm' ? 'Delivered' : 'Sent');
+    }
+    const meta = row.querySelector('.msg-meta');
+    if (meta) {
+      const pinned = (S.pins || []).some((p) => p.id === m.id);
+      let pin = meta.querySelector('[data-pin]');
+      if (pinned && !pin) meta.prepend(h('span', { 'data-pin': '', html: icon('pin', { size: 11 }) }));
+      else if (!pinned && pin) pin.remove();
+      const edited = meta.childNodes && [...meta.childNodes].find((n) => n.nodeType === 3 && /edited/.test(n.textContent || ''));
+      if (m.editedAt && !m.deleted && !edited) {
+        const time = meta.querySelector('span, time') || ticks;
+        meta.insertBefore(document.createTextNode('edited · '), time || null);
+      }
+    }
+    const col = row.querySelector('.msg-col');
+    let reacts = row.querySelector('.msg-reacts');
+    if (m.reactions && m.reactions.length) {
+      const el = h('div', { class: 'msg-reacts' }, m.reactions.map((r) => h('button', { type: 'button', class: `msg-react${r.mine ? ' on' : ''}`, 'aria-label': `${r.emoji} ${r.count}`, onclick: () => react(m, r.emoji), disabled: !c.canSend }, `${r.emoji} ${r.count}`)));
+      if (reacts) reacts.replaceWith(el); else if (col) col.append(el);
+    } else if (reacts) reacts.remove();
+    const tx = transcripts.get(m.id);
+    if (tx) {
+      let tEl = row.querySelector('.msg-transcript:not(.msg-ai-inline)');
+      if (!tEl) {
+        const wrap = row.querySelector('.msg-voice-wrap') || col;
+        if (wrap) wrap.append(h('div', { class: 'msg-transcript' }, I('fileText', 14), h('span', null, tx)));
+      } else {
+        const span = tEl.querySelector('span'); if (span) span.textContent = tx;
+      }
+    }
+    const done = analyses.get(m.id);
+    if (done && !row.querySelector('.msg-ai-inline')) {
+      const card = row.querySelector('.msg-file');
+      if (card && card.parentNode) {
+        const box = h('div', { class: 'msg-file-wrap' }, card, h('button', { class: 'msg-transcript msg-ai-inline', type: 'button', onclick: () => analyseFile(m) }, I('sparkles', 14), h('span', null, done)));
+        card.replaceWith(box);
+      }
+    }
+    return true;
+  }
   function paintMsgs(scroll) {
-    const stick = scroll || msgsEl.scrollHeight - msgsEl.clientHeight - msgsEl.scrollTop < 80;
-    const out = [];
-    if (S.hasMore) out.push(h('button', { class: 'btn sm ghost msg-older', type: 'button', onclick: older }, 'Load earlier messages'));
-    else if (S.hidden) out.push(h('div', { class: 'msg-sys' }, h('span', null, 'Older messages are hidden on the Free plan. '), h('a', { href: '/upgrade', 'data-link': '' }, 'Upgrade to keep them')));
-    if (!S.msgs.length) out.push(h('div', { class: 'msg-empty sm' }, h('p', { class: 'muted' }, S.conv.type === 'dm' ? `Say hi to ${S.conv.title} 👋` : 'No messages yet.')));
+    const stick = scroll || nearBottom(msgsEl);
+    const items = [];
+    if (S.hasMore) items.push({ key: 'slot:older', sig: 'older', slot: true, create: () => h('button', { class: 'btn sm ghost msg-older', type: 'button', onclick: older }, 'Load earlier messages') });
+    else if (S.hidden) items.push({ key: 'slot:hidden', sig: 'hidden', slot: true, create: () => h('div', { class: 'msg-sys' }, h('span', null, 'Older messages are hidden on the Free plan. '), h('a', { href: '/upgrade', 'data-link': '' }, 'Upgrade to keep them')) });
+    if (!S.msgs.length) items.push({ key: 'slot:empty', sig: S.conv.type, slot: true, create: () => h('div', { class: 'msg-empty sm' }, h('p', { class: 'muted' }, S.conv.type === 'dm' ? `Say hi to ${S.conv.title} 👋` : 'No messages yet.')) });
     let prev = null;
     for (const m of S.msgs) {
-      if (!prev || dayKey(prev.createdAt) !== dayKey(m.createdAt)) { out.push(h('div', { class: 'msg-day' }, h('span', null, dayLabel(m.createdAt)))); prev = null; }
-      out.push(msgEl(m, prev)); prev = m;
+      if (!prev || dayKey(prev.createdAt) !== dayKey(m.createdAt)) {
+        const dk = dayKey(m.createdAt);
+        items.push({ key: 'day:' + dk, sig: dayLabel(m.createdAt), slot: true, create: () => h('div', { class: 'msg-day' }, h('span', null, dayLabel(m.createdAt))) });
+        prev = null;
+      }
+      const p = prev;
+      items.push({ key: String(m.id), sig: msgSig(m), create: () => msgEl(m, p), patch: (row) => patchMsgRow(row, m, p) });
+      prev = m;
     }
-    put(msgsEl, ...out);
+    const { appended } = syncList(msgsEl, items);
+    if (appended.length && !scroll && msgsEl.scrollTop > 40) markEnter(appended.filter((n) => n.classList && n.classList.contains('msg-row')));
     if (stick) {
+      newBtn.hidden = true;
       const go = () => { msgsEl.scrollTop = msgsEl.scrollHeight; };
       go();
       requestAnimationFrame(() => { go(); requestAnimationFrame(go); });
-      msgsEl.querySelectorAll('img, audio, video').forEach((n) => {
-        n.addEventListener('load', go, { once: true });
-        n.addEventListener('loadedmetadata', go, { once: true });
+      for (const n of appended) n.querySelectorAll && n.querySelectorAll('img, audio, video').forEach((el) => {
+        el.addEventListener('load', go, { once: true });
+        el.addEventListener('loadedmetadata', go, { once: true });
       });
+    } else if (appended.some((n) => n.classList && n.classList.contains('msg-row'))) {
+      newBtn.hidden = false;
     }
   }
   async function older() {
@@ -445,7 +521,7 @@ export async function mount(view, params) {
       paintMsgs(false); msgsEl.scrollTop = msgsEl.scrollHeight - h0;
     } catch (e) { toastErr(e); } finally { S.loadingOlder = false; }
   }
-  msgsEl.addEventListener('scroll', () => { if (msgsEl.scrollTop < 60 && S.hasMore) older(); }, { passive: true });
+  msgsEl.addEventListener('scroll', () => { if (nearBottom(msgsEl)) newBtn.hidden = true; if (msgsEl.scrollTop < 60 && S.hasMore) older(); }, { passive: true });
   let readT = null;
   function markRead() {
     clearTimeout(readT);
@@ -474,6 +550,7 @@ export async function mount(view, params) {
       a && a.url && SHEET_EXT.test(a.name || '') ? { label: 'Make a chart', icon: 'chart', group: 'ai', run: () => chartFile(m) } : null,
       a && a.url && isBoardFile(a) ? { label: 'Open in whiteboard', icon: 'pen', group: 'content', run: () => openBoardFile(a) } : null,
       a && a.url && (a.kind === 'voice' || /^audio\//.test(a.mime || '')) && !transcripts.has(m.id) ? { label: 'Transcribe', icon: 'captions', group: 'ai', run: () => transcribe(m) } : null,
+      canDownloadAtt(a) ? { label: 'Download', icon: 'download', run: () => downloadAtt(a) } : null,
       m.text ? { label: 'Copy text', icon: 'copy', run: () => copy(m.text) } : null,
       canEdit && c.canSend ? { label: 'Edit', icon: 'pen', run: () => { S.editing = m.id; composer.setText(m.text); composer.focus(); toast('Editing - press Enter to save', { icon: 'pen' }); } } : null,
       m.mine && c.editable ? { label: 'Delete', icon: 'trash', group: 'admin', run: async () => { if (await confirmDlg('Delete this message for everyone?', { ok: 'Delete', danger: true })) api(`/api/messages/conversations/${c.id}/messages/${m.id}`, { method: 'DELETE' }).then(() => upsert({ id: m.id, deleted: true, text: '', attachment: null, payload: null })).catch(toastErr); } } : null,
