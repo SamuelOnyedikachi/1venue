@@ -384,6 +384,8 @@ Object.assign(Room.prototype, {
     this.creditControl?.unsubscribe();
     this.cleanupPrejoin && this.cleanupPrejoin();
     this.inRoom = true;
+    this.eventId = r.eventId || this.eventId || (this.event && this.event.id) || null;
+    this.settings = { ...(this.settings || {}), certs: r.certs || (this.settings && this.settings.certs) || {} };
     this.billingFreeUntil = Number(r.freeUntilMs || this.billingFreeUntil || 0) || null;
     this.roomName = r.name || fmtCode(this.code);
     this.data = { chat: [], dms: [], groups: new Map(), polls: [], questions: [], comments: [], captions: [], activity: [] };

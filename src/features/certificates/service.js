@@ -98,7 +98,10 @@ function certOut(r) {
     historyId: Number(r.history_id),
     eventId: r.event_id ? Number(r.event_id) : null,
     eventSlug: r.event_slug || null,
-    userId: Number(r.user_id),
+    userId: r.user_id != null ? Number(r.user_id) : null,
+    isPublic: asBool(r.is_public),
+    recipientEmail: r.recipient_email || null,
+    source: r.source || 'attendance',
     attendeeName: r.attendee_name,
     eventTitle: r.event_title,
     programme,
@@ -295,63 +298,147 @@ async function ensureSignatories(list, { eventId, host, eventTitle } = {}) {
   return out;
 }
 
-async function issueForMeeting(meeting) {
-  if (!meeting || !meeting.historyId) return [];
-  let ev = null;
-  if (meeting.eventId) ev = await one('SELECT * FROM events WHERE id=$1', [meeting.eventId]).catch(() => null);
-  const evSettings = parseSettings(ev && ev.settings);
-  const certs = normalizeCerts((meeting.settings && meeting.settings.certs) || evSettings.certs || {});
-  if (!certs.enabled) return [];
-  const minMs = certs.minMinutes * 60 * 1000;
-  const db = require('../../../db');
-  const logs = await db.getMeetingParticipantsLog(meeting.historyId);
-  const ids = [...new Set(logs.map((r) => r.user_id).filter(Boolean).map(Number))];
-  if (!ids.length) return [];
-  const users = ids.length
-    ? await many(`SELECT id, display_name, email FROM users WHERE id IN (${ids.map((_, i) => `$${i + 1}`).join(',')})`, ids)
-    : [];
-  const byId = new Map(users.map((u) => [Number(u.id), u]));
-  const title = (ev && ev.title) || meeting.name || meeting.title || 'Event';
-  const hostName = certs.issuerName || (ev && ev.host_name) || meeting.hostName || 'Host';
-  const accent = themeAccent((ev && ev.theme) || (meeting.settings && meeting.settings.theme));
+function parsePeople(input) {
+  const raw = [];
+  if (Array.isArray(input && input.people)) raw.push(...input.people);
+  else if (Array.isArray(input)) raw.push(...input);
+  else if (Array.isArray(input && input.names)) raw.push(...input.names);
+  else if (typeof (input && input.names) === 'string') raw.push(...String(input.names).split(/\n+/));
+  else if (typeof input === 'string') raw.push(...input.split(/\n+/));
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const out = [];
+  const seen = new Set();
+  for (const item of raw) {
+    let name = '', email = '';
+    if (item && typeof item === 'object') {
+      name = String(item.name || '').trim();
+      email = String(item.email || '').trim();
+    } else {
+      const line = String(item || '').trim();
+      const angle = line.match(/^(.+?)\s*<([^>]+)>$/);
+      const comma = line.match(/^(.+?)[,;]\s*(\S+@\S+)$/);
+      if (angle) { name = angle[1].trim(); email = angle[2].trim(); }
+      else if (comma) { name = comma[1].trim(); email = comma[2].trim(); }
+      else name = line;
+    }
+    name = name.slice(0, 120);
+    email = email.slice(0, 160);
+    if (email && !emailRe.test(email)) email = '';
+    if (!name) continue;
+    const key = name.toLowerCase() + '|' + (email || '').toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ name, email: email || '' });
+    if (out.length >= 40) break;
+  }
+  return out;
+}
+
+async function historySettings(historyId) {
+  const hist = await one('SELECT settings FROM meeting_history WHERE id=$1', [historyId]).catch(() => null);
+  return parseSettings(hist && hist.settings);
+}
+
+async function persistHistoryCerts(historyId, certs) {
+  if (!historyId || !certs) return certs;
+  const settings = await historySettings(historyId);
+  settings.certs = normalizeCerts(certs, settings.certs);
+  await q('UPDATE meeting_history SET settings=$2 WHERE id=$1', [historyId, JSON.stringify(settings)]);
+  return settings.certs;
+}
+
+function isLiveManager(meeting, userId) {
+  if (!meeting || !userId) return false;
+  if (meeting.hostUserId != null && Number(meeting.hostUserId) === Number(userId)) return true;
+  const people = meeting.participants ? [...meeting.participants.values()] : [];
+  return people.some((p) => Number(p.userId) === Number(userId) && (p.role === 'host' || p.role === 'cohost'));
+}
+
+async function canManageHistory(history, user, meeting) {
+  if (!history || !user) return false;
+  if (history.host_user_id != null && Number(history.host_user_id) === Number(user.id)) return true;
+  return isLiveManager(meeting, user.id);
+}
+
+async function insertCertRow({ historyId, eventId, userId, name, title, hostName, design, accent, snapshot, email, source, onConflictUser }) {
+  const snapJson = typeof snapshot === 'string' ? snapshot : JSON.stringify(snapshot || {});
+  const conflict = onConflictUser && userId
+    ? 'ON CONFLICT (history_id, user_id) DO NOTHING RETURNING *'
+    : 'RETURNING *';
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      return await one(
+        `INSERT INTO certificates (code, history_id, event_id, user_id, attendee_name, event_title, host_name, design, accent, snapshot, recipient_email, source, is_public)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,FALSE)
+         ${conflict}`,
+        [code(), historyId, eventId || null, userId || null, String(name).slice(0, 120), String(title).slice(0, 200), String(hostName || '').slice(0, 120), design, accent, snapJson, email || null, source || 'attendance']
+      );
+    } catch (e) {
+      if (isUniqueViolation(e) && attempt < 4) continue;
+      console.warn('[certs] insert', e.message);
+      return null;
+    }
+  }
+  return null;
+}
+
+async function snapshotFor(history, ev, meeting, certs) {
+  const title = (ev && ev.title) || (meeting && (meeting.name || meeting.title)) || history.name || 'Event';
+  const hostName = certs.issuerName || (ev && ev.host_name) || (meeting && meeting.hostName) || history.host_display_name || 'Host';
+  const accent = themeAccent((ev && ev.theme) || (meeting && meeting.settings && meeting.settings.theme));
   const signatories = await resolveSignatories(certs.signatories);
-  const dateLabel = formatDateRange(certs.dateStart || (ev && ev.starts_at), certs.dateEnd || (ev && ev.ends_at)) || formatOne(new Date());
+  const dateLabel = formatDateRange(certs.dateStart || (ev && ev.starts_at) || history.created_at, certs.dateEnd || (ev && ev.ends_at) || history.ended_at) || formatOne(new Date());
   const snapshot = {
     ...certs,
     programme: certs.programme || title,
     issuerName: hostName,
     issuerLogoUrl: certs.issuerLogoUrl || '',
     dateLabel,
-    dateStart: certs.dateStart || (ev && ev.starts_at) || null,
-    dateEnd: certs.dateEnd || (ev && ev.ends_at) || null,
+    dateStart: certs.dateStart || (ev && ev.starts_at) || history.created_at || null,
+    dateEnd: certs.dateEnd || (ev && ev.ends_at) || history.ended_at || null,
     signatories,
     accent,
   };
-  const snapJson = JSON.stringify(snapshot);
+  return { title, hostName, accent, snapshot };
+}
+
+async function loadIssueContext(historyId, meeting) {
+  const history = await one('SELECT * FROM meeting_history WHERE id=$1', [historyId]);
+  if (!history) return null;
+  let ev = null;
+  const eventId = (meeting && meeting.eventId) || history.event_id;
+  if (eventId) ev = await one('SELECT * FROM events WHERE id=$1', [eventId]).catch(() => null);
+  const evSettings = parseSettings(ev && ev.settings);
+  const histSettings = parseSettings(history.settings);
+  const live = meeting && meeting.settings && meeting.settings.certs;
+  const certs = normalizeCerts(live || histSettings.certs || evSettings.certs || {});
+  return { history, ev, eventId: eventId || (ev && ev.id) || null, certs };
+}
+
+async function issueForHistory(historyId, { meeting } = {}) {
+  if (!historyId) return [];
+  const ctx = await loadIssueContext(historyId, meeting);
+  if (!ctx) return [];
+  const { history, ev, eventId, certs } = ctx;
+  if (!certs.enabled) return [];
+  const minMs = certs.minMinutes * 60 * 1000;
+  const db = require('../../../db');
+  const logs = await db.getMeetingParticipantsLog(historyId);
+  const ids = [...new Set(logs.map((r) => r.user_id).filter(Boolean).map(Number))];
+  if (!ids.length) return [];
+  const users = await many(`SELECT id, display_name, email FROM users WHERE id IN (${ids.map((_, i) => `$${i + 1}`).join(',')})`, ids);
+  const byId = new Map(users.map((u) => [Number(u.id), u]));
+  const { title, hostName, accent, snapshot } = await snapshotFor(history, ev, meeting, certs);
   const issued = [];
   for (const userId of ids) {
     if (attendanceMs(logs, userId) < minMs) continue;
     const u = byId.get(Number(userId));
     const name = (u && u.display_name) || (logs.find((r) => Number(r.user_id) === userId) || {}).display_name || 'Participant';
-    let row;
-    let skipped = false;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      try {
-        row = await one(
-          `INSERT INTO certificates (code, history_id, event_id, user_id, attendee_name, event_title, host_name, design, accent, snapshot)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-           ON CONFLICT (history_id, user_id) DO NOTHING RETURNING *`,
-          [code(), meeting.historyId, meeting.eventId || (ev && ev.id) || null, userId, String(name).slice(0, 120), String(title).slice(0, 200), String(hostName).slice(0, 120), certs.design, accent, snapJson]
-        );
-        break;
-      } catch (e) {
-        if (isUniqueViolation(e) && attempt < 4) continue;
-        console.warn('[certs] insert', e.message);
-        skipped = true;
-        break;
-      }
-    }
-    if (skipped || !row) continue;
+    const row = await insertCertRow({
+      historyId, eventId, userId, name, title, hostName, design: certs.design, accent, snapshot,
+      email: (u && u.email) || null, source: 'attendance', onConflictUser: true,
+    });
+    if (!row) continue;
     const cert = certOut(row);
     issued.push(cert);
     deliver(u, cert).catch((e) => console.warn('[certs] deliver', e.message));
@@ -359,14 +446,89 @@ async function issueForMeeting(meeting) {
   return issued;
 }
 
+async function issueForMeeting(meeting) {
+  if (!meeting || !meeting.historyId) return [];
+  if (meeting.settings && meeting.settings.certs) {
+    await persistHistoryCerts(meeting.historyId, meeting.settings.certs).catch((e) => console.warn('[certs] persist', e.message));
+  }
+  return issueForHistory(meeting.historyId, { meeting });
+}
+
+async function issueManual(historyId, input, { meeting } = {}) {
+  const people = parsePeople(input);
+  if (!people.length) return [];
+  const ctx = await loadIssueContext(historyId, meeting);
+  if (!ctx) return [];
+  const { history, ev, eventId, certs } = ctx;
+  const enabled = { ...certs, enabled: true };
+  const { title, hostName, accent, snapshot } = await snapshotFor(history, ev, meeting, enabled);
+  const issued = [];
+  for (const p of people) {
+    const row = await insertCertRow({
+      historyId, eventId, userId: null, name: p.name, title, hostName, design: enabled.design, accent, snapshot,
+      email: p.email || null, source: 'manual', onConflictUser: false,
+    });
+    if (!row) continue;
+    const cert = certOut(row);
+    issued.push(cert);
+    if (p.email) deliver({ email: p.email }, cert).catch((e) => console.warn('[certs] deliver', e.message));
+  }
+  return issued;
+}
+
+async function listForHistory(historyId) {
+  const rows = await many(
+    `SELECT c.*, e.slug AS event_slug FROM certificates c
+       LEFT JOIN events e ON e.id = c.event_id
+      WHERE c.history_id=$1 ORDER BY c.issued_at DESC, c.id DESC`,
+    [historyId]
+  );
+  return rows.map(certOut);
+}
+
+async function listForUser(userId, { includePrivate = false } = {}) {
+  if (!userId) return [];
+  const rows = await many(
+    `SELECT c.*, e.slug AS event_slug FROM certificates c
+       LEFT JOIN events e ON e.id = c.event_id
+      WHERE c.user_id=$1 ${includePrivate ? '' : 'AND (c.is_public IS TRUE OR c.is_public = 1)'}
+      ORDER BY c.issued_at DESC, c.id DESC`,
+    [userId]
+  );
+  return rows.map(certOut);
+}
+
+async function setPublic(codeValue, user, isPublic) {
+  const row = await one('SELECT * FROM certificates WHERE code=$1', [String(codeValue || '').toUpperCase()]);
+  if (!row) return null;
+  if (!user || row.user_id == null || Number(row.user_id) !== Number(user.id)) return false;
+  const next = asBool(isPublic);
+  const updated = await one('UPDATE certificates SET is_public=$2 WHERE id=$1 RETURNING *', [row.id, next]);
+  return certOut(updated);
+}
+
+async function saveHistoryCerts(history, patch, meeting) {
+  const certs = await persistHistoryCerts(history.id, normalizeCerts(patch, parseSettings(history.settings).certs));
+  if (meeting) applyToMeeting(meeting, certs);
+  if (history.event_id) {
+    const ev = await one('SELECT * FROM events WHERE id=$1', [history.event_id]).catch(() => null);
+    if (ev) {
+      const settings = parseSettings(ev.settings);
+      settings.certs = certs;
+      await q('UPDATE events SET settings=$2, updated_at=NOW() WHERE id=$1', [history.event_id, JSON.stringify(settings)]);
+    }
+  }
+  return certs;
+}
+
 async function deliver(user, cert) {
-  if (!user || !user.id) return;
-  try {
+  if (!user) return;
+  if (user.id) try {
     await require('../messages/notify').send(user.id, {
       style: 'detailed',
       text: `Your certificate for ${cert.eventTitle} is ready. You can download it or share the verification link.`,
       links: [{ label: 'View certificate', href: `/cert/${cert.code}` }, { label: 'Download PDF', href: `/api/certs/${cert.code}/pdf` }],
-      card: { kind: 'certificate', title: cert.title || 'Certificate', subtitle: cert.eventTitle, link: `/cert/${cert.code}` },
+      card: { type: 'certificate', kind: 'certificate', title: cert.title || 'Certificate', subtitle: cert.eventTitle, link: `/cert/${cert.code}` },
     });
   } catch (e) { console.warn('[certs] notify', e.message); }
   if (user.email) {
@@ -470,8 +632,9 @@ async function getUserSignature(userId) {
 
 module.exports = {
   DESIGNS, DEFAULT_MIN, catalogue,
-  normalizeCerts, getByCode, pdfFor, previewPdf, issueForMeeting,
-  saveEventCerts, applyToMeeting, certOut, themeAccent,
+  normalizeCerts, getByCode, pdfFor, previewPdf, issueForMeeting, issueForHistory, issueManual,
+  saveEventCerts, saveHistoryCerts, applyToMeeting, persistHistoryCerts, canManageHistory, isLiveManager,
+  listForHistory, listForUser, setPublic, parsePeople, certOut, themeAccent,
   lookupUsername, ensureSignatories, getSignRequest, applySignedUrl,
   saveUserSignature, getUserSignature, resolveSignatories, pdfPayload,
   signatures,

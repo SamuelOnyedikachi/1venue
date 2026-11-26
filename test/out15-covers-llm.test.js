@@ -107,9 +107,9 @@ describe('out15 AI calls and cover library', () => {
   });
 
   it('bumps the cache versions and default models', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v93-2026-11-26'/);
-    assert.match(read('public/index.html'), /app\.css\?v=79/);
-    assert.match(read('public/index.html'), /app\.js\?v=79/);
+    assert.match(read('public/sw.js'), /VERSION = 'v94-2026-11-26'/);
+    assert.match(read('public/index.html'), /app\.css\?v=80/);
+    assert.match(read('public/index.html'), /app\.js\?v=80/);
     assert.match(read('src/config.js'), /ideogram-ai\/ideogram-v3-turbo/);
     assert.match(read('src/config.js'), /AI_EMBED_MODEL/);
     assert.match(read('src/config.js'), /AI_COVER_REUSE_MIN/);

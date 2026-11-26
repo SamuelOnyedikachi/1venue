@@ -3,6 +3,7 @@ import { h, api, toast, toastErr, md, timeAgo, fmtDate, fmtDur, copy, hue, debou
 import { requireLogin, navigate } from '../app.js';
 import { panel, table, iconBtn, empty, pill } from '../host-kit.js';
 import { registerCommands, unregisterCommands } from '../commands.js';
+import { certEditor } from '../cert-ui.js';
 
 
 function liveActions(s, view) {
@@ -18,6 +19,104 @@ function liveActions(s, view) {
   return h('div', { class: 'ev-actionbar sess-live-actions', 'data-group': 'session' },
     h('a', { class: 'btn ev-act', href: `/${String(s.code).toLowerCase()}?rejoin=1`, 'data-link': '', 'data-tip': 'Rejoin', 'aria-label': 'Rejoin', html: icon('login', { size: 18 }) + '<span class="ev-act-lbl">Rejoin</span>' }),
     endBtn);
+}
+
+
+function certsPanel(s) {
+  const box = h('div', { class: 'card ht-panel sess-certs-panel', hidden: true });
+  let editor = null;
+  let issued = [];
+  const list = h('div', { class: 'sess-cert-list' });
+  const names = h('textarea', { class: 'textarea', rows: 3, placeholder: 'One name per line. Add an email if you have one: Ada Lovelace, ada@email.com' });
+  const paintList = () => {
+    list.replaceChildren();
+    if (!issued.length) {
+      list.append(h('p', { class: 'muted small', style: { margin: 0 } }, 'No certificates issued yet.'));
+      return;
+    }
+    issued.forEach((c) => {
+      const link = c.url || `${location.origin}/cert/${c.code}`;
+      list.append(h('div', { class: 'sess-cert-row' },
+        h('div', { class: 'grow minw0' },
+          h('b', null, c.attendeeName),
+          h('span', { class: 'tiny muted' }, [c.code, c.source === 'manual' ? 'added by you' : null, c.recipientEmail || null].filter(Boolean).join(' · '))),
+        h('a', { class: 'btn xs', href: `/cert/${c.code}`, 'data-link': '' }, 'Open'),
+        h('button', { class: 'btn xs', type: 'button', html: icon('copy', { size: 13 }) + 'Copy link', onclick: () => copy(link, 'Link copied') }),
+        h('a', { class: 'btn xs', href: `/api/certs/${c.code}/pdf?download=1` }, 'Download')));
+    });
+  };
+  const load = async () => {
+    const r = await api(`/api/sessions/${s.id}/certs`);
+    issued = r.issued || [];
+    if (!editor) {
+      editor = certEditor(r.certs || {}, { eventTitle: s.name, startsAt: s.startedAt, endsAt: s.endedAt });
+      editorSlot.replaceWith(editor);
+    }
+    paintList();
+    return r;
+  };
+  const editorSlot = h('div', { class: 'sess-cert-editor-slot muted small' }, 'Loading certificate settings…');
+  const saveBtn = h('button', { class: 'btn sm primary', type: 'button', html: icon('check', { size: 15 }) + 'Save settings' });
+  saveBtn.onclick = async () => {
+    try {
+      await api(`/api/sessions/${s.id}/certs`, { method: 'POST', body: editor.get() });
+      toast('Certificate settings saved', { icon: 'check' });
+    } catch (e) { toastErr(e); }
+  };
+  const issueBtn = h('button', { class: 'btn sm', type: 'button', html: icon('send', { size: 15 }) + 'Issue certificates' });
+  issueBtn.onclick = async () => {
+    if (editor) {
+      try { await api(`/api/sessions/${s.id}/certs`, { method: 'POST', body: editor.get() }); } catch (e) { toastErr(e); return; }
+    }
+    issueBtn.disabled = true;
+    try {
+      const r = await api(`/api/sessions/${s.id}/certs/issue`, { method: 'POST', body: {} });
+      issued = (await api(`/api/sessions/${s.id}/certs`)).issued || [];
+      paintList();
+      toast(r.count ? `Issued ${r.count} certificate${r.count === 1 ? '' : 's'}` : 'Everyone eligible already has a certificate', { icon: 'graduation' });
+    } catch (e) { toastErr(e); } finally { issueBtn.disabled = false; }
+  };
+  const addBtn = h('button', { class: 'btn sm', type: 'button', html: icon('plus', { size: 15 }) + 'Generate' });
+  addBtn.onclick = async () => {
+    const text = names.value.trim();
+    if (!text) return toast('Add at least one name', { icon: 'info' });
+    addBtn.disabled = true;
+    try {
+      const r = await api(`/api/sessions/${s.id}/certs/manual`, { method: 'POST', body: { names: text } });
+      issued = [...(r.issued || []), ...issued];
+      paintList();
+      names.value = '';
+      toast(`Created ${r.count} certificate${r.count === 1 ? '' : 's'}`, { icon: 'graduation' });
+    } catch (e) { toastErr(e); } finally { addBtn.disabled = false; }
+  };
+  box.append(
+    h('header', { class: 'ht-panel-head' },
+      h('span', { class: 'ico-tile ht-ico', html: icon('graduation', { size: 18 }) }),
+      h('div', { class: 'grow ht-panel-title' }, h('h2', null, 'Certificates')),
+      h('div', { class: 'ht-panel-actions' }, saveBtn, issueBtn)),
+    h('div', { class: 'ht-panel-body sess-certs-body' },
+      h('p', { class: 'small muted', style: { margin: '0 0 .6rem' } }, s.live
+        ? 'Set the wording and design now. When the meeting ends, everyone who stayed long enough is emailed and notified automatically. You can also issue them from here.'
+        : 'Issue certificates to people who attended, or add names for anyone without an account and share their links.'),
+      editorSlot,
+      h('div', { class: 'sess-cert-manual' },
+        h('h3', { class: 'sess-cert-sub' }, 'Add names'),
+        h('p', { class: 'tiny muted', style: { margin: '0 0 .35rem' } }, 'For guests without a 1venue account. If you include an email, we send the certificate there.'),
+        names, addBtn),
+      h('h3', { class: 'sess-cert-sub' }, 'Issued'),
+      list));
+  let opened = false;
+  const toggle = async () => {
+    if (box.hidden) {
+      box.hidden = false;
+      if (!opened) {
+        opened = true;
+        try { await load(); } catch (e) { toastErr(e); editorSlot.textContent = 'Could not load certificate settings.'; }
+      }
+      box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else box.hidden = true;
+  };
+  return { box, toggle, issue: () => issueBtn.click() };
 }
 
 export async function mount(view, params) {
@@ -59,6 +158,7 @@ export async function mount(view, params) {
     render(); return box;
   };
   const duration = s.endedAt ? fmtDur((new Date(s.endedAt) - start) / 1000) : 'in progress';
+  const certs = s.isHost ? certsPanel(s) : null;
   view.append(
     h('div', { class: 'page-head ht-head sess-head' },
       h('div', { class: 'sess-head-row' },
@@ -74,7 +174,9 @@ export async function mount(view, params) {
           navigate(r.url);
         } catch (e) { toastErr(e); }
       } }),
-      h('button', { class: 'btn sm', type: 'button', html: icon('copy', { size: 15 }) + 'Copy transcript', onclick: () => copy(lines.map((l) => `${l.name}: ${l.text}`).join('\n'), 'Transcript copied') })),
+      h('button', { class: 'btn sm', type: 'button', html: icon('copy', { size: 15 }) + 'Copy transcript', onclick: () => copy(lines.map((l) => `${l.name}: ${l.text}`).join('\n'), 'Transcript copied') }),
+      certs ? h('button', { class: 'btn sm', type: 'button', html: icon('graduation', { size: 15 }) + 'Certificates', onclick: () => certs.toggle() }) : null),
+    ...(certs ? [certs.box] : []),
     h('div', { class: 'sess-split' },
       panel({ icon: 'captions', title: 'Transcript', actions: filter, cls: 'sess-tx-panel' }, tx),
       h('aside', { class: 'col sess-aside' }, sumBox('summary', 'Summary', 'sparkles'), sumBox('action_items', 'Action items', 'listChecks'))));
@@ -83,7 +185,8 @@ export async function mount(view, params) {
     { id: 's-act', label: 'Extract action items', icon: 'listChecks', group: 'ai', run: () => view.querySelectorAll('[data-group=ai] .btn')[1]?.click() },
     { id: 's-dl', label: 'Download transcript', icon: 'download', group: 'content', run: () => { location.href = `/api/sessions/${s.id}/transcript.txt`; } },
     { id: 's-find', label: 'Search in transcript', icon: 'search', group: 'content', run: () => filter.focus() },
-  ]);
+    certs ? { id: 's-certs', label: 'Certificates', icon: 'graduation', group: 'content', run: () => certs.toggle() } : null,
+  ].filter(Boolean));
   return { unmount: () => { unregisterCommands('page'); if (document.body.dataset.page === 'session') delete document.body.dataset.page; } };
 }
 

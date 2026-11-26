@@ -365,12 +365,14 @@ export async function mount(view, params) {
           h('button', { class: 'btn sm', type: 'button', onclick: () => toast('Okay, I won’t do that', { icon: 'info' }) }, 'Not now')),
         comment);
     }
-    const ic = { meeting: 'video', schedule: 'calendar', venue: 'door', event: 'calendar', event_live: 'radio' }[p.type] || 'link';
-    const when = p.type === 'schedule' ? `${fmtDate(p.startsAt)} · ${p.durationMin} min${p.pattern ? ` · repeats ${p.pattern === 'biweekly' ? 'every 2 weeks' : p.pattern}` : ''}` : p.type === 'meeting' ? 'Live meeting' : p.type === 'event_live' ? 'Live now' : p.type === 'event' ? (p.when ? fmtDate(p.when) : 'Event') : p.type === 'venue' ? 'Venue' : '';
+    const typ = p.type || p.kind || '';
+    const ic = { meeting: 'video', schedule: 'calendar', venue: 'door', event: 'calendar', event_live: 'radio', certificate: 'graduation', signature: 'pen' }[typ] || 'link';
+    const when = typ === 'schedule' ? `${fmtDate(p.startsAt)} · ${p.durationMin} min${p.pattern ? ` · repeats ${p.pattern === 'biweekly' ? 'every 2 weeks' : p.pattern}` : ''}` : typ === 'meeting' ? 'Live meeting' : typ === 'event_live' ? 'Live now' : typ === 'event' ? (p.when ? fmtDate(p.when) : 'Event') : typ === 'venue' ? 'Venue' : typ === 'certificate' ? (p.subtitle || 'Certificate') : typ === 'signature' ? (p.subtitle || '') : '';
     const href = p.link || (p.slug ? `/e/${p.slug}` : '');
+    const join = typ === 'meeting' || typ === 'event_live' || typ === 'venue';
     return h('div', { class: 'msg-card' }, h('span', { class: 'msg-card-ic', html: icon(ic, { size: 20 }) }),
-      h('div', { class: 'msg-card-main' }, h('b', null, p.title || 'Meeting'), h('span', { class: 'tiny muted' }, when), p.type === 'schedule' && p.reminders ? h('span', { class: 'tiny muted' }, 'Email reminders are on') : null),
-      href ? h('a', { class: 'btn sm primary', href, 'data-link': '' }, p.type === 'schedule' || p.type === 'event' ? 'Open' : 'Join') : null);
+      h('div', { class: 'msg-card-main' }, h('b', null, p.title || (typ === 'certificate' ? 'Certificate' : 'Meeting')), h('span', { class: 'tiny muted' }, when), typ === 'schedule' && p.reminders ? h('span', { class: 'tiny muted' }, 'Email reminders are on') : null),
+      href ? h('a', { class: `btn sm primary${join ? '' : ' msg-card-open'}`, href, 'data-link': '' }, join ? 'Join' : 'Open') : null);
   }
   function msgEl(m, prev) {
     const c = S.conv;

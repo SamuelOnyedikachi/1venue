@@ -39,9 +39,9 @@ describe('out37 seed reload, promotions types, marketplace card and cart', () =>
     assert.doesNotMatch(app, /id: 'market'[\s\S]*icon: 'grid'/);
     assert.match(read('public/js/pages/market.js'), /icon\('cart'\)/);
     assert.doesNotMatch(read('public/js/pages/market.js'), /icon\('grid'\)/);
-    assert.match(read('public/sw.js'), /VERSION = 'v93-2026-11-26'/);
-    assert.match(read('public/index.html'), /app\.css\?v=79/);
-    assert.match(read('public/index.html'), /app\.js\?v=79/);
+    assert.match(read('public/sw.js'), /VERSION = 'v94-2026-11-26'/);
+    assert.match(read('public/index.html'), /app\.css\?v=80/);
+    assert.match(read('public/index.html'), /app\.js\?v=80/);
   });
 
   it('named ESM imports in public/js all resolve to an export', () => {

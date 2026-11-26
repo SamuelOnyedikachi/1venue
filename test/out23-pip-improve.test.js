@@ -105,8 +105,8 @@ describe('out23 PiP avatars, composer, live, search', () => {
   });
 
   it('bumps the cache versions', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v93-2026-11-26'/);
-    assert.match(read('public/index.html'), /app\.css\?v=79/);
-    assert.match(read('public/index.html'), /app\.js\?v=79/);
+    assert.match(read('public/sw.js'), /VERSION = 'v94-2026-11-26'/);
+    assert.match(read('public/index.html'), /app\.css\?v=80/);
+    assert.match(read('public/index.html'), /app\.js\?v=80/);
   });
 });

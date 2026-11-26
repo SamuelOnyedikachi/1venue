@@ -86,10 +86,9 @@ module.exports = function routes(route, { requireUser, getAuthUser, httpError })
     const u = await requireUser(ctx.req, ctx.res);
     const meeting = getMeeting(String(code).toUpperCase());
     if (!meeting) throw httpError(404, 'Meeting not found');
-    const people = meeting.participants ? [...meeting.participants.values()] : [];
-    const host = people.find((p) => p.role === 'host');
-    if (!host || Number(host.userId) !== Number(u.id)) throw httpError(403, 'Only the host can change certificates');
+    if (!service.isLiveManager(meeting, u.id)) throw httpError(403, 'Only the host or a co-host can change certificates');
     const certs = service.applyToMeeting(meeting, await ctx.body());
+    if (meeting.historyId) await service.persistHistoryCerts(meeting.historyId, certs).catch(() => null);
     if (meeting.eventId) {
       const saved = await service.saveEventCerts(meeting.eventId, u, certs).catch(() => null);
       if (saved) meeting.settings.certs = saved;
@@ -97,4 +96,69 @@ module.exports = function routes(route, { requireUser, getAuthUser, httpError })
     }
     return { certs };
   });
+
+  async function sessionManage(ctx, id) {
+    const u = await requireUser(ctx.req, ctx.res);
+    const history = await require('../sessions/data').getHistory(Number(id));
+    if (!history) throw httpError(404, 'Session not found');
+    const meeting = getMeeting(String(history.code).toUpperCase());
+    if (!await service.canManageHistory(history, u, meeting)) throw httpError(403, 'Only the host or a co-host can manage certificates');
+    return { u, history, meeting };
+  }
+
+  route('GET', '/api/sessions/(\\d+)/certs', async (ctx, [id]) => {
+    const { history, meeting } = await sessionManage(ctx, id);
+    const ev = history.event_id ? await require('../../core/db').one('SELECT settings FROM events WHERE id=$1', [history.event_id]).catch(() => null) : null;
+    let evCerts = null;
+    try { evCerts = ev && ev.settings && (typeof ev.settings === 'object' ? ev.settings.certs : JSON.parse(ev.settings).certs); } catch { evCerts = null; }
+    const histCerts = (() => { try { const s = history.settings && (typeof history.settings === 'object' ? history.settings : JSON.parse(history.settings)); return s && s.certs; } catch { return null; } })();
+    const live = meeting && meeting.settings && meeting.settings.certs;
+    return {
+      certs: service.normalizeCerts(live || histCerts || evCerts || {}),
+      issued: await service.listForHistory(history.id),
+      live: !!(meeting && meeting.historyId === history.id),
+    };
+  });
+
+  route('POST', '/api/sessions/(\\d+)/certs', async (ctx, [id]) => {
+    const { history, meeting } = await sessionManage(ctx, id);
+    const certs = await service.saveHistoryCerts(history, await ctx.body(), meeting);
+    return { certs };
+  });
+
+  route('POST', '/api/sessions/(\\d+)/certs/issue', async (ctx, [id]) => {
+    const { history, meeting } = await sessionManage(ctx, id);
+    const issued = await service.issueForHistory(history.id, { meeting });
+    return { issued, count: issued.length };
+  });
+
+  route('POST', '/api/sessions/(\\d+)/certs/manual', async (ctx, [id]) => {
+    const { history, meeting } = await sessionManage(ctx, id);
+    const issued = await service.issueManual(history.id, await ctx.body(), { meeting });
+    if (!issued.length) throw httpError(400, 'Add at least one participant name');
+    return { issued, count: issued.length };
+  });
+
+  route('GET', '/api/users/([\\w.-]+)/certs', async (ctx, [idOrName]) => {
+    const me = await getAuthUser(ctx.req, ctx.res);
+    let userId = Number(idOrName);
+    if (!Number.isFinite(userId)) {
+      const row = await require('../../core/db').one('SELECT id FROM users WHERE LOWER(username)=LOWER($1)', [idOrName]).catch(() => null);
+      if (!row) throw httpError(404, 'User not found');
+      userId = Number(row.id);
+    }
+    const mine = !!(me && Number(me.id) === userId);
+    const certs = await service.listForUser(userId, { includePrivate: mine });
+    return { certs, isMe: mine };
+  });
+
+  route('PATCH', '/api/certs/([A-Z0-9]{10})/visibility', async (ctx, [code]) => {
+    const u = await requireUser(ctx.req, ctx.res);
+    const body = await ctx.body().catch(() => ({}));
+    const cert = await service.setPublic(code, u, body && (body.isPublic ?? body.public));
+    if (cert === null) throw httpError(404, 'Certificate not found');
+    if (cert === false) throw httpError(403, 'You can only change visibility on your own certificates');
+    return { cert };
+  });
 };
+

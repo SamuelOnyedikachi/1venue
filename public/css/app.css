@@ -11114,6 +11114,13 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
   bottom: 10px;
   transform: translateX(-50%);
 }
+
+.page-messages .msg-card a.btn.msg-card-open,
+.page-messages .msg-row.mine .msg-card a.btn.msg-card-open {
+  color: #fff;
+  background: var(--accent);
+  border-color: transparent;
+}
 /* --- src/20-pages/plans.css --- */
 /* Plans and pricing (/upgrade). Every button is the one theme-accent .btn.primary, so it follows the
    user's accent and light / dark theme. */
@@ -11924,6 +11931,19 @@ body[data-page="profile"] .main {
     padding-top: 0.1rem;
   }
 }
+
+.profile-certs { gap: .55rem; }
+.profile-cert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .55rem .7rem;
+  padding: .7rem .8rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--s1, var(--card));
+}
+.profile-cert .grow { display: flex; flex-direction: column; min-width: 0; gap: .15rem; }
 /* --- src/20-pages/sessions.css --- */
 /* Sessions list and an individual session: compact host-tools panels, transcript, AI cards. */
 .main.sess-view,
@@ -12061,6 +12081,22 @@ body[data-page="session"] .main {
   height: 2.6rem;
   padding: 0;
 }
+
+.sess-certs-panel { margin: 0 0 1rem; }
+.sess-certs-body { display: flex; flex-direction: column; gap: .85rem; }
+.sess-cert-sub { margin: 0; font-size: .95rem; }
+.sess-cert-manual .textarea { width: 100%; margin-bottom: .45rem; }
+.sess-cert-list { display: flex; flex-direction: column; gap: .4rem; }
+.sess-cert-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .4rem .55rem;
+  padding: .45rem .15rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+.sess-cert-row:last-child { border-bottom: 0; }
+.sess-cert-row .grow { display: flex; flex-direction: column; min-width: 0; }
 /* --- src/20-pages/settings.css --- */
 .session-row {
   padding: 0.45rem 0;

@@ -193,10 +193,44 @@ export async function mount(view, params) {
   const tabs = h('div', { class: 'tabs profile-tabs' });
   const body = h('div', { class: 'col profile-body' });
   let tab = 'timeline';
-  const paintTabs = () => { tabs.innerHTML = ''; [['timeline', 'Timeline', 'feed'], ['events', `Events · ${u.events?.length || 0}`, 'calendar']].forEach(([k, l, ic]) => tabs.append(h('button', { class: tab === k ? 'on' : '', html: icon(ic, { size: 16 }) + l, onclick: () => { tab = k; paintTabs(); load(); } }))); };
+  const paintTabs = () => { tabs.innerHTML = ''; [['timeline', 'Timeline', 'feed'], ['events', `Events · ${u.events?.length || 0}`, 'calendar'], ['certs', 'Certificates', 'graduation']].forEach(([k, l, ic]) => tabs.append(h('button', { class: tab === k ? 'on' : '', html: icon(ic, { size: 16 }) + l, onclick: () => { tab = k; paintTabs(); load(); } }))); };
+  function certRow(c) {
+    const open = h('a', { class: 'btn sm', href: `/cert/${c.code}`, 'data-link': '' }, 'Open');
+    const tog = u.isMe ? h('button', { class: 'btn sm', type: 'button' }) : null;
+    const paintTog = () => { if (tog) tog.textContent = c.isPublic ? 'Public' : 'Private'; };
+    if (tog) {
+      paintTog();
+      tog.onclick = async () => {
+        tog.disabled = true;
+        try {
+          const r = await api(`/api/certs/${c.code}/visibility`, { method: 'PATCH', body: { isPublic: !c.isPublic } });
+          c.isPublic = !!(r.cert && r.cert.isPublic);
+          paintTog();
+          toast(c.isPublic ? 'Shown on your profile' : 'Hidden from your profile', { icon: 'check' });
+        } catch (e) { toastErr(e); } finally { tog.disabled = false; }
+      };
+    }
+    return h('div', { class: 'profile-cert' },
+      h('span', { class: 'ico-tile', html: icon('graduation', { size: 18 }) }),
+      h('div', { class: 'grow minw0' },
+        h('b', null, c.title || 'Certificate'),
+        h('span', { class: 'tiny muted' }, [c.attendeeName, c.programme || c.eventTitle, c.dateLabel].filter(Boolean).join(' · '))),
+      tog, open);
+  }
   async function load() {
     body.innerHTML = '';
     if (tab === 'events') { body.append(u.events?.length ? h('div', { class: 'grid-cards' }, u.events.map((e) => eventCard(e))) : empty('calendar', 'No public events yet')); return; }
+    if (tab === 'certs') {
+      try {
+        const r = await api(`/api/users/${encodeURIComponent(id)}/certs`);
+        if (!(r.certs || []).length) {
+          body.append(empty('graduation', u.isMe ? 'No certificates yet' : 'No public certificates', u.isMe ? 'Certificates from meetings you attend will show up here. You can make each one public on your profile. Anyone with the certificate link can still open it.' : null));
+          return;
+        }
+        body.append(h('div', { class: 'profile-certs col' }, ...(u.isMe ? [h('p', { class: 'tiny muted', style: { margin: 0 } }, 'Public certificates appear on your profile. The certificate link itself is always open to anyone who has it.')] : []), ...r.certs.map(certRow)));
+      } catch (e) { body.append(empty('graduation', 'Could not load certificates', e.message)); }
+      return;
+    }
     if (u.isMe) body.append(composer((p) => body.insertBefore(postCard(p), body.children[1] || null)));
     const r = await api(`/api/users/${id}/timeline`);
     r.posts.forEach((p) => body.append(postCard(p)));

@@ -304,3 +304,10 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
   bottom: 10px;
   transform: translateX(-50%);
 }
+
+.page-messages .msg-card a.btn.msg-card-open,
+.page-messages .msg-row.mine .msg-card a.btn.msg-card-open {
+  color: #fff;
+  background: var(--accent);
+  border-color: transparent;
+}

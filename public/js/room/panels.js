@@ -482,7 +482,7 @@ export function createPanel(R) {
     ['timeline', 'Screen timeline', 'timeline', 'content', 'Snapshot slides into a shared strip'],
     ['record', 'Record', 'record', 'media', 'Saved to your device, never our servers'],
     ['breakouts', 'Breakout rooms', 'split', 'people', 'Split into small groups'],
-    ['certs', 'Certificates', 'graduation', 'content', 'Send a certificate when this event ends'],
+    ['certs', 'Certificates', 'graduation', 'content', 'Set and send certificates when this meeting ends'],
     ['security', 'Security', 'shield', 'admin', 'Waiting room, lock, guest access'],
     ['activity', 'Activity', 'activity', 'nav', 'Who did what, live'],
     ['diagnostics', 'Diagnostics', 'signal', 'settings', 'Connection & media health'],

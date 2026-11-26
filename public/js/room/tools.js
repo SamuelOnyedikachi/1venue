@@ -583,7 +583,7 @@ export function buildTools(R) {
     },
     certs() {
       const box = h('div', { class: 'stack' });
-      if (!R.isMod()) { box.append(note('Only the host can turn certificates on.')); return box; }
+      if (!R.isMod()) { box.append(note('Only the host or a co-host can turn certificates on.')); return box; }
       const current = (R.settings && R.settings.certs) || {};
       const accent = (R.theme && R.theme.accent) || '#2563eb';
       const editor = certEditor(current, {
@@ -603,7 +603,7 @@ export function buildTools(R) {
           toast('Certificates saved', { icon: 'check' });
         } catch (e) { toastErr(e); }
       };
-      box.append(note('When the meeting ends, everyone who stayed long enough gets a PDF by Notification and email.'), editor,
+      box.append(note('When the meeting ends, everyone who stayed long enough gets a PDF by Notification and email. Settings are saved for this session, including after it ends.'), editor,
         btn('check', 'Save', save, { group: 'content', cls: 'primary block' }));
       return box;
     },

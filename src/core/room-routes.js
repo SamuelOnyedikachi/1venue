@@ -296,6 +296,10 @@ module.exports = async function handle(req, res, parsed) {
         meeting.eventSlug = event.slug;
         meeting.ownerTheme = event.theme || null;
         meeting.event = { id: event.id, slug: event.slug, title: event.title, category: event.category, visibility: event.visibility, theme: event.theme };
+        try {
+          const evSet = event.settings && (typeof event.settings === 'object' ? event.settings : JSON.parse(event.settings));
+          if (evSet && evSet.certs) meeting.settings.certs = require('../features/certificates/service').normalizeCerts(evSet.certs);
+        } catch (_) {}
         await require('../venue/data').markEventLive(event.id, { code, historyId }).catch((e) => console.warn('[event live]', e.message));
       }
       if (venue) await vdata.markVenueOpen(code, historyId).catch((e) => console.warn('[venue open]', e.message));
@@ -329,6 +333,8 @@ module.exports = async function handle(req, res, parsed) {
         content: null,
         stage: stage.state(meeting),
         eventSlug: meeting.eventSlug || null,
+        eventId: meeting.eventId || null,
+        certs: (meeting.settings && meeting.settings.certs) || null,
         venue: meeting.venue || null,
         freeUntilMs: openedBilling?.session.free_until_ms || null,
         paidEntry: meeting.paidEntry || null,
@@ -602,6 +608,8 @@ module.exports = async function handle(req, res, parsed) {
         previouslyJoined: !!(membership && membership.status === 'ACTIVE'),
         stage: stage.state(meeting),
         eventSlug: meeting.eventSlug || null,
+        eventId: meeting.eventId || null,
+        certs: (participant.role === 'host' || participant.role === 'cohost') ? ((meeting.settings && meeting.settings.certs) || null) : undefined,
       });
     } catch (e) {
       console.error('[join]', e);

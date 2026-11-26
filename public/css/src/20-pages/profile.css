@@ -370,3 +370,16 @@ body[data-page="profile"] .main {
     padding-top: 0.1rem;
   }
 }
+
+.profile-certs { gap: .55rem; }
+.profile-cert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .55rem .7rem;
+  padding: .7rem .8rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--s1, var(--card));
+}
+.profile-cert .grow { display: flex; flex-direction: column; min-width: 0; gap: .15rem; }
