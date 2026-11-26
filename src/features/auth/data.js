@@ -61,9 +61,10 @@ async function createUser({ username, email, passwordHash = null, displayName = 
     `INSERT INTO users (username, email, password_hash, display_name, avatar_url, email_verified_at, password_changed_at, phone, phone_verified)
      VALUES ($1, $2, $3, $4, $5, CASE WHEN $6 THEN NOW() END, CASE WHEN $3::text IS NOT NULL THEN NOW() END, $7, $8) RETURNING *`,
     [username, normEmail(email), passwordHash, displayName, avatarUrl, !!verified, phone || null, !!phoneVerified])).rows[0];
-    const units = 60 * 60000;
+    const rates = require('../wallet/rates');
+    const units = rates.welcomeCredits() * rates.UNITS_PER_CREDIT;
     await c.query('INSERT INTO credit_wallets(user_id,balance_units) VALUES($1,$2)', [user.id, units]);
-    await c.query("INSERT INTO credit_ledger(user_id,kind,delta_units,balance_after_units) VALUES($1,'welcome',$2,$2)", [user.id, units]);
+    if (units > 0) await c.query("INSERT INTO credit_ledger(user_id,kind,delta_units,balance_after_units) VALUES($1,'welcome',$2,$2)", [user.id, units]);
     return user;
   });
 }

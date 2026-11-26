@@ -17,40 +17,42 @@ const DAY = 86400000;
 // ---------------------------------------------------------------- unit
 test('plan defaults match the approved table and server ceilings cap them', () => {
   const s = plans.envDefaults();
-  assert.deepEqual(plans.limitsFor(s, 'free'), { venues: 1, audience: 100, meeting: 25, speakerSeats: 2, aiDaily: 20, uploadBytes: 250 * 1048576, uploadMB: 250 });
+  assert.deepEqual(plans.limitsFor(s, 'free'), { venues: 1, audience: 100, meeting: 25, speakerSeats: 2, includedCredits: 0, uploadBytes: 250 * 1048576, uploadMB: 250 });
   const p = plans.limitsFor(s, 'premium');
-  assert.equal(p.venues, 3); assert.equal(p.audience, 300); assert.equal(p.meeting, 50); assert.equal(p.speakerSeats, 4); assert.equal(p.aiDaily, 200);
+  assert.equal(p.venues, 3); assert.equal(p.audience, 300); assert.equal(p.meeting, 50); assert.equal(p.speakerSeats, 4); assert.equal(p.includedCredits, 2000);
+  const b = plans.limitsFor(s, 'business');
+  assert.equal(b.venues, 10); assert.equal(b.audience, 500); assert.equal(b.includedCredits, 5000);
   const o = plans.limitsFor(s, 'organisation');
-  assert.equal(o.venues, 20); assert.equal(o.audience, 1000); assert.equal(o.speakerSeats, 10); assert.equal(o.aiDaily, 1000);
-  assert.equal(plans.priceFor(s, 'premium', 'month'), 500000); assert.equal(plans.priceFor(s, 'premium', 'year'), 5000000);
-  assert.equal(plans.priceFor(s, 'organisation', 'month'), 2500000); assert.equal(plans.priceFor(s, 'organisation', 'year'), 25000000);
+  assert.equal(o.venues, 20); assert.equal(o.audience, 1000); assert.equal(o.speakerSeats, 10); assert.equal(o.includedCredits, 12000);
+  assert.equal(plans.priceFor(s, 'premium', 'month'), 1500000); assert.equal(plans.priceFor(s, 'premium', 'year'), 15000000);
+  assert.equal(plans.priceFor(s, 'pro', 'month'), 1500000);
+  assert.equal(plans.priceFor(s, 'business', 'month'), 3500000); assert.equal(plans.priceFor(s, 'business', 'year'), 35000000);
+  assert.equal(plans.priceFor(s, 'organisation', 'month'), 7500000); assert.equal(plans.priceFor(s, 'organisation', 'year'), 75000000);
   assert.equal(plans.priceFor(s, 'free', 'month'), null);
   // overrides win, unknown or invalid keys are ignored; meeting size never exceeds MAX_PARTICIPANTS (50)
-  const ov = plans.limitsFor(s, 'free', JSON.stringify({ venues: 4, meeting: 500, bogus: 1, aiDaily: -3 }));
-  assert.equal(ov.venues, 4); assert.equal(ov.meeting, 50); assert.equal(ov.aiDaily, 20);
+  const ov = plans.limitsFor(s, 'free', JSON.stringify({ venues: 4, meeting: 500, bogus: 1, includedCredits: 50 }));
+  assert.equal(ov.venues, 4); assert.equal(ov.meeting, 50); assert.equal(ov.includedCredits, 50);
   assert.equal(plans.limitsFor(s, 'nonsense').venues, 1);
 });
 
-test('AI weights: translate/ask/title 1, summary/catch-up/write-it 2, and settings validation', () => {
+test('settings validation remaps Premium to Pro and accepts Business', () => {
   const s = plans.envDefaults();
-  for (const k of ['translate', 'ask', 'title']) assert.equal(plans.aiWeight(s, k), 1);
-  for (const k of ['summary', 'catchup', 'finetune']) assert.equal(plans.aiWeight(s, k), 2);
-  const m = plans.mergeSettings(s, { plans: { premium: { venues: 5 } }, aiWeights: { ask: 3 }, graceDays: 7 });
-  assert.equal(m.plans.premium.venues, 5); assert.equal(m.aiWeights.ask, 3); assert.equal(m.graceDays, 7);
-  assert.equal(s.plans.premium.venues, 3, 'merge does not mutate');
-  for (const bad of [{ plans: { gold: {} } }, { plans: { free: { venues: -1 } } }, { plans: { free: { colour: 1 } } }, { aiWeights: { dance: 1 } }, { plans: { premium: { priceMonthKobo: 0 } } }, { graceDays: 1.5 }]) {
+  const m = plans.mergeSettings(s, { plans: { premium: { venues: 5 }, business: { venues: 12 } }, graceDays: 7 });
+  assert.equal(m.plans.pro.venues, 5); assert.equal(m.plans.business.venues, 12); assert.equal(m.graceDays, 7);
+  assert.equal(s.plans.pro.venues, 3, 'merge does not mutate');
+  for (const bad of [{ plans: { gold: {} } }, { plans: { free: { venues: -1 } } }, { plans: { free: { colour: 1 } } }, { plans: { pro: { priceMonthKobo: 0 } } }, { graceDays: 1.5 }]) {
     assert.throws(() => plans.mergeSettings(s, bad), (e) => e.status === 400, JSON.stringify(bad));
   }
-  assert.deepEqual(plans.diff(s, m), { plans: { premium: { venues: 5 } }, aiWeights: { ask: 3 }, graceDays: 7 });
+  assert.deepEqual(plans.diff(s, m), { plans: { pro: { venues: 5 }, business: { venues: 12 } }, graceDays: 7 });
 });
 
 test('effective plan: active, grace, cancelled, expired and complimentary', () => {
   const now = Date.parse('2026-06-15T12:00:00Z');
   const sub = (x) => ({ plan: 'premium', status: 'active', current_period_end: '2026-06-20T00:00:00Z', grace_until: null, cancel_at_period_end: false, ...x });
   assert.equal(plans.effectivePlan(null, now), 'free');
-  assert.equal(plans.effectivePlan(sub(), now), 'premium');
+  assert.equal(plans.effectivePlan(sub(), now), 'pro');
   assert.equal(plans.effectivePlan(sub({ current_period_end: '2026-06-10T00:00:00Z' }), now), 'free');
-  assert.equal(plans.effectivePlan(sub({ status: 'past_due', current_period_end: '2026-06-12T00:00:00Z', grace_until: '2026-06-17T00:00:00Z' }), now), 'premium');
+  assert.equal(plans.effectivePlan(sub({ status: 'past_due', current_period_end: '2026-06-12T00:00:00Z', grace_until: '2026-06-17T00:00:00Z' }), now), 'pro');
   assert.equal(plans.effectivePlan(sub({ status: 'past_due', current_period_end: '2026-06-08T00:00:00Z', grace_until: '2026-06-13T00:00:00Z' }), now), 'free');
   assert.equal(plans.effectivePlan(sub({ status: 'cancelled', current_period_end: '2026-06-12T00:00:00Z', grace_until: '2026-06-17T00:00:00Z' }), now), 'free', 'cancelled gets no grace');
   assert.equal(plans.effectivePlan(sub({ status: 'expired' }), now), 'free');
@@ -118,7 +120,7 @@ test.before(async () => {
   process.env.PAYSTACK_API_URL = `http://127.0.0.1:${gateway.address().port}`;
   service = require('../src/features/billing/service');
   const adminBody = signupPayload();
-  s = await boot({ PAYSTACK_API_URL: process.env.PAYSTACK_API_URL, PLAN_FREE_AI_DAILY: '3', ADMIN_EMAILS: adminBody.email, BILLING_WORKER: 'false' });
+  s = await boot({ PAYSTACK_API_URL: process.env.PAYSTACK_API_URL, ADMIN_EMAILS: adminBody.email, BILLING_WORKER: 'false' });
   alice = client(s.base); bob = client(s.base); admin = client(s.base);
   assert.equal((await alice.post('/api/signup', signupPayload())).status, 201);
   assert.equal((await bob.post('/api/signup', signupPayload())).status, 201);
@@ -131,38 +133,42 @@ test.after(async () => { if (s) await s.stop(); if (gateway) await new Promise((
 
 const sub = (id) => db.q('SELECT * FROM subscriptions WHERE user_id=$1', [id]).then((r) => r.rows[0]);
 
-test('Free plan gating: one venue, -venue links, and a shared daily AI pool with weights', { skip, timeout: 60000 }, async () => {
+test('Free plan gating: one venue, -venue links, and AI billed from the credit wallet', { skip, timeout: 60000 }, async () => {
   const me = await alice.get('/api/billing');
-  assert.equal(me.body.plan, 'free'); assert.equal(me.body.limits.venues, 1); assert.equal(me.body.limits.audience, 100); assert.equal(me.body.limits.aiDaily, 3);
+  assert.equal(me.body.plan, 'free'); assert.equal(me.body.limits.venues, 1); assert.equal(me.body.limits.audience, 100);
+  assert.equal(me.body.limits.aiDaily, undefined);
   const v1 = await alice.post('/api/venues', { name: 'Main hall', customSlug: 'alice' + crypto.randomBytes(3).toString('hex') });
   assert.equal(v1.status, 200, JSON.stringify(v1.body)); assert.match(v1.body.slug, /-venue$/);
   const v2 = await alice.post('/api/venues', { name: 'Second' });
   assert.equal(v2.status, 403); assert.match(v2.body.error, /Upgrade/);
-  for (let i = 0; i < 3; i++) { const r = await alice.post('/api/ai/ask', { question: 'hi ' + i }); assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.aiLeft, 2 - i); }
-  const over = await alice.post('/api/ai/translate', { text: 'hello', lang: 'French' });
-  assert.equal(over.status, 429); assert.match(over.body.error, /allowance/);
-  assert.equal((await alice.get('/api/billing')).body.usage.aiLeft, 0);
-  // bob's pool is separate; a 2-point summary-weight call drains it faster
+  const ask = await alice.post('/api/ai/ask', { question: 'hi' });
+  assert.equal(ask.status, 200, JSON.stringify(ask.body));
+  assert.equal(ask.body.aiLeft, undefined);
   const t = await plans.takeAi({ kind: 'summary', ownerId: bobId });
-  assert.equal(t.ok, true); assert.equal(t.cost, 2); assert.equal(t.limit, 20, 'test process uses default free limit');
+  assert.equal(t.ok, true); assert.equal(t.cost, 1);
+  await db.q('UPDATE credit_wallets SET balance_units=0, plan_balance_units=0 WHERE user_id=$1', [aliceId]);
+  const over = await alice.post('/api/ai/translate', { text: 'hello', lang: 'French' });
+  assert.equal(over.status, 402); assert.match(over.body.error, /credits/i);
 });
 
-test('guest AI use in a room is charged to the host pool, with a per-IP cap', { skip }, async () => {
+test('unsigned AI is denied; a per-IP cap remains as an abuse guard', { skip }, async () => {
+  const unsigned = await plans.takeAi({ kind: 'ask', ownerId: null, guestIp: '10.0.0.1' });
+  assert.equal(unsigned.ok, false); assert.equal(unsigned.needSignIn, true);
   const host = (await db.q("INSERT INTO users (email, username, display_name, password_hash) VALUES ($1,$2,'Host','x') RETURNING id", [`host${Date.now()}@ex.test`, 'h' + Date.now().toString(36)])).rows[0].id;
-  const a = await plans.takeAi({ kind: 'catchup', ownerId: host, guestIp: '10.0.0.1' });
-  assert.equal(a.ok, true); assert.equal(a.used, 2);
-  assert.equal(await plans.aiUsed(host), 2);
+  const rates = require('../src/features/wallet/rates');
+  await db.q('INSERT INTO credit_wallets(user_id, balance_units) VALUES ($1,$2)', [host, 100 * rates.UNITS_PER_CREDIT]);
+  const a = await plans.takeAi({ kind: 'catchup', ownerId: host });
+  assert.equal(a.ok, true); assert.equal(a.cost, 1);
   await a.refund();
-  assert.equal(await plans.aiUsed(host), 0);
   plans.clearCache();
   const saved = process.env.AI_GUEST_PER_IP_DAILY; process.env.AI_GUEST_PER_IP_DAILY = '2';
   try {
+    plans.clearCache();
     assert.equal((await plans.takeAi({ kind: 'ask', ownerId: host, guestIp: '10.0.0.2' })).ok, true);
     assert.equal((await plans.takeAi({ kind: 'ask', ownerId: host, guestIp: '10.0.0.2' })).ok, true);
     const capped = await plans.takeAi({ kind: 'ask', ownerId: host, guestIp: '10.0.0.2' });
     assert.equal(capped.ok, false); assert.equal(capped.guestCap, true);
-    assert.equal((await plans.takeAi({ kind: 'ask', ownerId: host, guestIp: '10.0.0.3' })).ok, true, 'another guest can still use the pool');
-    assert.equal(await plans.aiUsed(host), 3);
+    assert.equal((await plans.takeAi({ kind: 'ask', ownerId: host, guestIp: '10.0.0.3' })).ok, true, 'another address is not blocked');
   } finally { if (saved == null) delete process.env.AI_GUEST_PER_IP_DAILY; else process.env.AI_GUEST_PER_IP_DAILY = saved; plans.clearCache(); }
 });
 
@@ -172,7 +178,7 @@ test('subscription checkout verifies with Paystack, saves the card and lifts lim
   const co = await alice.post('/api/billing/checkout', { plan: 'premium', interval: 'month' });
   assert.equal(co.status, 201, JSON.stringify(co.body)); assert.match(co.body.authorizationUrl, /^https:\/\/checkout\.paystack\.com\//);
   const t = txs.get(co.body.reference);
-  assert.equal(t.requested_amount, 500000); assert.equal(t.metadata.kind, 'subscription');
+  assert.equal(t.requested_amount, 1500000); assert.equal(t.metadata.kind, 'subscription');
   const pending = await alice.post(`/api/billing/payments/${co.body.reference}/verify`);
   assert.equal(pending.body.status, 'pending'); assert.equal((await alice.get('/api/billing')).body.plan, 'free');
   pay(co.body.reference);
@@ -180,9 +186,9 @@ test('subscription checkout verifies with Paystack, saves the card and lifts lim
   const ok = await alice.post(`/api/billing/payments/${co.body.reference}/verify`);
   assert.equal(ok.body.status, 'paid', JSON.stringify(ok.body));
   const me = (await alice.get('/api/billing')).body;
-  assert.equal(me.plan, 'premium'); assert.equal(me.limits.venues, 3); assert.equal(me.limits.audience, 300);
+  assert.equal(me.plan, 'pro'); assert.equal(me.limits.venues, 3); assert.equal(me.limits.audience, 300);
   assert.equal(me.subscription.card.last4, '4081'); assert.equal(me.subscription.autoRenew, true); assert.equal(me.subscription.interval, 'month');
-  assert.equal((await alice.get('/api/session')).body.user.plan, 'premium');
+  assert.equal((await alice.get('/api/session')).body.user.plan, 'pro');
   const v2 = await alice.post('/api/venues', { name: 'Second hall' });
   assert.equal(v2.status, 200, JSON.stringify(v2.body));
   // a clean link is now allowed on venue 1
@@ -205,12 +211,12 @@ test('subscription checkout verifies with Paystack, saves the card and lifts lim
   pay(up.body.reference);
   assert.equal((await alice.post(`/api/billing/payments/${up.body.reference}/verify`)).body.status, 'paid');
   assert.equal((await alice.get(`/api/venues/${clean}`)).body.slugTier, 'slug3', 'upgrade from 4 to 3 characters');
-  assert.equal((await alice.get('/api/billing')).body.plan, 'premium', 'add-on does not change the plan');
+  assert.equal((await alice.get('/api/billing')).body.plan, 'pro', 'add-on does not change the plan');
 });
 
 test('a mismatched verification is held for review and grants nothing; Free users cannot buy short links', { skip }, async () => {
   const co = await bob.post('/api/billing/checkout', { plan: 'organisation', interval: 'year' });
-  assert.equal(co.status, 201); assert.equal(txs.get(co.body.reference).requested_amount, 25000000);
+  assert.equal(co.status, 201); assert.equal(txs.get(co.body.reference).requested_amount, 75000000);
   tamper = (t) => { t.requested_amount = 100; };
   pay(co.body.reference);
   assert.equal((await bob.post(`/api/billing/payments/${co.body.reference}/verify`)).status, 409);
@@ -231,7 +237,7 @@ test('renewal charges the saved authorization and extends from the old period en
   assert.equal(new Date(after.current_period_end).toISOString(), plans.addInterval(oldEnd, 'month').toISOString());
   assert.equal(after.authorization_code, before.authorization_code);
   const r = (await db.q("SELECT * FROM billing_payments WHERE user_id=$1 AND kind='renewal'", [aliceId])).rows;
-  assert.equal(r.length, 1); assert.equal(r[0].status, 'paid'); assert.equal(Number(r[0].price_kobo), 500000);
+  assert.equal(r.length, 1); assert.equal(r[0].status, 'paid'); assert.equal(Number(r[0].price_kobo), 1500000);
 });
 
 test('a failed renewal keeps the plan for 5 days of grace, then downgrades by archiving extras and parking clean links', { skip, timeout: 30000 }, async () => {
@@ -244,7 +250,7 @@ test('a failed renewal keeps the plan for 5 days of grace, then downgrades by ar
     let row = await sub(aliceId);
     assert.equal(row.status, 'past_due');
     assert.equal(new Date(row.grace_until).getTime(), end.getTime() + 5 * DAY);
-    assert.equal((await alice.get('/api/billing')).body.plan, 'premium', 'still premium during grace');
+    assert.equal((await alice.get('/api/billing')).body.plan, 'pro', 'still Pro during grace');
     out = await service.processDue(new Date());
     assert.equal(out.find((x) => x.userId === aliceId).result, 'waiting', 'retries at most daily');
     out = await service.processDue(new Date(end.getTime() + 2 * DAY));
@@ -271,13 +277,13 @@ test('a failed renewal keeps the plan for 5 days of grace, then downgrades by ar
 test('admin edits plan settings and grants a plan with overrides, restoring archived venues and links', { skip, timeout: 30000 }, async () => {
   assert.equal((await alice.get('/api/admin/billing/settings')).status, 403);
   const put = (body) => fetch(s.base + '/api/admin/billing/settings', { method: 'PUT', headers: { 'content-type': 'application/json', cookie: admin.jar.header() }, body: JSON.stringify(body) });
-  assert.equal((await put({ plans: { premium: { venues: -1 } } })).status, 400);
-  const ok = await put({ plans: { premium: { priceMonthKobo: 600000 } }, aiWeights: { ask: 2 } });
+  assert.equal((await put({ plans: { pro: { venues: -1 } } })).status, 400);
+  const ok = await put({ plans: { pro: { priceMonthKobo: 600000 } } });
   assert.equal(ok.status, 200);
   const pub = (await alice.get('/api/plans')).body;
-  assert.equal(pub.plans.find((p) => p.id === 'premium').priceMonthKobo, 600000); assert.equal(pub.aiWeights.ask, 2);
+  assert.equal(pub.plans.find((p) => p.id === 'pro').priceMonthKobo, 600000); assert.equal(pub.aiWeights, undefined);
   assert.equal((await admin.del('/api/admin/billing/settings')).status, 200);
-  assert.equal((await alice.get('/api/plans')).body.plans.find((p) => p.id === 'premium').priceMonthKobo, 500000);
+  assert.equal((await alice.get('/api/plans')).body.plans.find((p) => p.id === 'pro').priceMonthKobo, 1500000);
 
   const found = (await admin.get('/api/admin/billing/users?q=' + encodeURIComponent((await alice.get('/api/session')).body.user.email))).body.users;
   assert.equal(found[0].id, aliceId);
@@ -303,13 +309,13 @@ test('cancel and downgrade take effect at period end', { skip, timeout: 30000 },
   assert.equal((await bob.post(`/api/billing/payments/${co.body.reference}/verify`)).body.status, 'paid');
   assert.equal((await bob.post('/api/billing/checkout', { plan: 'premium', interval: 'month' })).status, 409, 'downgrades are scheduled, not bought');
   const ch = await bob.post('/api/billing/change', { plan: 'premium', interval: 'year' });
-  assert.equal(ch.body.pendingPlan, 'premium'); assert.equal((await bob.get('/api/billing')).body.plan, 'organisation');
+  assert.equal(ch.body.pendingPlan, 'pro'); assert.equal((await bob.get('/api/billing')).body.plan, 'organisation');
   await db.q('UPDATE subscriptions SET current_period_end=$2 WHERE user_id=$1', [bobId, new Date(Date.now() - 1000)]);
   await service.processDue(new Date());
   const row = await sub(bobId);
-  assert.equal(row.plan, 'premium'); assert.equal(row.billing_interval, 'year'); assert.equal(row.pending_plan, null);
+  assert.equal(row.plan, 'pro'); assert.equal(row.billing_interval, 'year'); assert.equal(row.pending_plan, null);
   const last = (await db.q("SELECT price_kobo FROM billing_payments WHERE user_id=$1 AND kind='renewal' ORDER BY id DESC", [bobId])).rows[0];
-  assert.equal(Number(last.price_kobo), 5000000);
+  assert.equal(Number(last.price_kobo), 15000000);
   assert.equal((await bob.post('/api/billing/cancel')).body.cancelAtPeriodEnd, true);
   assert.equal((await bob.post('/api/billing/resume')).body.cancelAtPeriodEnd, false);
   await bob.post('/api/billing/cancel');

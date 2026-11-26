@@ -19,7 +19,7 @@ Environment variables are only the fallback used when /admin has no value.
 | Organisation members (`orgMembers`) | 0 | 0 | 25 |
 
 Org members (owner/admin/moderator) inherit the org plan's features and its audience, meeting and
-speaker-seat limits. Venues, AI points and uploads stay personal. Org venues belong to the org owner, so
+speaker-seat limits. Venues, credits and uploads stay personal. Org venues belong to the org owner, so
 the owner's venue limit applies.
 
 ## Admin settings (/admin)

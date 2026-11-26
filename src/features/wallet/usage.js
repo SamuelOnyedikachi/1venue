@@ -1,14 +1,16 @@
 /**
  * Per-usage Paid Entry metering. Everyone (host included) is billed from their
- * own credits at 1 credit per minute for time actually connected to LiveKit.
- * Reconnect gaps up to ~30s are not billed. A 2-minute low-balance grace, then
- * removal. Participant usage: 80% host earnings (pending until the meeting
- * ends, no refunds) and 20% platform. The host's own usage is a platform charge.
+ * own credits at the room rate (MEETING_ROOM_CREDITS_PER_MIN, default 1.5)
+ * for time actually connected to LiveKit. Reconnect gaps up to ~30s are not billed.
+ * A 2-minute low-balance grace, then removal. Participant usage: host share is
+ * PAID_ENTRY_HOST_SHARE_BPS (default 80%), the rest is platform. The host's own
+ * usage is a platform charge (the room rate).
  */
 const db = require('../../../db');
 const config = require('../../config');
 const { fail, UNITS_PER_CREDIT: U } = require('./rules');
-const split = (net) => { const host = Math.floor(net * 0.8); return { host, platform: net - host }; };
+const rates = require('./rates');
+const split = (net) => rates.splitHostShare(net);
 
 const one = async (sql, args) => (await db.q(sql, args)).rows[0] || null;
 const many = async (sql, args) => (await db.q(sql, args)).rows;
@@ -40,7 +42,7 @@ function publicPaid(session) {
     startedMs: Number(session.started_ms),
     advertisedEndMs: usage ? null : Number(session.advertised_end_ms),
     runtimeEndMs: usage ? null : Number(session.runtime_end_ms),
-    rateCreditsPerMin: 1,
+    rateCreditsPerMin: rates.roomCreditsPerMin(),
     switchDeadlineMs: session.switch_deadline_ms == null ? null : Number(session.switch_deadline_ms),
   };
 }
@@ -185,12 +187,19 @@ async function settleMeter(meter, now, { end = false, hostUserId } = {}) {
     const available = Math.max(0, Number(wallet?.balance_units || 0));
     const already = Math.max(Number(row.accounted_ms) || 0, Number(row.connected_since_ms) || 0);
     const endAt = row.state === 'paused' ? (Number(row.disconnected_ms) || already) : (Number(row.connected_since_ms) && !row.disconnected_ms ? now : (Number(row.disconnected_ms) || already));
-    const want = debitable(already, endAt);
-    const debit = Math.min(want, available);
-    const through = already + debit;
-    const balance = available - debit;
+    if (row.user_id) await require('./spend').syncPlanLocked(c, row.user_id, new Date(now));
+    const walletFresh = row.user_id ? (await c.query('SELECT * FROM credit_wallets WHERE user_id=$1 FOR UPDATE', [row.user_id])).rows[0] : wallet;
+    const available2 = Math.max(0, Number(walletFresh?.balance_units || 0));
+    const elapsed = debitable(already, endAt);
+    const want = rates.paidEntryUnitsForElapsed(elapsed);
+    const debit = Math.min(want, available2);
+    const through = already + (want ? Math.floor(elapsed * (debit / want)) : elapsed);
+    const balance = available2 - debit;
     if (debit > 0 && row.user_id && row.entry_id) {
-      await c.query('UPDATE credit_wallets SET balance_units=$2,updated_at=NOW() WHERE user_id=$1', [row.user_id, balance]);
+      const planUnits = Math.max(0, Number(walletFresh.plan_balance_units || 0));
+      const nextPlan = Math.max(0, planUnits - Math.min(planUnits, debit));
+      const nextUsed = Number(walletFresh.period_used_units || 0) + debit;
+      await c.query('UPDATE credit_wallets SET balance_units=$2,plan_balance_units=$3,period_used_units=$4,updated_at=NOW() WHERE user_id=$1', [row.user_id, balance, nextPlan, nextUsed]);
       await c.query(`INSERT INTO credit_ledger(user_id,paid_entry_id,through_ms,kind,delta_units,balance_after_units)
         VALUES($1,$2,$3,'participant_usage',$4,$5)`, [row.user_id, row.entry_id, through, -debit, balance]);
       await c.query('UPDATE paid_meeting_entries SET entry_units=entry_units+$2 WHERE id=$1', [row.entry_id, debit]);
@@ -213,7 +222,7 @@ async function settleMeter(meter, now, { end = false, hostUserId } = {}) {
     let kick = false;
     if (end) {
       state = 'closed';
-    } else if (row.state !== 'paused' && balance === 0 && (want > debit || available === 0)) {
+    } else if (row.state !== 'paused' && balance === 0 && (want > debit || available2 === 0)) {
       if (!graceUntil) graceUntil = now + graceMs();
       state = 'grace';
       if (now >= graceUntil) { kick = true; state = 'closed'; }

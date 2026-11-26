@@ -3,9 +3,9 @@
 > Phase 2 and 3 (branding, recurring, reminders, exports, analytics, badge, promotions, tickets, payouts,
 > organisations, replays) and the Coolify deploy checklist: see [PHASE2-3.md](PHASE2-3.md).
 
-Free, Premium and Organisation now carry real limits, every AI feature draws from one daily pool,
-and hosts can pay in naira through Paystack hosted checkout (monthly or annual), with renewals charged
-to the saved card. The credit wallet (`/wallet`) is a separate product and is unchanged.
+Free, Pro, Business, Organisation and Enterprise carry real limits. Meetings and AI draw from one
+credit wallet. Hosts can pay in naira through Paystack hosted checkout (monthly or annual), with renewals
+charged to the saved card. Enterprise is talk-to-sales (`/upgrade`).
 
 ## Where things live
 
@@ -20,27 +20,26 @@ to the saved card. The credit wallet (`/wallet`) is a separate product and is un
 
 ## Defaults (editable in /admin, no redeploy)
 
-| | Free | Premium | Organisation |
-|---|---|---|---|
-| Venues | 1 | 3 | 20 |
-| Stage audience | 100 | 300 | 1000 |
-| Meeting size | 25 | 50 | 50 |
-| Speaker seats | 2 | 4 | 10 |
-| AI points / day | 20 | 200 | 1000 |
-| Uploads | 250 MB | 2 GB | 10 GB |
-| Monthly / annual | – | ₦5,000 / ₦50,000 | ₦25,000 / ₦250,000 |
+| | Free | Pro | Business | Organisation | Enterprise |
+|---|---|---|---|---|---|
+| Venues | 1 | 3 | 10 | 20 | Custom |
+| Stage audience | 100 | 300 | 500 | 1000 | Custom |
+| Meeting size | 25 | 50 | 75 | 50 | Custom |
+| Speaker seats | 2 | 4 | 6 | 10 | Custom |
+| Credits each month | welcome once | 2,000 | 5,000 | 12,000 | Custom |
+| Uploads | 250 MB | 2 GB | 5 GB | 10 GB | Custom |
+| Monthly / annual | – | ₦15,000 / ₦150,000 | ₦35,000 / ₦350,000 | ₦75,000 / ₦750,000 | Talk to sales |
 
 Links: Free gets `/v/name-venue`; paid plans get `/v/name` (5+ characters). Shorter links are one-off add-ons
 per venue on a paid plan: `slug4` (4 characters, ₦10,000) and `slug3` (3 characters, ₦25,000; also allows 4).
 Links are never shorter than 3 characters. A short link is kept while the owner's plan is active and
 **released 60 days after it lapses** (see *Short-link release* below).
-AI weights: translate, ask, title, scripture 1; summaries, catch-up, “Write it for me” 2. In a room, AI
-use is charged to the room's paying host (venue owner, else the signed-in host); each guest IP can spend
-at most 30 points a day from a host's pool. The existing per-minute IP limit stays.
+Meetings, AI and related media are billed from the same credit wallet. Rates are set by env and are not
+shown on the site. Unused plan credits do not roll over beyond one month; purchased credits never expire.
 
 Settings layers (last wins): code defaults → env → the `app_settings` row saved from /admin. Admin saves
 only store values that differ from env, so env changes still apply to untouched values. Per-account
-overrides (venues, audience, meeting, speaker seats, AI points, upload MB) are set per user in /admin.
+overrides (venues, audience, meeting, speaker seats, monthly credits, upload MB) are set per user in /admin.
 Server ceilings always apply: `MAX_AUDIENCE` (default now **1000**) and `MAX_PARTICIPANTS` (default 50).
 
 ## Lifecycle
@@ -61,7 +60,7 @@ Server ceilings always apply: `MAX_AUDIENCE` (default now **1000**) and `MAX_PAR
   charging the new plan's price.
 - **Admin grant:** status `comp`, optional end date, never charges a card. Every change goes to `plan_audit`.
 - **Existing users:** everyone is Free, except users who had `plan=premium` (or an old short-link
-  package) who get Premium free for 3 months (`source=grandfather`). Grandfathered users have no saved card: they get the 5-day grace
+  package) who get Pro free for 3 months (`source=grandfather`). Grandfathered users have no saved card: they get the 5-day grace
   and a reminder at the end, then Free unless they pay from /billing.
 - **Account deletion** is blocked while a plan payment is pending or under review (same idea as credits).
 
@@ -69,8 +68,11 @@ Server ceilings always apply: `MAX_AUDIENCE` (default now **1000**) and `MAX_PAR
 
 ```
 MAX_AUDIENCE=1000                 # server hard ceiling for stage events (was 300)
-PLAN_<FREE|PREMIUM|ORGANISATION>_<VENUES|AUDIENCE|MEETING|SPEAKER_SEATS|AI_DAILY|UPLOAD_MB|PRICE_MONTH_KOBO|PRICE_YEAR_KOBO>=…
-AI_WEIGHT_<ASK|CATCHUP|TRANSLATE|TITLE|SUMMARY|FINETUNE|SCRIPTURE|ANALYSIS>=…
+PLAN_<FREE|PRO|BUSINESS|ORGANISATION>_<VENUES|AUDIENCE|MEETING|SPEAKER_SEATS|INCLUDED_CREDITS|UPLOAD_MB|PRICE_MONTH_KOBO|PRICE_YEAR_KOBO>=…
+CREDIT_PRICE_KOBO=1000
+BILLING_WELCOME_CREDITS=100
+BILLING_FREE_MINUTES=20
+SALES_EMAIL=
 LINK4_PRICE_KOBO=1000000          # 4-character link (old name SLUG3_PRICE_KOBO still works for this tier)
 LINK3_PRICE_KOBO=2500000          # 3-character link (old name SLUG2_PRICE_KOBO still works for this tier)
 SHORT_LINK_RELEASE_DAYS=60        # days after a plan lapses before a parked short link is released

@@ -1,12 +1,12 @@
 /**
- * Credit auto top-up (for accounts without a paid plan).
+ * Credit auto top-up.
  *
  * Settings live in auto_topups (one row per user). The card is never seen by 1venue: the person buys
  * the top-up pack once through the gateway's hosted checkout ("Add card"); on success we keep only the
  * gateway's reusable authorization token + last4/brand/expiry for display.
  *
  * After every wallet debit (billing-data settle) maybeAfterDebit() runs. A top-up happens when:
- *   enabled, a saved card, balance < threshold, not a subscriber, this month's auto top-ups + pack <= cap,
+ *   enabled, a saved card, balance < threshold, this month's auto top-ups + pack <= cap,
  *   and no other top-up is running for the user (single-flight claim on running_ref: an UPDATE ... WHERE
  *   running_ref IS NULL, so two servers / two ticks can never both charge).
  * The charge is charge_authorization for pack price + processing fee, then the normal verify + settle
@@ -29,7 +29,7 @@ const iso = (d) => (d == null ? null : new Date(d).toISOString());
 function out(r, extra = {}) {
   const row = r || {};
   return {
-    enabled: !!Number(row.enabled || 0), thresholdCredits: Number(row.threshold_credits || 20), packCredits: Number(row.pack_credits || 60), monthlyCapCredits: Number(row.monthly_cap_credits || 240),
+    enabled: !!Number(row.enabled || 0), thresholdCredits: Number(row.threshold_credits || 100), packCredits: Number(row.pack_credits || require('./rates').bundles()[0]), monthlyCapCredits: Number(row.monthly_cap_credits || 6000),
     card: row.authorization_code ? { last4: row.card_last4 || null, brand: row.card_brand || null, exp: row.card_exp || null } : null,
     failures: Number(row.failures || 0), lastRunAt: iso(row.last_run_at), lastStatus: row.last_status || null, lastError: row.last_error || null, lastReference: row.last_reference || null, ...extra,
   };
@@ -48,15 +48,16 @@ async function get(userId) {
   const row = await one('SELECT * FROM auto_topups WHERE user_id=$1', [userId]);
   const subscriber = await isSubscriber(userId);
   const used = await monthUsedUnits(userId);
-  return out(row, { subscriber, usedThisMonthCredits: used / U, packQuote: quote(Number(row?.pack_credits || 60)), purchasesEnabled: gateway.enabled() });
+  const packDefault = require('./rates').bundles()[0];
+  return out(row, { subscriber, usedThisMonthCredits: used / U, packQuote: quote(Number(row?.pack_credits || packDefault)), purchasesEnabled: gateway.enabled(), bundles: require('./rates').bundles() });
 }
 const intIn = (v, lo, hi, what) => { const n = Number(v); if (!Number.isSafeInteger(n) || n < lo || n > hi) throw fail(400, `${what} must be a whole number from ${lo} to ${hi}`); return n; };
 async function save(userId, body = {}) {
-  if (await isSubscriber(userId)) throw fail(409, 'Your plan covers meeting time, so auto top-up is not needed');
   const cur = await one('SELECT * FROM auto_topups WHERE user_id=$1', [userId]);
-  const threshold = body.thresholdCredits == null ? Number(cur?.threshold_credits || 20) : intIn(body.thresholdCredits, 1, 100000, 'The threshold');
-  const pack = body.packCredits == null ? Number(cur?.pack_credits || 60) : intIn(body.packCredits, 1, 100000, 'The top-up amount');
-  const cap = body.monthlyCapCredits == null ? Number(cur?.monthly_cap_credits || 240) : intIn(body.monthlyCapCredits, 1, 1000000, 'The monthly cap');
+  const packDefault = require('./rates').bundles()[0];
+  const threshold = body.thresholdCredits == null ? Number(cur?.threshold_credits || 100) : intIn(body.thresholdCredits, 1, 100000, 'The threshold');
+  const pack = body.packCredits == null ? Number(cur?.pack_credits || packDefault) : intIn(body.packCredits, 1, 100000, 'The top-up amount');
+  const cap = body.monthlyCapCredits == null ? Number(cur?.monthly_cap_credits || 6000) : intIn(body.monthlyCapCredits, 1, 1000000, 'The monthly cap');
   if (cap < pack) throw fail(400, 'The monthly cap must be at least one top-up');
   quote(pack);
   const enabled = body.enabled == null ? Number(cur?.enabled || 0) : body.enabled ? 1 : 0;
@@ -68,7 +69,6 @@ async function save(userId, body = {}) {
 }
 /** "Add card": buy the pack once through hosted checkout; the reusable token is kept on success. */
 async function startCardSetup(user) {
-  if (await isSubscriber(user.id)) throw fail(409, 'Your plan covers meeting time, so auto top-up is not needed');
   const cur = await one('SELECT pack_credits FROM auto_topups WHERE user_id=$1', [user.id]);
   return gateway.initialize(user, Number(cur?.pack_credits || 60), { source: 'auto_topup_setup' });
 }
@@ -114,7 +114,6 @@ async function run(userId, { now = Date.now() } = {}) {
   const ref = row.running_ref;
   try {
     if (row.last_status === 'failed' && row.last_run_at && now - new Date(row.last_run_at).getTime() < retryMs()) { await finish(userId, ref, {}); return 'retry_later'; }
-    if (await isSubscriber(userId)) { await finish(userId, ref, { last_status: 'subscriber' }); return 'subscriber'; }
     const bal = Number((await one('SELECT balance_units FROM credit_wallets WHERE user_id=$1', [userId]))?.balance_units || 0);
     if (bal >= Number(row.threshold_credits) * U) { await finish(userId, ref, {}); return 'not_needed'; }
     const pack = Number(row.pack_credits);

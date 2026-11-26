@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const db = require('../../../db');
 const { fail, UNITS_PER_CREDIT: U } = require('./rules');
+const rates = require('./rates');
 const shape = r => r ? { ...r, low_credit: !!r.low_credit, media_issued: !!r.media_issued } : null;
 const get = async id => shape((await db.q('SELECT * FROM credit_billing_sessions WHERE id=$1',[id])).rows[0]);
 async function lockUser(c,id) {
@@ -64,23 +65,23 @@ async function open({userId=null,code,name,hostName,ownerId,now=Date.now()}) {
     }
     const historyId=(await c.query('INSERT INTO meeting_history(code,name,host_user_id,host_display_name,max_participants) VALUES($1,$2,$3,$4,1) RETURNING id',[code,name,userId,hostName])).rows[0].id;
     const media='b-'+crypto.randomBytes(16).toString('hex');
-    const session=(await c.query('INSERT INTO credit_billing_sessions(id,history_id,user_id,code,media_room,owner_id,started_ms,accounted_ms,free_until_ms) VALUES($1::bigint,$1::int,$2,$3,$4,$5,$6,$6,$7) RETURNING *',[historyId,userId,code,media,ownerId,now,now+15*60*1000])).rows[0];
+    const session=(await c.query('INSERT INTO credit_billing_sessions(id,history_id,user_id,code,media_room,owner_id,started_ms,accounted_ms,free_until_ms) VALUES($1::bigint,$1::int,$2,$3,$4,$5,$6,$6,$7) RETURNING *',[historyId,userId,code,media,ownerId,now,rates.freeUntilMs(now)])).rows[0];
     return {historyId,session:shape(session)};
   }); } catch(e) {if(e.code==='23505')throw fail(409,'This host or room already has an open meeting');throw e;}
 }
-async function settle(id,{now=Date.now(),endReason=null,ownerId=null,force=false}={}) {
+async function settle(id,{now=Date.now(),endReason=null,ownerId=null,force=false,publishers,viewers}={}) {
   const original=await get(id); if(!original)return null;
   return db.tx(async c=>{
     if(original.user_id!=null)await lockUser(c,original.user_id);
     let row=(await c.query('SELECT * FROM credit_billing_sessions WHERE id=$1 FOR UPDATE',[id])).rows[0];
     if (row.state==='active' && ownerId && row.owner_id!==ownerId) row=await takeIfIdle(c,row,ownerId,now,{force});
-    return settleLocked(c,row,now,endReason);
+    return settleLocked(c,row,now,endReason,{publishers,viewers});
   }).then((out)=>{ // a debit happened: maybe auto top-up (async, single-flight, see autotopup.js)
     if(out&&original.user_id!=null)require('./autotopup').maybeAfterDebit(Number(original.user_id),null);
     return out;
   });
 }
-async function settleLocked(c,row,now,endReason=null) {
+async function settleLocked(c,row,now,endReason=null,counts={}) {
     const id=row.id;
     if(row.state!=='active')return shape(row);
     if(row.deferred){
@@ -92,13 +93,26 @@ async function settleLocked(c,row,now,endReason=null) {
     }
     const freeUntil=Number(row.free_until_ms||row.started_ms), hasStartedBilling=Math.floor(now)>=freeUntil;
     if(!hasStartedBilling&&!endReason)return shape(row);
-    const wallet=row.user_id==null?null:(await c.query('SELECT balance_units FROM credit_wallets WHERE user_id=$1 FOR UPDATE',[row.user_id])).rows[0];
+    if(row.user_id!=null) await require('./spend').syncPlanLocked(c, row.user_id, new Date(now));
+    const wallet=row.user_id==null?null:(await c.query('SELECT * FROM credit_wallets WHERE user_id=$1 FOR UPDATE',[row.user_id])).rows[0];
     const available=Math.max(0,Number(wallet?.balance_units||0)),previous=(endReason&&Math.floor(now)<freeUntil)?Math.floor(now):Math.max(Number(row.accounted_ms),freeUntil);
     const endpoint=endReason?Math.floor(now):Math.max(freeUntil,Math.floor(now));
-    const elapsed=Math.max(0,endpoint-previous),debit=Math.min(elapsed,available),balance=Math.max(0,available-debit);
-    const through=previous+debit;
+    const elapsed=Math.max(0,endpoint-previous);
+    const pubs = counts.publishers == null ? 1 : counts.publishers;
+    const views = counts.viewers == null ? 0 : counts.viewers;
+    const due=rates.unitsForElapsed(elapsed, pubs, views);
+    // If the room rate is faster than 1 unit/ms, the clock still advances by elapsed ms; we may
+    // run out of credits before the endpoint. Map debit back onto the accounted clock using the rate.
+    const unitsPerMs = elapsed ? due / elapsed : rates.unitsForElapsed(1000, pubs, views) / 1000;
+    const debit=Math.min(due,available);
+    const msCovered = due>0 ? Math.floor(elapsed * (debit / due)) : elapsed;
+    const balance=Math.max(0,available-debit);
+    const through=previous+msCovered;
     if(debit>0&&row.user_id!=null) {
-      await c.query('UPDATE credit_wallets SET balance_units=GREATEST(0,$2),updated_at=NOW() WHERE user_id=$1',[row.user_id,balance]);
+      const planUnits=Math.max(0,Number(wallet.plan_balance_units||0));
+      const nextPlan=Math.max(0,planUnits-Math.min(planUnits,debit));
+      const nextUsed=Number(wallet.period_used_units||0)+debit;
+      await c.query('UPDATE credit_wallets SET balance_units=GREATEST(0,$2),plan_balance_units=$3,period_used_units=$4,updated_at=NOW() WHERE user_id=$1',[row.user_id,balance,nextPlan,nextUsed]);
       await c.query("INSERT INTO credit_ledger(user_id,billing_session_id,through_ms,kind,delta_units,balance_after_units) VALUES($1,$2,$3,'usage',$4,$5)",[row.user_id,id,through,-debit,balance]);
     }
     const exhausted=hasStartedBilling&&balance===0;

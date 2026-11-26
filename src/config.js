@@ -160,7 +160,7 @@ const COVERS = {
   reuseMin: Math.min(0.99, Math.max(0.5, float('AI_COVER_REUSE_MIN', 0.85))),
 };
 
-// Whiteboard "Refine page" (visual AI on Replicate). Costs AI_WEIGHT_WHITEBOARD_AI points (default 3).
+// Whiteboard "Refine page" (visual AI on Replicate). Billed from the credit wallet.
 const WHITEBOARD_AI = {
   model: env('WHITEBOARD_AI_MODEL', 'black-forest-labs/flux-kontext-pro'),
   timeoutMs: int('WHITEBOARD_AI_TIMEOUT_MS', 120_000),

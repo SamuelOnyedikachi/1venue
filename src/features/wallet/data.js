@@ -105,15 +105,19 @@ async function history(userId, before) {
       SELECT l.id,l.user_id,l.kind,l.delta_units,l.balance_after_units,NULL,NULL,NULL,l.created_at
       FROM credit_ledger l
       WHERE l.user_id=$1 AND l.kind='gift'
+      UNION ALL
+      SELECT l.id,l.user_id,l.kind,l.delta_units,l.balance_after_units,NULL,NULL,NULL,l.created_at
+      FROM credit_ledger l
+      WHERE l.user_id=$1 AND l.kind IN ('ai','plan_grant','plan_expire')
     )
     SELECT * FROM history_entries ${before ? 'WHERE id<$2' : ''} ORDER BY id DESC LIMIT 31`, before ? [userId, before] : [userId])).rows;
   const page = rows.slice(0, 30);
   return { entries: page.map((r) => ({ id: String(r.id), type: r.kind, credits: credits(r.delta_units), balanceAfter: credits(r.balance_after_units), reference: r.reference, meetingCode: r.meeting_code || null, meetingName: r.meeting_name || null, createdAt: r.created_at })), nextBefore: rows.length > 30 ? String(page[page.length - 1].id) : null };
 }
 async function assertCanDelete(c, userId) {
-  const wallet = (await c.query('SELECT balance_units FROM credit_wallets WHERE user_id=$1', [userId])).rows[0];
   const unsettled = (await c.query("SELECT 1 FROM credit_payments WHERE user_id=$1 AND status IN ('pending','review') LIMIT 1", [userId])).rows[0];
+  const bought = (await c.query("SELECT 1 FROM credit_payments WHERE user_id=$1 AND status='paid' LIMIT 1", [userId])).rows[0];
   const active = (await c.query("SELECT id FROM credit_billing_sessions WHERE user_id=$1 AND state<>'closed' LIMIT 1", [userId])).rows[0];
-  if (Number(wallet?.balance_units || 0) > 0 || unsettled || active) throw fail(409, 'Resolve your credit balance and unfinished purchases before deleting your account. Please contact support if you need help.');
+  if (unsettled || bought || active) throw fail(409, 'Resolve purchased credits and unfinished payments or meetings before deleting your account. Please contact support if you need help.');
 }
 module.exports = { assertCanDelete, balance, claimWelcomeNotice, createPayment, getPayment, checkoutReady, mark, settle, payments, history, paymentOut };

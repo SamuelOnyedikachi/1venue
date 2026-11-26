@@ -108,6 +108,9 @@ export async function mount(view) {
                 : entry.type === "extension" ? (entry.meetingName || "Meeting extension")
                 : entry.type === "earning_transfer" ? "Meeting earnings transfer"
                 : entry.type === "gift" ? (Number(entry.credits) >= 0 ? "Gift received" : "Gift sent")
+                : entry.type === "ai" ? "AI"
+                : entry.type === "plan_grant" ? "Plan credits"
+                : entry.type === "plan_expire" ? "Unused plan credits"
                 : entry.type === "material" ? "Material purchase" : "Credit purchase";
       const detail =
         entry.type === "usage"
@@ -118,6 +121,9 @@ export async function mount(view) {
                 : entry.type === "extension" ? `Added meeting time · ${timeAgo(entry.createdAt)}`
                 : entry.type === "earning_transfer" ? `Host earnings moved to spending wallet · ${timeAgo(entry.createdAt)}`
                 : entry.type === "gift" ? (Number(entry.credits) >= 0 ? `Gift from a guest · ${timeAgo(entry.createdAt)}` : `Gift to the host · ${timeAgo(entry.createdAt)}`)
+                : entry.type === "ai" ? `AI · ${timeAgo(entry.createdAt)}`
+                : entry.type === "plan_grant" ? `Added with your plan · ${timeAgo(entry.createdAt)}`
+                : entry.type === "plan_expire" ? `Unused plan credits ended · ${timeAgo(entry.createdAt)}`
                 : entry.type === "material" ? `Material · ${timeAgo(entry.createdAt)}` : timeAgo(entry.createdAt);
       entries.append(
         h(

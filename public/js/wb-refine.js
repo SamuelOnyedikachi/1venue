@@ -30,7 +30,6 @@ async function snapToPalette(url, palette) {
 export async function refineSheet(b) {
   const page = b.page;
   if (!page || (!page.strokes.length && !page.texts.length && !page.images.length)) return toast('Draw something on this page first', { icon: 'info' });
-  const cost = (state.config && state.config.aiWeights && state.config.aiWeights.whiteboard_ai) || 3;
   const before = await b.snapshot({ bg: 'plain', scale: 0.8 });
   const beforeUrl = before.toDataURL('image/png');
   setInkTheme(false); const palette = pagePalette(page, inkOf); setInkTheme(document.documentElement.dataset.theme === 'dark');
@@ -51,7 +50,7 @@ export async function refineSheet(b) {
   const compare = h('div', { class: 'wb-ai-compare' },
     h('figure', null, h('div', { class: 'wb-ai-img' }, h('img', { src: beforeUrl, alt: 'This page now' })), h('figcaption', { class: 'tiny muted' }, 'Before')),
     h('figure', null, after, h('figcaption', { class: 'tiny muted' }, 'After')));
-  const go = h('button', { class: 'btn primary wb-ai-go', type: 'button' }, h('span', { html: icon('wand', { size: 16 }) }), h('span', null, `Refine · ${cost} AI point${cost === 1 ? '' : 's'}`));
+  const go = h('button', { class: 'btn primary wb-ai-go', type: 'button' }, h('span', { html: icon('wand', { size: 16 }) }), h('span', null, 'Refine'));
   const insert = h('button', { class: 'btn', type: 'button', hidden: true }, 'Insert as image');
   const replace = h('button', { class: 'btn primary', type: 'button', hidden: true }, 'Replace page');
   const discard = h('button', { class: 'btn ghost', type: 'button', hidden: true }, 'Discard');
@@ -61,7 +60,7 @@ export async function refineSheet(b) {
   const show = (url) => {
     after.classList.remove('empty', 'busy'); after.replaceChildren(h('img', { src: url, alt: 'Refined page' }));
     [insert, replace, discard].forEach((x) => { x.hidden = false; });
-    go.lastChild.textContent = `Try again · ${cost}`; go.classList.remove('primary');
+    go.lastChild.textContent = 'Try again'; go.classList.remove('primary');
   };
   go.onclick = async () => {
     if (busy) return;

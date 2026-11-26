@@ -1,10 +1,15 @@
 const data = require('./data');
 const gateway = require('./paystack');
-const { quote, BUNDLES, PRICE_PER_CREDIT_KOBO } = require('./rules');
+const rules = require('./rules');
+const { quote } = rules;
 module.exports = function routes(route, { requireUser, httpError, rateLimit }) {
   route('GET', '/api/wallet', async (ctx) => {
     const u = await requireUser(ctx.req, ctx.res);
-    return { userId:u.id, ...await require('./billing-data').current(u.id), meetingEarnings: await require('./paid-entry').earnings(u.id), pricePerCreditKobo: PRICE_PER_CREDIT_KOBO, currency: 'NGN', feePercent: require('../../lib/money').feePercent(), bundles: BUNDLES, purchasesEnabled: gateway.enabled(), expires: false };
+    const spend = require('./spend');
+    let usage = null;
+    try { usage = spend.usageView(await spend.syncPlan(u.id)); } catch (_) {}
+    const cur = await require('./billing-data').current(u.id);
+    return { userId:u.id, ...cur, usage, meetingEarnings: await require('./paid-entry').earnings(u.id), pricePerCreditKobo: rules.PRICE_PER_CREDIT_KOBO, currency: 'NGN', feePercent: require('../../lib/money').feePercent(), bundles: rules.BUNDLES, purchasesEnabled: gateway.enabled(), expires: false };
   });
   route('POST', '/api/wallet/meeting-earnings/transfer', async (ctx) => {
     const u = await requireUser(ctx.req, ctx.res);

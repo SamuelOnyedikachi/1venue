@@ -194,7 +194,7 @@ test('messages end to end', { skip, timeout: 120000 }, async (t) => {
     assert.equal((await retention.purge()).dm, 0, 'idempotent');
     // a paid member keeps the whole thread
     await db.q("INSERT INTO dm_messages (thread_id, sender_user_id, sender_name, body, created_at) VALUES ($1,$2,'E','ancient',$3)", [th, E.me.id, ago(900)]);
-    await db.q("INSERT INTO subscriptions (user_id, plan, status, source) VALUES ($1, 'premium', 'comp', 'admin')", [E.me.id]);
+    await db.q("INSERT INTO subscriptions (user_id, plan, status, source) VALUES ($1, 'pro', 'comp', 'admin')", [E.me.id]);
     await retention.purge();
     assert.ok((await db.q('SELECT body FROM dm_messages WHERE thread_id=$1', [th])).rows.some((r) => r.body === 'ancient'));
   });

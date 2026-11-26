@@ -1,4 +1,4 @@
-// Settings → Auto top-up (accounts without a paid plan) and Billing address & currency.
+// Settings → Auto top-up and Billing address & currency.
 import { h, api, toast, toastErr, confirmDlg, timeAgo } from '../ui.js';
 import { icon } from '../icons.js';
 import { state } from '../app.js';
@@ -28,13 +28,9 @@ export function autoTopupCard(card, row) {
     paint(a);
   })();
   function paint(a) {
-    if (a.subscriber) {
-      body.replaceChildren(row('crown', 'settings', 'Covered by your plan', 'Your plan includes meeting time, so you don’t need auto top-up.', h('a', { class: 'btn sm', href: '/billing', 'data-link': '' }, 'Plan')));
-      return;
-    }
     const enabled = h('input', { type: 'checkbox', checked: a.enabled, disabled: !a.card });
     const threshold = num(a.thresholdCredits, { id: 'at-threshold', max: 100000 });
-    const pack = h('select', { class: 'input', id: 'at-pack' }, [10, 30, 60, 120, 240].concat([a.packCredits]).filter((v, i, l) => l.indexOf(v) === i).sort((x, y) => x - y)
+    const pack = h('select', { class: 'input', id: 'at-pack' }, (a.bundles && a.bundles.length ? a.bundles : [500, 1500, 3000, 6000]).concat([a.packCredits]).filter((v, i, l) => l.indexOf(v) === i).sort((x, y) => x - y)
       .map((n) => h('option', { value: n, selected: n === a.packCredits }, `${n} credits · ${fmtMoney(withFee(n * (a.packQuote.priceKobo / a.packQuote.credits)).total, { whole: true })}`)));
     const cap = num(a.monthlyCapCredits, { id: 'at-cap', max: 1000000 });
     const perCredit = a.packQuote.priceKobo / a.packQuote.credits;

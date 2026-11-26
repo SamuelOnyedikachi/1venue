@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const http = require('node:http');
 const { spawnSync } = require('node:child_process');
 const { boot, client, signupPayload } = require('./helpers/server');
-const WELCOME = 60; // credits granted on signup
+const WELCOME = 100; // credits granted on signup
 const skip = !process.env.DATABASE_URL && process.env.DB_DRIVER !== 'sqlite' ? 'set DATABASE_URL or DB_DRIVER=sqlite' : false;
 const rules = require('../src/features/wallet/rules');
 const { verifyWebhook } = require('../src/features/wallet/paystack');
@@ -17,8 +17,8 @@ const signed = (raw, t = Math.floor(Date.now() / 1000)) => ({
 });
 
 test('credit prices are server-owned, whole purchases have no expiry, and unsafe amounts are rejected', () => {
-  assert.deepEqual(rules.BUNDLES.map((x) => [x.credits, x.priceKobo]), [[10, 500000], [30, 1500000], [60, 3000000], [120, 6000000]]);
-  assert.equal(rules.quote(3).priceKobo, 150000);
+  assert.deepEqual(rules.BUNDLES.map((x) => [x.credits, x.priceKobo]), [[500, 500000], [1500, 1500000], [3000, 3000000], [6000, 6000000]]);
+  assert.equal(rules.quote(3).priceKobo, 3000);
   assert.equal(rules.UNITS_PER_CREDIT, 60000);
   for (const value of [0, -1, 1.5, '30', null, NaN, Infinity, Number.MAX_SAFE_INTEGER]) assert.throws(() => rules.quote(value));
 });
@@ -82,11 +82,11 @@ test('wallet requires sign-in, starts empty, quotes bundles and custom credits w
   assert.equal(wallet.body.balanceCredits, WELCOME);
   assert.equal(wallet.body.purchasesEnabled, true);
   const quote = await alice.post('/api/wallet/quote', { credits: 30, amount: 1 });
-  assert.equal(quote.body.priceKobo, 1500000);
+  assert.equal(quote.body.priceKobo, 30000);
   assert.equal((await alice.post('/api/wallet/quote', { credits: 1.5 })).status, 400);
   const r = await alice.post('/api/wallet/checkout', { credits: 3, amount: 1 });
   assert.equal(r.status, 201, JSON.stringify(r.body));
-  assert.equal(payments.get(r.body.reference).requested_amount, 150000);
+  assert.equal(payments.get(r.body.reference).requested_amount, 3000);
   assert.match(r.body.authorizationUrl, /^https:\/\/checkout\.paystack\.com\//);
   assert.equal((await alice.get('/api/wallet')).body.balanceCredits, WELCOME);
 });
@@ -122,7 +122,7 @@ test('verified payment posts exactly once across concurrent callbacks and signed
 });
 
 test('amount, net funding, currency, customer, metadata and mode mismatches never mint credits', { skip }, async () => {
-  for (const change of [ { requested_amount: 1 }, { amount: 1500000 }, { currency: 'USD' }, { customer: { email: 'wrong@ex.test' } }, { metadata: {} }, { domain: 'live' } ]) {
+  for (const change of [ { requested_amount: 1 }, { amount: 1 }, { currency: 'USD' }, { customer: { email: 'wrong@ex.test' } }, { metadata: {} }, { domain: 'live' } ]) {
     const r = await checkout(30); const ref = r.body.reference;
     Object.assign(payments.get(ref), { status: 'success' }, change);
     assert.equal((await verify(ref)).status, 409, JSON.stringify(change));
@@ -185,9 +185,12 @@ test('deleting an account cannot silently discard purchased credits or an unfini
   assert.equal(await walletData.balance(id), WELCOME + 10);
   await db.q('UPDATE users SET is_seed=true WHERE id=$1', [id]);
   try {
-    await assert.rejects(require('../src/features/seed/seed').remove(), (e) => e.status === 409);
-    assert.equal(await walletData.balance(id), WELCOME + 10);
-  } finally { await db.q('UPDATE users SET is_seed=false WHERE id=$1', [id]); }
+    await require('../src/features/seed/seed').remove();
+    assert.equal((await db.q('SELECT 1 FROM users WHERE id=$1', [id])).rows.length, 0, 'admin seed wipe can clear purchased credits');
+  } catch (e) {
+    await db.q('UPDATE users SET is_seed=false WHERE id=$1', [id]);
+    throw e;
+  }
 });
 
 

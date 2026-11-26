@@ -43,9 +43,9 @@ describe('out34 materials buy, purchased tab, gifts', () => {
   });
 
   it('bumps the cache versions', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v94-2026-11-26'/);
-    assert.match(read('public/index.html'), /app\.css\?v=80/);
-    assert.match(read('public/index.html'), /app\.js\?v=80/);
+    assert.match(read('public/sw.js'), /VERSION = 'v95-2026-11-26'/);
+    assert.match(read('public/index.html'), /app\.css\?v=81/);
+    assert.match(read('public/index.html'), /app\.js\?v=81/);
   });
 });
 
@@ -91,7 +91,7 @@ test('material card buy starts Paystack checkout', { skip, timeout: 60000 }, asy
       const row = (await db.q("INSERT INTO materials(owner_user_id,title,kind,payload) VALUES($1,'Deck','slides',$2) RETURNING id", [hid, JSON.stringify({ pages: ['https://example.com/p.png'] })])).rows[0];
       mid = row.id;
     }
-    const sale = await host.post(`/api/materials/${mid}/sale`, { forSale: true, priceKobo: PRICE_PER_CREDIT_KOBO, callDiscountPct: 0 });
+    const sale = await host.post(`/api/materials/${mid}/sale`, { forSale: true, priceKobo: Math.max(5000, PRICE_PER_CREDIT_KOBO * 5), callDiscountPct: 0 });
     assert.equal(sale.status, 200, JSON.stringify(sale.body));
     const buy = await buyer.post(`/api/materials/${mid}/buy`, { method: 'paystack' });
     assert.equal(buy.status, 200, JSON.stringify(buy.body) + ' ' + s.output());
@@ -126,7 +126,7 @@ test('purchased materials list and credit gifts', { skip, timeout: 60000 }, asyn
       const row = (await db.q("INSERT INTO materials(owner_user_id,title,kind,payload) VALUES($1,'Deck','slides',$2) RETURNING id", [hid, JSON.stringify({ pages: ['https://example.com/p.png'] })])).rows[0];
       mid = row.id;
     }
-    assert.equal((await host.post(`/api/materials/${mid}/sale`, { forSale: true, priceKobo: PRICE_PER_CREDIT_KOBO, callDiscountPct: 0 })).status, 200);
+    assert.equal((await host.post(`/api/materials/${mid}/sale`, { forSale: true, priceKobo: Math.max(5000, PRICE_PER_CREDIT_KOBO * 5), callDiscountPct: 0 })).status, 200);
     assert.equal((await buyer.get('/api/materials?filter=purchased')).body.materials.length, 0);
     const buy = await buyer.post(`/api/materials/${mid}/buy`, { method: 'credits' });
     assert.equal(buy.status, 200, JSON.stringify(buy.body));
@@ -148,20 +148,20 @@ test('purchased materials list and credit gifts', { skip, timeout: 60000 }, asyn
     const feeBps = plans.platform(await plans.getSettings()).feeBps;
     const before = Number((await db.q('SELECT balance_units FROM credit_wallets WHERE user_id=$1', [bid])).rows[0].balance_units);
     const hostBefore = Number((await db.q('SELECT COALESCE(balance_units,0) AS b FROM credit_wallets WHERE user_id=$1', [hid])).rows[0]?.b || 0);
-    const gift = await buyer.post(`/api/events/${eid}/donate`, { method: 'credits', credits: 2 });
+    const gift = await buyer.post(`/api/events/${eid}/donate`, { method: 'credits', credits: 10 });
     assert.ok(gift.status === 201 || gift.status === 200, JSON.stringify(gift.body) + ' ' + s.output());
-    assert.equal(gift.body.credits, 2);
+    assert.equal(gift.body.credits, 10);
     const after = Number((await db.q('SELECT balance_units FROM credit_wallets WHERE user_id=$1', [bid])).rows[0].balance_units);
-    assert.equal(after, before - 2 * U);
+    assert.equal(after, before - 10 * U);
     const hostWallet = Number((await db.q('SELECT balance_units FROM credit_wallets WHERE user_id=$1', [hid])).rows[0].balance_units);
-    const splitUnits = plans.feeSplit(2 * U, feeBps);
+    const splitUnits = plans.feeSplit(10 * U, feeBps);
     assert.equal(hostWallet, hostBefore + splitUnits.net);
     const led = (await db.q("SELECT kind, delta_units FROM credit_ledger WHERE user_id IN ($1,$2) AND kind='gift' ORDER BY id", [bid, hid])).rows;
     assert.equal(led.length, 2);
     const hostLedger = (await db.q("SELECT net_kobo FROM host_ledger WHERE host_user_id=$1 AND kind='donation' ORDER BY id DESC LIMIT 1", [hid])).rows[0];
-    const splitKobo = plans.feeSplit(2 * PRICE_PER_CREDIT_KOBO, feeBps);
+    const splitKobo = plans.feeSplit(10 * PRICE_PER_CREDIT_KOBO, feeBps);
     assert.equal(Number(hostLedger.net_kobo), splitKobo.net);
-    const self = await host.post(`/api/events/${eid}/donate`, { method: 'credits', credits: 1 });
+    const self = await host.post(`/api/events/${eid}/donate`, { method: 'credits', credits: 10 });
     assert.equal(self.status, 400);
     const poor = await buyer.post(`/api/events/${eid}/donate`, { method: 'credits', credits: 99999 });
     assert.equal(poor.status, 402);

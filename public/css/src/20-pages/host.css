@@ -1226,12 +1226,6 @@ a.ht-strong:hover {
   flex-direction: column;
   gap: 1rem;
 }
-.bl-main {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  min-width: 0;
-}
 .bl-plan .ht-panel-head {
   background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 10%, var(--s1)), var(--s1) 70%);
   border-radius: var(--r-lg, 16px) var(--r-lg, 16px) 0 0;
@@ -1259,6 +1253,13 @@ a.ht-strong:hover {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.8rem;
 }
+.bl-usage {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0.4rem 0 0.8rem;
+}
+.bl-usage-bar { height: 0.55rem; }
 .bl-meter {
   display: flex;
   flex-direction: column;

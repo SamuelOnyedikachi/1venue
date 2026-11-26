@@ -61,7 +61,8 @@ async function initialize(user, fields) {
   return { ...paymentOut(payment), authorizationUrl: url };
 }
 async function startCheckout(user, { plan, interval } = {}) {
-  if (!plans.PAID.includes(plan)) throw fail(400, 'Choose Premium or Organisation');
+  plan = plans.canonicalPlan(plan);
+  if (!plans.PAID.includes(plan)) throw fail(400, 'Choose a paid plan');
   if (!plans.INTERVALS.includes(interval)) throw fail(400, 'Choose monthly or annual billing');
   const settings = await plans.getSettings();
   const ent = await plans.entitlements(user.id, { settings });
@@ -78,7 +79,7 @@ async function startSlugAddon(user, { venueSlug, tier } = {}) {
   if (v.archived) throw fail(403, 'This venue is archived on your current plan');
   const settings = await plans.getSettings();
   const ent = await plans.entitlements(user.id, { settings });
-  if (!plans.PAID.includes(ent.plan)) throw fail(403, 'Short links need a Premium or Organisation plan');
+  if (!plans.PAID.includes(ent.plan)) throw fail(403, 'Short links need a paid plan');
   if ((plans.SLUG_RANK[v.slugTier] || 0) >= plans.SLUG_RANK[tier]) throw fail(409, 'This venue already has that add-on');
   return initialize(user, { kind: 'slug_addon', venueId: v.id, slugTier: tier, priceKobo: settings.slugAddons[tier] });
 }
@@ -158,7 +159,10 @@ async function settle(purchase, verified, now = new Date()) {
     }
     return { payment: paid, plan: null };
   });
-  if (out.plan) await syncVenues(purchase.user_id).catch((e) => console.warn('[billing] venue sync', e.message));
+  if (out.plan) {
+    await syncVenues(purchase.user_id).catch((e) => console.warn('[billing] venue sync', e.message));
+    await require('../wallet/spend').syncPlan(purchase.user_id).catch((e) => console.warn('[billing] plan credits', e.message));
+  }
   return paymentOut(out.payment);
 }
 /** Re-apply the current plan to the user's venues (archive extras or restore them, park/restore clean links). */
@@ -263,6 +267,7 @@ async function scheduleChange(userId, { plan, interval } = {}) {
   const sub = await plans.subscriptionOf(userId);
   if (!sub || !['active', 'past_due'].includes(sub.status)) throw fail(409, 'You have no renewing plan to change');
   if (plan === 'free') return cancel(userId, true);
+  plan = plans.canonicalPlan(plan);
   if (!plans.PAID.includes(plan) || !plans.INTERVALS.includes(interval)) throw fail(400, 'Choose a plan and billing interval');
   if (plans.planRank(plan) > plans.planRank(sub.plan)) throw fail(409, 'Upgrades start straight away. Use Upgrade to pay for the new plan.');
   const same = plan === sub.plan && interval === sub.billing_interval;
@@ -281,6 +286,7 @@ async function adminSetPlan(actorId, userId, { plan, periodEnd, overrides, reaso
     await audit(null, userId, actorId, 'overrides', { overrides: clean, reason: reason || null });
   }
   if (plan !== undefined) {
+    if (plan === 'premium') plan = 'pro';
     if (!plans.PLAN_IDS.includes(plan)) throw fail(400, 'Unknown plan');
     const sub = await plans.subscriptionOf(userId);
     if (plan === 'free') {
@@ -298,6 +304,7 @@ async function adminSetPlan(actorId, userId, { plan, periodEnd, overrides, reaso
     }
   }
   await syncVenues(userId);
+  await require('../wallet/spend').syncPlan(userId).catch((e) => console.warn('[billing] plan credits', e.message));
   return adminUser(userId);
 }
 async function adminSetVenueTier(actorId, venueId, tier, reason) {
@@ -333,20 +340,28 @@ async function adminUser(userId) {
 async function summary(userId) {
   const settings = await plans.getSettings();
   const ent = await plans.entitlements(userId, { settings });
-  const [venues, aiUsed, payments] = await Promise.all([
-    require('../venues/data').activeVenueCount(userId), plans.aiUsed(userId),
+  let creditUsage = null;
+  try {
+    const spend = require('../wallet/spend');
+    const row = await spend.syncPlan(userId);
+    creditUsage = spend.usageView(row, ent.subscription);
+  } catch (e) { console.warn('[billing] credit usage', e.message); }
+  const [venues, payments] = await Promise.all([
+    require('../venues/data').activeVenueCount(userId),
     q('SELECT * FROM billing_payments WHERE user_id=$1 ORDER BY id DESC LIMIT 50', [userId]),
   ]);
-  return { plan: ent.plan, orgPlan: ent.orgPlan || null, features: ent.features, limits: ent.limits, usage: { venues, aiUsed, aiLeft: Math.max(0, ent.limits.aiDaily - aiUsed) }, subscription: subOut(ent.subscription),
+  return { plan: ent.plan, orgPlan: ent.orgPlan || null, features: ent.features, limits: ent.limits,
+    usage: { venues, credits: creditUsage },
+    subscription: subOut(ent.subscription),
     payments: payments.rows.map(paymentOut), purchasesEnabled: gateway.enabled() };
 }
 async function publicPlans() {
   const s = await plans.getSettings();
   const pf = plans.platform(s);
-  return { currency: 'NGN', plans: plans.PLAN_IDS.map((id) => ({ id, ...plans.limitsFor(s, id), features: plans.featuresFor(s, id), priceMonthKobo: s.plans[id].priceMonthKobo, priceYearKobo: s.plans[id].priceYearKobo })),
+  return { currency: 'NGN', plans: plans.PLAN_IDS.map((id) => ({ id, ...plans.limitsFor(s, id), features: plans.featuresFor(s, id), priceMonthKobo: s.plans[id].priceMonthKobo, priceYearKobo: s.plans[id].priceYearKobo, includedCredits: s.plans[id].includedCredits || 0 })),
     platform: { feeBps: pf.feeBps, promoDayKobo: pf.promoDayKobo, promoMaxDays: pf.promoMaxDays },
     promoPricing: { rates: Object.fromEntries(plans.PROMO_PLACEMENTS.map((k) => [k, plans.promoPricing(s)[k]])), tiers: plans.promoTiers(plans.promoPricing(s)), maxDays: pf.promoMaxDays },
-    aiWeights: s.aiWeights, slugAddons: s.slugAddons, graceDays: s.graceDays, purchasesEnabled: gateway.enabled() };
+    slugAddons: s.slugAddons, graceDays: s.graceDays, purchasesEnabled: gateway.enabled() };
 }
 async function assertCanDelete(c, userId) {
   const unsettled = (await c.query("SELECT 1 FROM billing_payments WHERE user_id=$1 AND status IN ('pending','review') AND kind<>'renewal' LIMIT 1", [userId])).rows[0];

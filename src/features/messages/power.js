@@ -8,7 +8,7 @@
  *   quick replies    saved snippets per user
  *   forward          a message into another chat or a live meeting's chat
  *   AI               analyse a shared file, table data for charts, voice-note transcription (cached),
- *                    and a summary of a long chat. AI points are spent like everywhere else (takeAi).
+ *                    and a summary of a long chat. Charged from the credit wallet (takeAi).
  */
 const { cleanText, cleanList } = require('../../lib/safe-text');
 const crypto = require('node:crypto');
@@ -301,8 +301,9 @@ async function llm(prompt, { system, maxTokens = 700, tag = 'messages-ai' } = {}
   return llmText(out.output);
 }
 async function spend(userId, kind) {
-  const t = await require('../../lib/plans').takeAi({ kind, ownerId: userId });
-  if (!t.ok) throw fail(429, `Not enough AI points left today (${t.left} of ${t.limit}). Upgrade your plan for more.`, { upgrade: true });
+  const plans = require('../../lib/plans');
+  const t = await plans.takeAi({ kind, ownerId: userId });
+  plans.throwIfAiDenied(t);
   return t;
 }
 async function fileOf(user, convId, mid) {

@@ -71,16 +71,16 @@ test('materials: upload Word / CSV / Excel, page access control, analysis cached
 
     // Analysis (AI_MOCK=true): computed once, stored, then served from the DB without spending points again.
     assert.equal((await a.get(`/api/materials/${sheet.body.id}/analysis`)).body.analysis, null);
-    const before = (await a.get('/api/billing')).body.usage.aiUsed;
+    const before = (await a.get('/api/wallet')).body.balanceCredits;
     const r1 = await a.post(`/api/materials/${sheet.body.id}/analyse`);
     assert.equal(r1.status, 200, JSON.stringify(r1.body));
-    assert.equal(r1.body.analysis.mock, true); assert.equal(r1.body.analysis.cached, false); assert.equal(r1.body.analysis.cost, 2);
+    assert.equal(r1.body.analysis.mock, true); assert.equal(r1.body.analysis.cached, false); assert.equal(r1.body.analysis.cost, require('../src/features/wallet/rates').aiCredits('analysis'));
     assert.equal(r1.body.analysis.data.rowCount, 3);
     assert.equal(r1.body.analysis.data.columns.find((c) => c.name === 'Amount').mean, 1000);
     assert.ok(r1.body.analysis.summary && r1.body.analysis.keyPoints.length && r1.body.analysis.dataCommentary);
     const r2 = await a.post(`/api/materials/${sheet.body.id}/analyse`);
     assert.equal(r2.body.analysis.cached, true);
-    assert.equal((await a.get('/api/billing')).body.usage.aiUsed, before + 2, 'charged once (weight 2)');
+    assert.equal((await a.get('/api/wallet')).body.balanceCredits, before - require('../src/features/wallet/rates').aiCredits('analysis'), 'charged once');
     assert.equal((await a.get(`/api/materials/${sheet.body.id}/analysis`)).body.analysis.summary, r1.body.analysis.summary);
     const d1 = await a.post(`/api/materials/${doc.body.id}/analyse`);
     assert.equal(d1.status, 200); assert.match(d1.body.analysis.summary, /youth retreat/);
@@ -97,7 +97,7 @@ test('materials: upload Word / CSV / Excel, page access control, analysis cached
   } finally { await s.stop(); }
 });
 
-test('materials analysis calls Replicate Llama 3 70B (Prefer: wait) and stores the parsed JSON', { skip }, async () => {
+test('materials analysis calls Replicate Llama (Prefer: wait) and stores the parsed JSON', { skip }, async () => {
   const calls = [];
   const rep = http.createServer((req, res) => {
     let body = ''; req.on('data', (c) => { body += c; });
@@ -117,12 +117,12 @@ test('materials analysis calls Replicate Llama 3 70B (Prefer: wait) and stores t
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.analysis.summary, 'A short plan.');
     assert.deepEqual(r.body.analysis.keyPoints, ['Bring a Bible', 'Register by Wednesday']);
-    assert.equal(r.body.analysis.mock, false); assert.equal(r.body.analysis.model, 'meta/meta-llama-3-70b-instruct');
-    const llm = calls.find((c) => c.url.includes('meta-llama'));
-    assert.equal(llm.url, '/v1/models/meta/meta-llama-3-70b-instruct/predictions');
+    assert.equal(r.body.analysis.mock, false); assert.equal(r.body.analysis.model, 'meta/llama-4-scout-instruct');
+    const llm = calls.find((c) => c.url.includes('llama-4-scout') || c.url.includes('meta-llama'));
+    assert.equal(llm.url, '/v1/models/meta/llama-4-scout-instruct/predictions');
     assert.equal(llm.auth, 'Bearer r8_test'); assert.match(llm.prefer, /^wait/);
     assert.match(llm.body.input.prompt, /Retreat on Friday/);
     assert.equal((await a.post(`/api/materials/${m.body.id}/analyse`)).body.analysis.cached, true);
-    assert.equal(calls.filter((c) => c.url.includes('meta-llama')).length, 1, 'stored result, no second model call');
+    assert.equal(calls.filter((c) => (c.url || '').includes('llama-4-scout') || (c.url || '').includes('meta-llama')).length, 1, 'stored result, no second model call');
   } finally { await s.stop(); rep.close(); }
 });

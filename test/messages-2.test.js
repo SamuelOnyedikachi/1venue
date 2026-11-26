@@ -153,13 +153,13 @@ test('whiteboard files in messages + AI refine (mock) end to end', { skip, timeo
     assert.equal(file.status, 200); assert.ok(zlib.gunzipSync(Buffer.from(await file.arrayBuffer())).toString().includes('"pages"'));
   });
 
-  await t.test('refine page: mock returns an image URL and charges whiteboard_ai points', async () => {
+  await t.test('refine page: mock returns an image URL and charges the credit wallet', async () => {
     const png = 'data:image/png;base64,' + Buffer.alloc(300, 1).toString('base64');
     assert.equal((await A.post('/api/whiteboards/refine', { image: 'data:text/html;base64,AAAA' })).status, 400);
     assert.equal((await A.post('/api/whiteboards/refine', { image: png, preset: 'custom', prompt: '' })).status, 400);
     const r = await A.post('/api/whiteboards/refine', { image: png, preset: 'clean', prompt: 'keep it simple', palette: ['#ffffff', '#ef4444'] });
     assert.equal(r.status, 200, JSON.stringify(r.body));
-    assert.equal(r.body.mock, true); assert.equal(r.body.cost, 3); assert.match(r.body.url, /^\/files\//);
+    assert.equal(r.body.mock, true); assert.equal(r.body.cost, require('../src/features/wallet/rates').aiCredits('whiteboard_ai')); assert.match(r.body.url, /^\/files\//);
     assert.equal((await fetch(s.base + r.body.url)).status, 200);
     assert.equal((await client(s.base).post('/api/whiteboards/refine', { image: png })).status, 401);
     assert.equal((await A.get('/api/whiteboards/refine')).body.presets[0].id, 'clean');

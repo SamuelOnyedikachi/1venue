@@ -101,7 +101,7 @@ export async function mount(view, { id }) {
       if (!a) {
         if (!p.sourceUrl) add(analysisEl, h('p', { class: 'muted small' }, 'This material was saved before analysis existed. Upload the file again to analyse it.'));
         else if (!m.canEdit) add(analysisEl, h('p', { class: 'muted small' }, 'No analysis yet. The owner can run one.'));
-        else add(analysisEl, h('p', { class: 'muted small' }, `Get a summary and key points${m.kind === 'sheet' ? ', plus a data overview,' : ''} from this ${kindLabel(m.kind).toLowerCase()}. Uses ${(state.config && state.config.aiWeights && state.config.aiWeights.analysis) || 2} AI points, once.`), status);
+        else add(analysisEl, h('p', { class: 'muted small' }, `Get a summary and key points${m.kind === 'sheet' ? ', plus a data overview,' : ''} from this ${kindLabel(m.kind).toLowerCase()}.`), status);
         if (!p.sourceUrl) btn.disabled = true;
         return;
       }
@@ -136,13 +136,12 @@ function askBox(m, view) {
   const thread = h('div', { class: 'mat-qa-thread', 'aria-live': 'polite' });
   const input = h('textarea', { class: 'mat-qa-input', rows: 1, maxlength: 500, placeholder: `Ask anything about “${m.title}”…`, 'aria-label': 'Ask about this file', enterkeyhint: 'send' });
   const send = h('button', { class: 'mat-qa-send', type: 'button', 'aria-label': 'Ask', html: icon('send', { size: 18 }) });
-  const cost = (state.config && state.config.aiWeights && state.config.aiWeights.analysis) || 2;
   const ideas = m.kind === 'sheet' ? ['Which rows stand out?', 'What is the total of each numeric column?', 'Any data quality problems?'] : ['What are the action items?', 'Explain the main argument simply', 'What dates or deadlines are mentioned?'];
   const chips = h('div', { class: 'mat-qa-ideas' }, ideas.map((t) => h('button', { class: 'chip', type: 'button', onclick: () => { input.value = t; ask(); } }, t)));
   const bubble = (q) => h('div', { class: 'mat-qa-item' },
     h('div', { class: 'mat-qa-q' }, h('span', null, q.question)),
     h('div', { class: 'mat-qa-a' }, h('span', { class: 'mat-qa-ai', html: icon('sparkles', { size: 14 }) }), h('div', null, ...safeText(q.answer).split(/\n{2,}/).filter(Boolean).map((para) => h('p', null, para)),
-      h('span', { class: 'tiny faint' }, q.pending ? 'Thinking…' : `${q.mock ? 'Offline preview' : 'AI'} · ${q.cost || 0} point${q.cost === 1 ? '' : 's'}`))));
+      h('span', { class: 'tiny faint' }, q.pending ? 'Thinking…' : (q.mock ? 'Offline preview' : 'AI')))));
   let items = [];
   const paint = () => { put(thread, ...items.map(bubble)); chips.hidden = items.length > 0; thread.scrollTop = thread.scrollHeight; };
   async function ask() {

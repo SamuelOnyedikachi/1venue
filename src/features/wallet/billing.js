@@ -92,7 +92,11 @@ async function tick(now=Date.now()) {
           continue;
         }
         const due=row.user_id==null ? now>=Number(row.free_until_ms||row.started_ms) : now>=Number(row.free_until_ms||row.started_ms) && now-Number(row.accounted_ms)>=Math.min(5000,Number(row.balance_units??0));
-        if(due)row=await data.settle(row.id,{now,ownerId,force:true});
+        if(due){
+          let counts={publishers:1,viewers:0};
+          try { counts=await require('./media-counts').countsFor(meeting); } catch(e){ console.warn('[billing] counts', e.message); }
+          row=await data.settle(row.id,{now,ownerId,force:true,...counts});
+        }
         if(row.state!=='active')await require('../../rooms/lifecycle').endMeeting(row.code,row.end_reason);
       } catch(e) {console.warn('[billing] reconcile',row.id,e.message);}
     }

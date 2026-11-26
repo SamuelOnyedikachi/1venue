@@ -4,7 +4,7 @@
 
 Signed-in users have a spending wallet at `/wallet`, also available in the account menu, Settings and the command bar. Buy 10, 30, 60 or 120 credits, or enter a positive whole-credit amount. Every credit costs NGN 500; there are no bundle discounts or expiry dates. Credits are issued only after server verification. The page shows the balance, purchase status and paginated credit history, including negative meeting-usage entries. Signed-in users also see their balance in the navbar and meeting header. A purchase can be checked again after a network interruption, without buying twice.
 
-Host-funded meeting billing is now active for newly opened non-venue meetings. Paid admission, the 80/20 earnings split, proportional meeting refunds, earnings transfers and venue funding rules remain deferred. The agreed rules and remaining scope are recorded in `superpowers/specs/2026-11-16-credit-wallet-design.md`.
+Host-funded meeting billing is active for newly opened meetings, including venues. Paid-entry meetings bill each participant at the room rate, with a host share of the net. Rates are env-configurable.
 
 ## Host-funded live rooms
 

@@ -1,15 +1,24 @@
-// Integer credit units leave room for exact per-second metering and 80/20 splits later.
-const UNITS_PER_CREDIT = 60000;
-const PRICE_PER_CREDIT_KOBO = 50000;
-const fail = (status, message) => Object.assign(new Error(message), { status });
+// Integer credit units leave room for exact per-second metering and host/platform splits.
+const rates = require('./rates');
+const UNITS_PER_CREDIT = rates.UNITS_PER_CREDIT;
+const fail = (status, message, extra) => Object.assign(new Error(message), { status, ...(extra || {}) });
+function pricePerCreditKobo() { return rates.pricePerCreditKobo(); }
+// Kept as a live getter so tests and checkout always see the current env price.
 function quote(credits) {
+  const PRICE_PER_CREDIT_KOBO = pricePerCreditKobo();
   if (!Number.isSafeInteger(credits) || credits < 1 || !Number.isSafeInteger(credits * UNITS_PER_CREDIT) || !Number.isSafeInteger(credits * PRICE_PER_CREDIT_KOBO)) {
     throw fail(400, 'Choose a positive whole number of credits within the supported range');
   }
   const subtotal = credits * PRICE_PER_CREDIT_KOBO;
   const f = require('../../lib/money').withFee(subtotal);
-  // priceKobo stays the credits' price (subtotal); totalKobo is what the gateway charges.
   return { credits, priceKobo: subtotal, subtotalKobo: subtotal, feeKobo: f.fee, feePercent: f.percent, totalKobo: f.total, currency: 'NGN' };
 }
-const BUNDLES = [10, 30, 60, 120].map(quote);
-module.exports = { UNITS_PER_CREDIT, PRICE_PER_CREDIT_KOBO, BUNDLES, quote, fail };
+function bundles() { return rates.bundles().map(quote); }
+module.exports = {
+  UNITS_PER_CREDIT,
+  get PRICE_PER_CREDIT_KOBO() { return pricePerCreditKobo(); },
+  get BUNDLES() { return bundles(); },
+  pricePerCreditKobo,
+  quote,
+  fail,
+};

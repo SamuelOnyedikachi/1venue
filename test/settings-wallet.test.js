@@ -10,7 +10,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { boot, client, signupPayload } = require('./helpers/server');
-const WELCOME = 60; // credits granted on signup
+const WELCOME = 100; // credits granted on signup
 const skip = !process.env.DATABASE_URL && process.env.DB_DRIVER !== 'sqlite' ? 'set DATABASE_URL or DB_DRIVER=sqlite' : false;
 const money = require('../src/lib/money');
 const src = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
@@ -19,20 +19,20 @@ function browserModule(file, bindings, names) {
   return new Function(...Object.keys(bindings), `${s}\nreturn { ${names} };`)(...Object.values(bindings));
 }
 
-test('processing fee: default 3%, env override, integer half-up rounding to minor units', () => {
-  assert.equal(money.feePercent(), 3);
-  assert.deepEqual(money.withFee(150000), { subtotal: 150000, fee: 4500, total: 154500, percent: 3 });
-  assert.equal(money.withFee(1500000).total, 1545000, '30 credits = ₦15,000 + ₦450');
-  assert.equal(money.withFee(17).fee, 1, '0.51 kobo rounds up');
-  assert.equal(money.withFee(16).fee, 0, '0.48 kobo rounds down');
+test('processing fee: default 4%, env override, integer half-up rounding to minor units', () => {
+  assert.equal(money.feePercent(), 4);
+  assert.deepEqual(money.withFee(150000), { subtotal: 150000, fee: 6000, total: 156000, percent: 4 });
+  assert.equal(money.withFee(1500000).total, 1560000, '₦15,000 + ₦600');
+  assert.equal(money.withFee(13).fee, 1, '0.52 kobo rounds up');
+  assert.equal(money.withFee(12).fee, 0, '0.48 kobo rounds down');
   assert.equal(money.withFee(100, 2.5).fee, 3, 'exact half rounds up');
   assert.equal(money.withFee(0).total, 0);
   assert.throws(() => money.withFee(1.5)); assert.throws(() => money.withFee(-1));
-  for (const [v, want] of [['0', 0], ['1.5', 1.5], ['abc', 3], ['50', 3], ['', 3]]) { process.env.PROCESSING_FEE_PERCENT = v; assert.equal(money.feePercent(), want, v); }
+  for (const [v, want] of [['0', 0], ['1.5', 1.5], ['abc', 4], ['50', 4], ['', 4]]) { process.env.PROCESSING_FEE_PERCENT = v; assert.equal(money.feePercent(), want, v); }
   delete process.env.PROCESSING_FEE_PERCENT;
   const rules = require('../src/features/wallet/rules');
   const q = rules.quote(30);
-  assert.equal(q.subtotalKobo, 1500000); assert.equal(q.feeKobo, 45000); assert.equal(q.totalKobo, 1545000); assert.equal(q.feePercent, 3);
+  assert.equal(q.subtotalKobo, 30000); assert.equal(q.feeKobo, 1200); assert.equal(q.totalKobo, 31200); assert.equal(q.feePercent, 4);
 });
 
 test('currency: placeholders are marked, FX_RATES overrides them, conversion and Intl formatting', async () => {
@@ -129,31 +129,31 @@ const topups = (id) => db.q("SELECT * FROM credit_payments WHERE user_id=$1 AND 
 
 test('every checkout charges subtotal + 3% and records the split', { skip, timeout: 60000 }, async () => {
   const w = await alice.get('/api/wallet');
-  assert.equal(w.body.feePercent, 3);
+  assert.equal(w.body.feePercent, 4);
   const q = await alice.post('/api/wallet/quote', { credits: 30 });
-  assert.equal(q.body.totalKobo, 1545000); assert.doesNotMatch(q.body.feeNotice, /\+ processing fee/i);
+  assert.equal(q.body.totalKobo, 31200); assert.doesNotMatch(q.body.feeNotice, /\+ processing fee/i);
   const co = await alice.post('/api/wallet/checkout', { credits: 30 });
   assert.equal(co.status, 201, JSON.stringify(co.body));
-  assert.equal(txs.get(co.body.reference).requested_amount, 1545000, 'gateway asked for the total');
+  assert.equal(txs.get(co.body.reference).requested_amount, 31200, 'gateway asked for the total');
   const row = (await db.q('SELECT * FROM credit_payments WHERE reference=$1', [co.body.reference])).rows[0];
-  assert.equal(Number(row.price_kobo), 1545000); assert.equal(Number(row.subtotal_kobo), 1500000); assert.equal(Number(row.processing_fee_kobo), 45000); assert.equal(Number(row.fee_percent), 3);
+  assert.equal(Number(row.price_kobo), 31200); assert.equal(Number(row.subtotal_kobo), 30000); assert.equal(Number(row.processing_fee_kobo), 1200); assert.equal(Number(row.fee_percent), 4);
   txs.get(co.body.reference).status = 'success';
   const v = await alice.post(`/api/wallet/payments/${co.body.reference}/verify`);
-  assert.equal(v.body.status, 'paid'); assert.equal(v.body.feeKobo, 45000);
+  assert.equal(v.body.status, 'paid'); assert.equal(v.body.feeKobo, 1200);
   assert.equal(await balance(aliceId), WELCOME + 30, 'the fee buys no extra credits');
 
   const plans = (await alice.get('/api/plans')).body;
-  const premium = plans.plans.find((p) => p.id === 'premium');
+  const pro = plans.plans.find((p) => p.id === 'pro');
   const bc = await alice.post('/api/billing/checkout', { plan: 'premium', interval: 'month' });
   assert.equal(bc.status, 201, JSON.stringify(bc.body));
-  const want = money.withFee(premium.priceMonthKobo);
+  const want = money.withFee(pro.priceMonthKobo);
   assert.equal(txs.get(bc.body.reference).requested_amount, want.total);
   const bp = (await db.q('SELECT * FROM billing_payments WHERE reference=$1', [bc.body.reference])).rows[0];
   assert.equal(Number(bp.price_kobo), want.total); assert.equal(Number(bp.processing_fee_kobo), want.fee);
   const detail = await admin.get(`/api/admin/billing/users/${aliceId}`);
   assert.equal(detail.status, 200);
   assert.equal(detail.body.payments[0].feeKobo, want.fee, 'admin sees the fee on plan payments');
-  assert.ok(detail.body.creditPayments.some((p) => p.feeKobo === 45000 && p.subtotalKobo === 1500000), 'and on credit purchases');
+  assert.ok(detail.body.creditPayments.some((p) => p.feeKobo === 1200 && p.subtotalKobo === 30000), 'and on credit purchases');
 });
 
 test('billing profile: address + currency, validated; prices are recorded in the shown currency', { skip }, async () => {
@@ -165,15 +165,15 @@ test('billing profile: address + currency, validated; prices are recorded in the
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.deepEqual({ ...r.body }, { country: 'GB', line1: '1 High St  b', line2: null, city: 'London', state: 'Greater London', postalCode: 'SW1A 1AA', currency: 'USD' });
   const m = (await bob.get('/api/money')).body;
-  assert.equal(m.currency, 'USD'); assert.equal(m.chargeCurrency, 'NGN'); assert.equal(m.feePercent, 3); assert.ok(m.placeholderRates.includes('USD'));
+  assert.equal(m.currency, 'USD'); assert.equal(m.chargeCurrency, 'NGN'); assert.equal(m.feePercent, 4); assert.ok(m.placeholderRates.includes('USD'));
   assert.equal((await client(s.base).get('/api/money')).body.currency, 'NGN');
   const co = await bob.post('/api/wallet/checkout', { credits: 10 });
   const row = (await db.q('SELECT * FROM credit_payments WHERE reference=$1', [co.body.reference])).rows[0];
   assert.equal(row.currency, 'NGN'); assert.equal(row.display_currency, 'USD');
-  assert.equal(Number(row.display_total_minor), Math.round((515000 / 100) * money.PLACEHOLDER_RATES.USD * 100));
+  assert.equal(Number(row.display_total_minor), Math.round((10400 / 100) * money.PLACEHOLDER_RATES.USD * 100));
   assert.equal((await bob.get('/api/admin/fx')).status, 403);
   const fx = await admin.put('/api/admin/fx', { rates: { USD: 0.0007 } });
-  assert.equal(fx.status, 200); assert.equal(fx.body.rates.USD, 0.0007); assert.ok(!fx.body.placeholder.includes('USD')); assert.equal(fx.body.feePercent, 3);
+  assert.equal(fx.status, 200); assert.equal(fx.body.rates.USD, 0.0007); assert.ok(!fx.body.placeholder.includes('USD')); assert.equal(fx.body.feePercent, 4);
   assert.equal((await admin.del('/api/admin/fx')).body.rates.USD, money.PLACEHOLDER_RATES.USD);
 });
 
@@ -187,7 +187,7 @@ test('auto top-up: card saved through hosted checkout, then one charge of pack +
   const setup = await c.post('/api/wallet/auto-topup/card');
   assert.equal(setup.status, 201, JSON.stringify(setup.body));
   const t = txs.get(setup.body.reference);
-  assert.deepEqual(t.channels, ['card']); assert.equal(t.requested_amount, 1545000);
+  assert.deepEqual(t.channels, ['card']); assert.equal(t.requested_amount, 31200);
   Object.assign(t, { status: 'success', authorization: auth() });
   assert.equal((await c.post(`/api/wallet/payments/${setup.body.reference}/verify`)).body.status, 'paid');
   a = (await c.get('/api/wallet/auto-topup')).body;
@@ -203,7 +203,7 @@ test('auto top-up: card saved through hosted checkout, then one charge of pack +
   assert.equal(charges - before, 1, 'concurrent runs charge once');
   assert.equal(await balance(id), 35);
   const rows = await topups(id);
-  assert.equal(rows.length, 1); assert.equal(Number(rows[0].price_kobo), 1545000); assert.equal(Number(rows[0].processing_fee_kobo), 45000); assert.equal(rows[0].status, 'paid');
+  assert.equal(rows.length, 1); assert.equal(Number(rows[0].price_kobo), 31200); assert.equal(Number(rows[0].processing_fee_kobo), 1200); assert.equal(rows[0].status, 'paid');
   assert.equal((await c.get('/api/wallet/auto-topup')).body.lastStatus, 'paid');
   // cap: 90 a month, 30 used → one more fits, the third does not
   await db.q('UPDATE credit_wallets SET balance_units=0 WHERE user_id=$1', [id]);
@@ -238,9 +238,10 @@ test('auto top-up: failures back off, then turn it off after 3; subscribers are 
   const sub = await newUser();
   await withCard(sub.id);
   assert.equal((await admin.post(`/api/admin/billing/users/${sub.id}`, { plan: 'premium', reason: 'test' })).status, 200);
-  assert.equal(await autotopup.run(sub.id), 'subscriber');
   assert.equal((await sub.c.get('/api/wallet/auto-topup')).body.subscriber, true);
-  assert.equal((await sub.c.put('/api/wallet/auto-topup', { enabled: false })).status, 409);
+  await db.q('UPDATE credit_wallets SET balance_units=0, plan_balance_units=0 WHERE user_id=$1', [sub.id]);
+  assert.equal(await autotopup.run(sub.id), 'paid', 'paid plans still auto top-up from credits');
+  assert.equal((await sub.c.put('/api/wallet/auto-topup', { enabled: false })).status, 200);
 
   const hook = await newUser();
   await withCard(hook.id, { pack: 10, cap: 100 });

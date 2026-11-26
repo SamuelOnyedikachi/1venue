@@ -8,7 +8,7 @@ import { addonCard } from '../shortlinks.js';
 import { panel, table, iconBtn, pill, empty, actionBtn, dayFmt, whenFmt } from '../host-kit.js';
 
 const money = (kobo) => fmtMoney(kobo, { whole: true });
-const LABEL = { free: 'Free', premium: 'Premium', organisation: 'Organisation' };
+const LABEL = { free: 'Free', pro: 'Pro', premium: 'Pro', business: 'Business', organisation: 'Organisation' };
 const VERIFY = { plan: (r) => `/api/billing/payments/${r}/verify`, credits: (r) => `/api/wallet/payments/${r}/verify`, commerce: (r) => `/api/commerce/payments/${r}/verify` };
 // Payment status → icon, the same set as /wallet.
 const STATUS = { paid: ['checkCircle', 'ok', 'Completed'], pending: ['hourglass', 'wait', 'Pending'], review: ['hourglass', 'wait', 'Being reviewed'], failed: ['xCircle', 'bad', 'Declined'], refunded: ['returnArrow', 'ref', 'Refunded'] };
@@ -29,10 +29,24 @@ export async function mount(view) {
       api('/api/billing/history').catch(() => ({ payments: [] })), api('/api/wallet/auto-topup').catch(() => null), api('/api/me/billing-profile').catch(() => ({}))]);
     if (!alive) return;
     body.replaceChildren(h('div', { class: 'bl-grid' },
-      h('div', { class: 'bl-main' }, planCard(me, table_), historyCard(hist.payments)),
-      h('div', { class: 'bl-side' }, methodsCard(me, auto), profileCard(prof), autoCard(me, auto))),
-    shortLinks(me, table_, venues.venues || []));
+      planCard(me, table_), h('div', { class: 'bl-side' }, methodsCard(me, auto), profileCard(prof), autoCard(me, auto))),
+    historyCard(hist.payments), shortLinks(me, table_, venues.venues || []));
     if (location.hash) { const t = document.getElementById(location.hash.slice(1)); if (t) setTimeout(() => t.scrollIntoView({ block: 'start' }), 60); }
+  }
+
+
+  function creditMeter(me) {
+    const u = (me.usage && me.usage.credits) || {};
+    const used = Math.max(0, Number(u.used) || 0);
+    const left = Math.max(0, Number(u.left) || 0);
+    const of = Math.max(used + left, Number(u.of) || 0);
+    const pct = of ? Math.min(100, (used / of) * 100) : 0;
+    const renew = u.renewalDate ? dayFmt(u.renewalDate) : null;
+    const nums = of ? `${used.toLocaleString()} of ${of.toLocaleString()} used, ${left.toLocaleString()} left` : `${left.toLocaleString()} credits left`;
+    return h('div', { class: 'bl-usage' },
+      h('div', { class: 'bl-meter-top' }, h('span', { class: 'small' }, 'Credits this period'), h('span', { class: 'tiny muted' }, nums)),
+      h('div', { class: 'ht-bar bl-usage-bar', role: 'meter', 'aria-label': 'Credits used this period', 'aria-valuemin': '0', 'aria-valuemax': String(of || 0), 'aria-valuenow': String(used) }, h('span', { style: { width: `${pct}%` } })),
+      renew ? h('p', { class: 'tiny muted' }, `Renews ${renew}`) : null);
   }
 
   function planCard(me, t) {
@@ -47,7 +61,7 @@ export async function mount(view) {
       else if (s.cancelAtPeriodEnd) { status = ['Ends soon', 'wait', 'clock']; line = `Ends on ${dayFmt(s.periodEnd)}. It will not renew.`; }
       else if (s.autoRenew) { status = ['Active', 'ok', 'checkCircle']; line = `Renews ${interval === 'year' ? 'yearly' : 'monthly'} on ${dayFmt(s.periodEnd)}${s.card ? ` from ${s.card.brand || 'card'} •••• ${s.card.last4}` : ''}.`; }
       else { status = ['Active', 'ok', 'checkCircle']; line = `Paid until ${dayFmt(s.periodEnd)}. There is no saved card, so when it ends you can pay again here.`; }
-      if (s.source === 'grandfather') line += ' Free Premium for existing members. Pay before it ends to keep Premium.';
+      if (s.source === 'grandfather') line += ' Free Pro for existing members. Pay before it ends to keep Pro.';
       if (s.pendingPlan) line += ` Switches to ${LABEL[s.pendingPlan]} (${s.pendingInterval === 'year' ? 'annual' : 'monthly'}) at the end of this period.`;
     }
     const needsPay = s && s.effectivePlan !== 'free' && (s.status === 'past_due' || s.source === 'grandfather' || (s.status === 'comp' && s.periodEnd));
@@ -63,7 +77,8 @@ export async function mount(view) {
       h('p', { class: 'small' }, line),
       s && s.periodEnd && s.effectivePlan !== 'free' ? h('div', { class: 'bl-dates' }, h('span', null, h('span', { class: 'tiny muted' }, s.cancelAtPeriodEnd || !s.autoRenew ? 'Ends' : 'Renews'), h('strong', null, dayFmt(s.periodEnd))),
         s.periodStart ? h('span', null, h('span', { class: 'tiny muted' }, 'Started'), h('strong', null, dayFmt(s.periodStart))) : null) : null,
-      h('div', { class: 'bl-meters' }, meter('Venues', me.usage.venues, l.venues), meter('AI points today', Math.max(0, l.aiDaily - me.usage.aiLeft), l.aiDaily)),
+      creditMeter(me),
+      h('div', { class: 'bl-meters' }, meter('Venues', me.usage.venues, l.venues)),
       h('p', { class: 'tiny muted' }, `${l.audience.toLocaleString()} stage audience · ${l.meeting} per meeting · ${l.speakerSeats} speaker seats`),
       h('div', { class: 'bl-actions' },
         payNow,
@@ -71,7 +86,7 @@ export async function mount(view) {
         s && s.autoRenew ? h('button', { class: 'btn', type: 'button', onclick: act(async () => { if (await confirmDlg('Stop renewing? You keep your plan until the end of this period.', { ok: 'Stop renewing' })) { await api('/api/billing/cancel', { method: 'POST' }); toast('Your plan will not renew'); } }) }, 'Cancel renewal') : null,
         s && s.cancelAtPeriodEnd && s.effectivePlan !== 'free' && ['active', 'past_due'].includes(s.status) ? h('button', { class: 'btn', type: 'button', onclick: act(async () => { await api('/api/billing/resume', { method: 'POST' }); toast(s.card ? 'Your plan will renew' : 'Renewal is back on. Add a card by paying once to renew automatically.', { icon: 'check' }); }) }, 'Resume renewal') : null,
         canSwitch ? h('button', { class: 'btn', type: 'button', onclick: act(async () => { await api('/api/billing/change', { method: 'POST', body: { plan: s.plan, interval: other } }); toast(`Switches to ${other === 'year' ? 'annual' : 'monthly'} billing at period end`, { icon: 'check' }); }) }, other === 'year' ? 'Switch to annual' : 'Switch to monthly') : null,
-        canSwitch && s.plan === 'organisation' ? h('button', { class: 'btn', type: 'button', onclick: act(() => api('/api/billing/change', { method: 'POST', body: { plan: 'premium', interval: s.interval } })) }, 'Move to Premium at period end') : null,
+        canSwitch && (s.plan === 'organisation' || s.plan === 'business') ? h('button', { class: 'btn', type: 'button', onclick: act(() => api('/api/billing/change', { method: 'POST', body: { plan: s.plan === 'organisation' ? 'business' : 'pro', interval: s.interval } })) }, s.plan === 'organisation' ? 'Move to Business at period end' : 'Move to Pro at period end') : null,
         s && s.pendingPlan ? h('button', { class: 'btn', type: 'button', onclick: act(() => api('/api/billing/change', { method: 'POST', body: { plan: s.plan, interval: s.interval } })) }, 'Keep current plan') : null));
   }
 
@@ -99,12 +114,11 @@ export async function mount(view) {
     const link = h('a', { class: 'btn sm', href: '/settings#auto-topup', 'data-link': '' }, a && a.enabled ? 'Manage' : 'Set up');
     let content;
     if (!a) content = h('p', { class: 'small muted' }, 'Not available right now.');
-    else if (a.subscriber) content = h('p', { class: 'small muted' }, 'Your plan covers meeting time, so auto top-up is off.');
     else if (a.enabled) content = h('div', { class: 'bl-kv' }, h('span', null, 'When below'), h('strong', null, `${fmtCredits(a.thresholdCredits)} credits`), h('span', null, 'Top up with'), h('strong', null, `${fmtCredits(a.packCredits)} credits`),
       h('span', null, 'Monthly cap'), h('strong', null, `${fmtCredits(a.monthlyCapCredits)} credits`), h('span', null, 'Used this month'), h('strong', null, `${fmtCredits(a.usedThisMonthCredits || 0)} credits`));
     else content = h('p', { class: 'small muted' }, 'Off. Turn it on to buy credits automatically when you run low.');
-    return panel({ icon: 'zap', title: 'Auto top-up', id: 'auto-topup', actions: a && !a.subscriber ? link : null, desc: a && a.enabled && a.lastStatus ? `Last run: ${a.lastStatus}${a.lastRunAt ? ' · ' + whenFmt(a.lastRunAt) : ''}` : null },
-      a && !a.subscriber ? pill(a.enabled ? 'On' : 'Off', a.enabled ? 'ok' : 'muted', a.enabled ? 'zap' : null) : null, content);
+    return panel({ icon: 'zap', title: 'Auto top-up', id: 'auto-topup', actions: a ? link : null, desc: a && a.enabled && a.lastStatus ? `Last run: ${a.lastStatus}${a.lastRunAt ? ' · ' + whenFmt(a.lastRunAt) : ''}` : null },
+      a ? pill(a.enabled ? 'On' : 'Off', a.enabled ? 'ok' : 'muted', a.enabled ? 'zap' : null) : null, content);
   }
   function historyCard(list) {
     const rows = list.slice(0, shown).map((p) => [

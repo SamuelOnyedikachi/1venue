@@ -96,7 +96,7 @@ export function toast(msg, { icon: ic = 'info', group = '', ms = 3200, action = 
   if (ms > 0) setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 260); }, ms);
   return t;
 }
-const HTTP_MSG = { 401: 'Please sign in to continue', 403: 'You don’t have permission to do that', 404: 'We couldn’t find that', 413: 'That file is too large', 429: 'Slow down a little - try again in a moment' };
+const HTTP_MSG = { 401: 'Please sign in to continue', 402: 'Add credits to continue.', 403: 'You don’t have permission to do that', 404: 'We couldn’t find that', 413: 'That file is too large', 429: 'Slow down a little - try again in a moment' };
 /* Turn anything thrown or returned into a readable sentence (never "[object Object]"). */
 export function errText(e) {
   if (e == null || e === '') return '';
@@ -121,7 +121,13 @@ export function reportClientError(area, e, extra = {}, { silent = false } = {}) 
   if (!silent) toast(message, { icon: 'alert', group: 'admin', ms: 7000 });
   return message;
 }
-export const toastErr = (e) => toast(errText(e) || 'Something went wrong', { icon: 'alert', group: 'admin' });
+export function toastErr(e) {
+  const msg = errText(e) || 'Something went wrong';
+  if (e && e.status === 402) {
+    return toast(msg, { icon: 'alert', group: 'admin', ms: 7000, action: { label: 'Add credits', run: () => location.assign('/wallet') } });
+  }
+  return toast(msg, { icon: 'alert', group: 'admin' });
+}
 
 let sheetStack = [];
 export function sheet({ title = '', icon: ic, group = '', body, wide = false, onClose } = {}) {

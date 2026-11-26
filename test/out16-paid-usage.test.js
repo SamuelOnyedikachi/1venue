@@ -52,9 +52,9 @@ describe('out16 instant overlay and paid-usage helpers', () => {
   });
 
   it('bumps the cache versions', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v94-2026-11-26'/);
-    assert.match(read('public/index.html'), /app\.css\?v=80/);
-    assert.match(read('public/index.html'), /app\.js\?v=80/);
+    assert.match(read('public/sw.js'), /VERSION = 'v95-2026-11-26'/);
+    assert.match(read('public/index.html'), /app\.css\?v=81/);
+    assert.match(read('public/index.html'), /app\.js\?v=81/);
   });
 });
 
@@ -94,8 +94,8 @@ test('usage paid entry meters connected time, skips a reconnect gap, and pays th
     const guestWallet = Number((await db.q('SELECT balance_units FROM credit_wallets WHERE user_id=$1', [gid])).rows[0].balance_units);
     const hostDebit = 30 * U - hostWallet;
     const guestDebit = 30 * U - guestWallet;
-    assert.ok(hostDebit >= 50_000 && hostDebit <= 70_000, 'host debit ' + hostDebit);
-    assert.ok(guestDebit >= 50_000 && guestDebit <= 70_000, 'guest debit ' + guestDebit);
+    assert.ok(hostDebit >= 80_000 && hostDebit <= 100_000, 'host debit ' + hostDebit);
+    assert.ok(guestDebit >= 80_000 && guestDebit <= 100_000, 'guest debit ' + guestDebit);
     const earn = (await db.q('SELECT * FROM paid_meeting_earnings WHERE code=$1', [code])).rows[0];
     assert.ok(earn, 'host should have pending earnings from the participant');
     assert.equal(Number(earn.host_units), Math.floor(Number(earn.gross_units) * 0.8));
@@ -109,7 +109,7 @@ test('usage paid entry meters connected time, skips a reconnect gap, and pays th
     guestMeter = (await usage.settleMeter(guestMeter, t0 + 91_000, { hostUserId: hid })).meter;
     const afterGap = Number((await db.q('SELECT balance_units FROM credit_wallets WHERE user_id=$1', [gid])).rows[0].balance_units);
     const gapDebit = beforeGap - afterGap;
-    assert.ok(gapDebit >= 8_000 && gapDebit <= 16_000, 'gap should not be billed, only the 10s after reconnect, got ' + gapDebit);
+    assert.ok(gapDebit >= 12_000 && gapDebit <= 18_000, 'gap should not be billed, only the 10s after reconnect, got ' + gapDebit);
     await usage.finalizeUsage(code, t0 + 92_000);
     const settled = (await db.q('SELECT * FROM paid_meeting_earnings WHERE code=$1', [code])).rows[0];
     assert.equal(settled.state, 'available');

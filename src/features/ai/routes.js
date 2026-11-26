@@ -21,24 +21,14 @@ module.exports = function routes(route, kit) {
     return data.transcriptToText(await data.getTranscript(rp.meeting.historyId, { limit: 1500 }));
   }
   const plans = require('../../lib/plans');
-  /**
-   * Spend points from the shared daily AI pool. Inside a room the room's paying host is charged
-   * (guests count against the host's venue pool, with a per-IP daily cap); otherwise the user's own pool.
-   */
-  async function spend(ctx, kind, { u, rp }) {
-    const ownerId = rp ? ((rp.meeting.limits && rp.meeting.limits.ownerUserId) || rp.meeting.hostUserId || null) : u ? u.id : null;
-    const self = !!(u && ownerId && u.id === ownerId);
-    const guestIp = self ? null : clientIp(ctx.req);
-    const t = await plans.takeAi({ kind, ownerId, guestIp });
-    if (!t.ok) {
-      if (t.guestCap) throw httpError(429, 'You’ve reached today’s AI limit in this room. Try again tomorrow.');
-      throw httpError(429, self ? `You’ve used today’s AI allowance (${t.limit} points). Upgrade for more, or try again tomorrow.` : 'The host’s AI allowance for today is used up. Try again tomorrow.');
-    }
+  async function spend(ctx, kind, { u }) {
+    const t = await plans.takeAi({ kind, ownerId: u ? u.id : null, guestIp: clientIp(ctx.req) });
+    plans.throwIfAiDenied(t);
     return t;
   }
   async function metered(ctx, kind, who, fn) {
     const t = await spend(ctx, kind, who);
-    try { return { ...(await fn()), aiLeft: t.left }; } catch (e) { await t.refund(); throw e; }
+    try { return await fn(); } catch (e) { await t.refund(); throw e; }
   }
   const aiOut = (r) => ({ text: r.text, provider: r.provider, model: r.model, mock: !!r.mock });
   route('POST', '/api/ai/ask', async (ctx) => {
@@ -88,7 +78,7 @@ module.exports = function routes(route, kit) {
       title, description: out.description || '', tags, theme,
       category: hints.category || null, venue: hints.venue,
       start: hints.start, end: hints.end, hasTime: hints.hasTime, endHasTime: hints.endHasTime,
-      provider: r.provider, mock: !!r.mock, aiLeft: t.left,
+      provider: r.provider, mock: !!r.mock,
     };
   });
 
@@ -97,14 +87,7 @@ module.exports = function routes(route, kit) {
     const u = await getAuthUser(ctx.req, ctx.res);
     const limit = finetuneLimit();
     const used = u ? await usage.used(`u:${u.id}`, 'finetune') : 0;
-    let left = Math.max(0, limit - used);
-    if (u) {
-      const s = await plans.getSettings();
-      const ent = await plans.entitlements(u.id, { settings: s });
-      const w = plans.aiWeight(s, 'finetune');
-      if (w > 0) left = Math.min(left, Math.floor(Math.max(0, ent.limits.aiDaily - await plans.aiUsed(u.id)) / w));
-    }
-    return { enabled: limit > 0, dailyLimit: limit, used, left };
+    return { enabled: limit > 0, dailyLimit: limit, used, left: Math.max(0, limit - used) };
   });
   route('POST', '/api/ai/finetune', async (ctx) => {
     const u = await requireUser(ctx.req, ctx.res);
@@ -122,7 +105,7 @@ module.exports = function routes(route, kit) {
       const r = await ai().fineTune(raw);
       let text = String(r.text || '').trim();
       if (!text) text = mockFineTune(raw);
-      return { text, provider: r.provider, model: r.model, mock: !!r.mock, left: Math.max(0, limit - took.used), used: took.used, aiLeft: pool.left };
+      return { text, provider: r.provider, model: r.model, mock: !!r.mock, left: Math.max(0, limit - took.used), used: took.used };
     } catch (e) {
       await usage.refund(`u:${u.id}`, 'finetune', 1).catch(() => {});
       await pool.refund();

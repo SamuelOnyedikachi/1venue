@@ -47,8 +47,9 @@ async function refine(user, body, { httpError, rateLimit }) {
   if (preset === 'custom' && !cleanText(body.prompt)) throw httpError(400, 'Describe what you want for a custom refine');
   if (!rateLimit(`wb-ai:${user.id}`, 6)) throw httpError(429, 'Please wait a minute before refining again');
   const prompt = refinePrompt(preset, body.prompt, body.palette);
-  const t = await require('../../lib/plans').takeAi({ kind: 'whiteboard_ai', ownerId: user.id });
-  if (!t.ok) throw Object.assign(httpError(429, `Not enough AI points left today (${t.left} of ${t.limit}). Upgrade your plan for more.`), { upgrade: true });
+  const plans = require('../../lib/plans');
+  const t = await plans.takeAi({ kind: 'whiteboard_ai', ownerId: user.id });
+  plans.throwIfAiDenied(t);
   const mock = config.AI.mock || !config.STT.replicate.token;
   const model = config.WHITEBOARD_AI.model;
   let out, mime = 'image/png';

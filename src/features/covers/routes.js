@@ -109,16 +109,22 @@ module.exports = function routes(route, kit) {
     }
 
     const took = await usage.take(`u:${u.id}`, 'cover', 1, C.dailyLimit);
-    if (!took.ok) throw httpError(429, `You’ve made ${C.dailyLimit} covers today - try again tomorrow, or upload your own`);
+    if (!took.ok) throw httpError(429, 'Please wait a moment and try again, or upload your own');
+    const plans = require('../../lib/plans');
+    const paid = await plans.takeAi({ kind: 'cover', ownerId: u.id });
+    if (!paid.ok) {
+      await usage.refund(`u:${u.id}`, 'cover', 1).catch(() => {});
+      plans.throwIfAiDenied(paid);
+    }
     let r;
     try {
       r = await replicate.run({
         token: token(), apiBase: config.STT.replicate.apiBase, model: C.model, timeoutMs: C.timeoutMs, tag: 'covers', wait: 15,
         input: coverInput(C.model, prompt, { seed: crypto.randomInt(1, 2 ** 31 - 1) }),
       });
-    } catch (e) { await usage.refund(`u:${u.id}`, 'cover', 1).catch(() => {}); throw e; }
+    } catch (e) { await usage.refund(`u:${u.id}`, 'cover', 1).catch(() => {}); await paid.refund(); throw e; }
     const urls = (Array.isArray(r.output) ? r.output : [r.output]).filter((x) => typeof x === 'string').slice(0, 1);
-    if (!urls.length) { await usage.refund(`u:${u.id}`, 'cover', 1).catch(() => {}); throw httpError(502, 'No cover came back - try again'); }
+    if (!urls.length) { await usage.refund(`u:${u.id}`, 'cover', 1).catch(() => {}); await paid.refund(); throw httpError(502, 'No cover came back - try again'); }
     let option = null;
     try {
       const { buf, mime } = await replicate.download(urls[0], 8 * 1048576);

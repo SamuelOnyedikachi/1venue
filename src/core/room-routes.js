@@ -190,9 +190,10 @@ module.exports = async function handle(req, res, parsed) {
         return sendJSON(res, 400, { error: 'Please enter your display name' });
       }
 
-      if (!venue && requestedAccess !== 'paid_entry') {
+      if (requestedAccess !== 'paid_entry') {
+        // Venues are metered the same as other host-funded meetings (host pays for everyone).
         openedBilling = await require('../features/wallet/billing').start({ user: authUser, code, name, hostName });
-      } else await discardSnapshot(code); // venue funding remains deferred
+      } else await discardSnapshot(code);
       const historyId = openedBilling ? openedBilling.historyId : await db.startMeetingHistory({
         code,
         name,

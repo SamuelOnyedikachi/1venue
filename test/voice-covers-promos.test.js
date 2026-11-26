@@ -130,10 +130,17 @@ test('event colours: AI palette name wins, else topic keywords, else category; c
   assert.ok(names.size >= 3, 'events don’t all get one colour');
   const app = read('public/js/app.js');
   for (const [n, a, b] of PALETTE) assert.ok(app.includes(`['${n}', '${a}', '${b}']`), `palette in sync with ACCENTS: ${n}`);
-  const { coverPrompt } = require('../src/features/covers/prompt');
-  const p = coverPrompt({ title: 'A seminar on animal protection', category: 'seminar', accent: '#059669', accent2: '#0891b2' });
-  assert.match(p, /animal protection/); assert.match(p, /no text/); assert.match(p, /16:9/); assert.match(p, /#059669/);
+  const { coverPrompt, coverInput } = require('../src/features/covers/prompt');
+  const p = coverPrompt({ title: 'A seminar on animal protection', category: 'seminar', accent: '#059669', accent2: '#0891b2', scene: 'elephants at a watering hole at dusk' });
+  assert.match(p, /elephants at a watering hole/); assert.match(p, /animal protection|elephants/); assert.match(p, /no text/); assert.match(p, /16:9/); assert.match(p, /#059669/);
+  assert.match(p, /Mood and lighting only/);
+  assert.doesNotMatch(p, /lounge chairs|conference space|screen glow|presentation board/i);
   assert.doesNotMatch(coverPrompt({ title: '"><script>' }), /[<>"]/);
+  const ideo = coverInput('ideogram-ai/ideogram-v3-turbo', 'a scene', { seed: 3 });
+  assert.equal(ideo.aspect_ratio, '16:9');
+  assert.equal(ideo.magic_prompt_option, 'Off');
+  assert.equal(ideo.style_type, 'Realistic');
+  assert.ok(!('num_outputs' in ideo));
 });
 
 test('Whisper input mapping: auto-detect by default, language hint when set, Igbo falls back to auto', () => {
@@ -202,6 +209,16 @@ function mockReplicate() {
     const json = (code, o) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
     if (req.headers.authorization && req.headers.authorization !== 'Bearer r8_test_token') return json(401, { detail: 'bad token' });
     if (req.method === 'POST' && req.url === '/v1/predictions' && body && body.version) return json(201, { id: 's1', status: 'succeeded', output: { text: ' ' + sttText + ' ', chunks: [] }, metrics: { predict_time: 0.6 } });
+    if (req.method === 'POST' && /\/v1\/models\/.+\/predictions$/.test(req.url) && (req.url.includes('ideogram') || req.url.includes('flux') || req.url.includes('llama') || req.url.includes('bge'))) {
+      if (req.url.includes('bge') || (body && body.input && (body.input.texts || body.input.text) && !body.input.prompt && !body.input.aspect_ratio)) {
+        const dim = 8;
+        return json(201, { id: 'e1', status: 'succeeded', output: [Array.from({ length: dim }, (_, i) => (i === 0 ? 1 : 0))] });
+      }
+      if (req.url.includes('llama') || (body && body.input && body.input.system_prompt && !body.input.aspect_ratio)) {
+        return json(201, { id: 'l1', status: 'succeeded', output: ['A young person standing in tall grass at golden hour, eyes closed, calm air around them.'] });
+      }
+      return json(201, { id: 'c1', status: 'succeeded', output: `${base}/out/c0.webp` });
+    }
     if (req.method === 'POST' && req.url === '/v1/models/black-forest-labs/flux-schnell/predictions') {
       const n = body.input.num_outputs || 1;
       return json(201, { id: 'c1', status: 'succeeded', output: Array.from({ length: n }, (_, i) => `${base}/out/c${i}.webp`) });
@@ -294,23 +311,23 @@ test('no token: STT falls back to the browser, covers are off, app still works',
   } finally { await s.stop(); }
 });
 
-test('AI covers (flux-schnell 16:9) + Write for me colour: only the picked cover is saved (event + Materials), daily cap', { skip, timeout: 120000 }, async () => {
+test('AI covers (ideogram 16:9, one image) + Write for me colour: only the picked cover is saved (event + Materials), daily cap', { skip, timeout: 120000 }, async () => {
   const mock = mockReplicate();
   await new Promise((r) => mock.srv.listen(0, '127.0.0.1', r));
-  const s = await boot({ REPLICATE_API_TOKEN: 'r8_test_token', REPLICATE_API_BASE: `http://127.0.0.1:${mock.srv.address().port}/v1`, AI_COVER_DAILY_LIMIT: '2', AI_COVER_OPTIONS: '2', STORAGE_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'cov-')) });
+  const s = await boot({ REPLICATE_API_TOKEN: 'r8_test_token', REPLICATE_API_BASE: `http://127.0.0.1:${mock.srv.address().port}/v1`, AI_COVER_MODEL: 'ideogram-ai/ideogram-v3-turbo', AI_COVER_DAILY_LIMIT: '2', STORAGE_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'cov-')) });
   const db = require('../db');
   try {
     const c = client(s.base); const me = signupPayload(); await c.post('/api/signup', me);
     assert.equal((await client(s.base).post('/api/covers/generate', { title: 'x' })).status, 401);
     const cfg = await (await fetch(s.base + '/api/config')).json();
-    assert.deepEqual(cfg.covers, { enabled: true, dailyLimit: 2, options: 2 });
+    assert.deepEqual(cfg.covers, { enabled: true, dailyLimit: 2, options: 1 });
     const quota = await c.get('/api/covers/config');
     assert.equal(quota.status, 200);
     assert.equal(quota.body.enabled, true);
     assert.equal(quota.body.dailyLimit, 2);
     assert.equal(quota.body.left, 2);
     assert.equal(quota.body.used, 0);
-    const beforeGen = mock.calls.filter((x) => x.url.includes('flux-schnell')).length;
+    const beforeGen = mock.calls.filter((x) => x.url.includes('ideogram') || x.url.includes('flux-schnell')).length;
     assert.equal(beforeGen, 0, 'nothing is generated without a generate click / POST');
 
     const w = await c.post('/api/ai/title', { notes: 'A seminar on animal protection for young people in Lagos next Friday at 6pm at the Civic Centre', category: 'seminar', tzOffset: -60, now: '2026-11-15T04:00:00Z' });
@@ -328,11 +345,19 @@ test('AI covers (flux-schnell 16:9) + Write for me colour: only the picked cover
 
     const g = await c.post('/api/covers/generate', { title: 'A seminar on animal protection', category: 'seminar', accent: '#059669', accent2: '#0891b2' });
     assert.equal(g.status, 200, JSON.stringify(g.body));
-    assert.equal(g.body.options.length, 2); assert.equal(g.body.left, 1);
+    assert.equal(g.body.options.length, 1); assert.equal(g.body.left, 1);
     assert.equal((await c.get('/api/covers/config')).body.left, 1);
-    const input = mock.calls.find((x) => x.url.includes('flux-schnell')).body.input;
-    assert.equal(input.aspect_ratio, '16:9'); assert.equal(input.num_outputs, 2); assert.equal(input.output_format, 'webp');
-    assert.match(input.prompt, /animal protection/); assert.match(input.prompt, /no text/);
+    const input = mock.calls.find((x) => x.url.includes('ideogram') || x.url.includes('flux')).body.input;
+    assert.equal(input.aspect_ratio, '16:9');
+    assert.equal(input.magic_prompt_option, 'Off');
+    assert.match(input.prompt, /animal protection|elephants|Main subject/);
+    assert.match(input.prompt, /no text/);
+
+    const reused = await c.post('/api/covers/generate', { title: 'A seminar on animal protection', category: 'seminar', attempt: 1, session: 's-reuse' });
+    assert.equal(reused.status, 200, JSON.stringify(reused.body));
+    assert.equal(reused.body.source, 'library');
+    assert.equal(reused.body.left, 1, 'library hits do not consume the daily cap');
+    assert.equal((await c.get('/api/covers/config')).body.left, 1);
 
     const prev = await fetch(s.base + g.body.options[0].url, { headers: { cookie: c.jar.header() } });
     assert.equal(prev.status, 200); assert.equal(prev.headers.get('content-type'), 'image/webp');
@@ -341,14 +366,14 @@ test('AI covers (flux-schnell 16:9) + Write for me colour: only the picked cover
 
     const uid = (await db.q('SELECT id FROM users WHERE username=$1', [me.username])).rows[0].id;
     assert.equal(Number((await db.q("SELECT COUNT(*) AS count FROM files WHERE owner_user_id=$1", [uid])).rows[0].count), 0, 'nothing stored before a pick');
-    const pick = await c.post('/api/covers/pick', { token: g.body.options[1].token, title: 'A seminar on animal protection' });
+    const pick = await c.post('/api/covers/pick', { token: g.body.options[0].token, title: 'A seminar on animal protection' });
     assert.equal(pick.status, 200, JSON.stringify(pick.body));
     assert.match(pick.body.url, /^\/files\/[\w-]+\/cover-a-seminar-on-animal-protection\.webp$/);
     assert.equal(Number((await db.q("SELECT COUNT(*) AS count FROM files WHERE owner_user_id=$1 AND purpose='cover'", [uid])).rows[0].count), 1, 'only the picked one');
     const mats = (await c.get('/api/materials')).body.materials;
     const m = mats.find((x) => x.id === pick.body.materialId);
     assert.ok(m && m.kind === 'image' && m.title.startsWith('Cover · '));
-    assert.equal((await c.post('/api/covers/pick', { token: g.body.options[1].token })).status, 404, 'one-time token');
+    assert.equal((await c.post('/api/covers/pick', { token: g.body.options[0].token })).status, 404, 'one-time token');
     const img = await fetch(s.base + pick.body.url);
     assert.equal(img.status, 200); assert.deepEqual(Buffer.from(await img.arrayBuffer()), mock.img);
 
@@ -356,9 +381,11 @@ test('AI covers (flux-schnell 16:9) + Write for me colour: only the picked cover
     assert.ok(ev.status === 200 || ev.status === 201, JSON.stringify(ev.body));
     assert.equal(ev.body.coverUrl, pick.body.url); assert.equal(ev.body.theme.accent, w.body.theme.accent);
 
-    assert.equal((await c.post('/api/covers/generate', { title: 'again' })).status, 200);
-    const cap = await c.post('/api/covers/generate', { title: 'third' });
-    assert.equal(cap.status, 429); assert.match(cap.body.error, /2 covers today/);
+    // attempt 3+ always makes a fresh image and spends the cap (library reuse would otherwise
+    // skip the cap, and a mock embedding is identical for every title).
+    assert.equal((await c.post('/api/covers/generate', { title: 'again', attempt: 3 })).status, 200);
+    const cap = await c.post('/api/covers/generate', { title: 'third', attempt: 3 });
+    assert.equal(cap.status, 429); assert.match(cap.body.error, /try again|upload your own/i);
   } finally { await s.stop(); mock.srv.close(); }
 });
 

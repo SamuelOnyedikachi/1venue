@@ -76,6 +76,20 @@ module.exports = function routes(route, { requireUser, httpError, rateLimit, int
     if (!String(b.reason || '').trim()) throw httpError(400, 'Add a short reason for the audit log');
     return billing.adminSetPlan(u.id, int(id), { plan: b.plan, periodEnd: b.periodEnd || null, overrides: b.overrides, reason: String(b.reason).slice(0, 300) });
   });
+
+  const leads = () => require('./leads');
+  route('POST', '/api/sales/enquiry', async (ctx) => {
+    const ip = (ctx.req.headers['x-forwarded-for'] || ctx.req.socket?.remoteAddress || 'x').split(',')[0].trim();
+    if (!rateLimit('sales-enquiry:' + ip, 5)) throw httpError(429, 'Please wait before sending another enquiry');
+    const user = await require('../../lib/auth').getAuthUser(ctx.req, ctx.res);
+    return { $status: 201, $body: await leads().create(await ctx.body(), user) };
+  });
+  route('GET', '/api/admin/sales/leads', async (ctx) => { await admin(ctx); return { leads: await leads().list() }; });
+  route('POST', '/api/admin/sales/leads/(\\d+)', async (ctx, [id]) => {
+    await admin(ctx);
+    const b = await ctx.body();
+    return leads().setStatus(int(id), b.status);
+  });
   route('POST', '/api/admin/billing/venues/(\\d+)', async (ctx, [id]) => {
     const u = await admin(ctx);
     const b = await ctx.body();

@@ -7,10 +7,10 @@ const isCode = (c) => CODE_RE.test(normCode(c));
 const randCode = (n = 6) => Array.from(crypto.randomBytes(n), (b) => CODE_CH[b % CODE_CH.length]).join('');
 const codeLink = (c) => `/${normCode(c)}`;
 
-// Subscription plans live in src/lib/plans.js. Link rights: free 5 + "-venue"; paid (premium/organisation) 5+ clean;
+// Subscription plans live in src/lib/plans.js. Link rights: free 5 + "-venue"; paid (pro/business/organisation) 5+ clean;
 // a venue's slug4 add-on allows 4+, slug3 allows 3+ (add-ons only work on a paid plan). Never shorter than 3.
-const PLANS = ['free', 'premium', 'organisation'];
-const LEGACY_RANK = { free: 0, premium: 1, organisation: 1, slug4: 2, slug3: 3 };
+const PLANS = ['free', 'pro', 'business', 'organisation'];
+const LEGACY_RANK = { free: 0, premium: 1, pro: 1, business: 1, organisation: 1, slug4: 2, slug3: 3 };
 const planRank = (p) => LEGACY_RANK[String(p || 'free')] || 0;
 /** Rights object { clean, tier } or a plan / legacy tier name. */
 function rankOf(rights) {

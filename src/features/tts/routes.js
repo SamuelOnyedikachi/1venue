@@ -47,7 +47,7 @@ module.exports = function routes(route, kit) {
     if (!cfg.token) throw httpError(503, 'Read-out is not set up on this server');
     const b = await body(64 * 1024);
     const rp = roomParticipant(req, b.code);
-    const user = rp ? null : await getAuthUser(req, res);
+    const user = await getAuthUser(req, res);
     if (!rp && !user) throw httpError(401, 'Sign in to listen');
 
     const lang = normLang(b.lang);
@@ -66,7 +66,12 @@ module.exports = function routes(route, kit) {
     if (!rateLimit('tts:' + who, cfg.ratePerMin)) throw httpError(429, 'You are listening a lot - wait a minute and try again');
     const today = new Date().toISOString().slice(0, 10);
     if (budget.day !== today) { budget.day = today; budget.chars = 0; }
-    if (cfg.dailyChars && budget.chars + text.length > cfg.dailyChars) throw httpError(429, 'Read-out has reached today’s limit on this server');
+    if (cfg.dailyChars && budget.chars + text.length > cfg.dailyChars) throw httpError(429, 'Please wait a moment and try again');
+    const plans = require('../../lib/plans');
+    const payer = (user && user.id) || (rp && rp.participant && (rp.participant.userId || rp.participant.user_id));
+    if (!payer) throw httpError(401, 'Sign in to continue.');
+    const paid = await plans.takeAi({ kind: 'tts', ownerId: payer, chars: text.length });
+    plans.throwIfAiDenied(paid);
 
     if (!inflight.has(hash)) {
       budget.chars += text.length;

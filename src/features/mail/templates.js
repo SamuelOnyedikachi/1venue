@@ -208,6 +208,7 @@ const T = {
   speakerInviteReminder: (d) => layout({ ...d, title: d.title || `Reminder: speak at ${d.event}`, intro: d.intro || `This is a reminder that ${d.inviter || 'a host'} invited you to speak at ${d.event}${d.when ? ` on ${d.when}` : ''}. The invite is still waiting for your response.`, button: 'Review invite', link: d.link }),
   rsvpConfirm: (d) => layout({ ...d, title: `You’re going to ${d.event}`, intro: `Hi ${d.name || 'there'}, you’re down to attend ${d.event}${d.when ? ` on ${d.when}` : ''}. We’ll remind you as it gets closer.`, button: 'Open event', link: d.link }),
   certificate: (d) => layout({ ...d, title: `Your certificate for ${d.event}`, intro: `Hi ${d.name || 'there'}, your certificate of attendance for ${d.event} is ready. You can view it or download the PDF.`, button: 'View certificate', link: d.link }),
+  salesLead: (d) => layout({ ...d, title: `Enterprise enquiry from ${d.name || 'a customer'}`, intro: `A new Enterprise enquiry arrived.${d.organisation ? ` Organisation: ${d.organisation}.` : ''} Email: ${d.email || ''}.${d.phone ? ` Phone: ${d.phone}.` : ''}${d.teamSize ? ` Team / attendees: ${d.teamSize}.` : ''}${d.message ? ` Message: ${d.message}` : ''} Our team will call them.`, button: 'Open leads', link: d.link }),
 };
 
 function render(kind, data) {

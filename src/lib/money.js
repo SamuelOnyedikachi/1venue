@@ -4,7 +4,7 @@
  *   CURRENCY_BASE            currency every stored price is in and the gateway charges (default NGN)
  *   FX_RATES                 JSON, units of each currency per 1 base unit, e.g. {"USD":0.00062,"GBP":0.00049}
  *                            (admin can override from /admin → Currency; saved in app_settings 'fx')
- *   PROCESSING_FEE_PERCENT   added on top of every checkout (default 3)
+ *   PROCESSING_FEE_PERCENT   added on top of every checkout (default 4)
  *
  * All amounts are integer minor units (kobo for NGN). Prices are stored and charged in the base
  * currency; other currencies are for display, and every payment row records the currency the person
@@ -25,8 +25,8 @@ const digits = (c) => { try { return new Intl.NumberFormat('en', { style: 'curre
 
 function feePercent() {
   const raw = process.env.PROCESSING_FEE_PERCENT;
-  const n = raw == null || raw === '' ? 3 : Number(raw);
-  return Number.isFinite(n) && n >= 0 && n <= 20 ? n : 3;
+  const n = raw == null || raw === '' ? 4 : Number(raw);
+  return Number.isFinite(n) && n >= 0 && n <= 20 ? n : 4;
 }
 /** Subtotal (integer minor units) → { subtotal, fee, total, percent }. Fee rounds half-up to the currency's minor unit. */
 function withFee(subtotal, percent = feePercent()) {

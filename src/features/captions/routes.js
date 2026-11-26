@@ -75,10 +75,21 @@ module.exports = function routes(route, kit) {
       } else skipReplicate = true;
       if (skipReplicate) for (const [k, kd] of taken.splice(0)) await usage.refund(k, kd, secs);
     }
+    const plans = require('../../lib/plans');
+    const payer = w.u?.id || w.userId || (w.rp && w.rp.participant && w.rp.participant.userId);
+    let paid = { ok: true, refund: async () => {} };
+    if (payer && !skipReplicate) {
+      paid = await plans.takeAi({ kind: 'stt', ownerId: payer, seconds: secs });
+      if (!paid.ok) {
+        for (const [k, kd] of taken) await usage.refund(k, kd, secs).catch(() => {});
+        plans.throwIfAiDenied(paid);
+      }
+    }
     let out;
     try {
       out = await stt().transcribe(buf, mime, lang === 'auto' ? null : lang, { skipReplicate });
     } catch (e) {
+      await paid.refund();
       for (const [k, kd] of taken) await usage.refund(k, kd, secs).catch(() => {});
       if (skipReplicate) { const err = httpError(429, 'Daily voice limit reached - using your browser’s speech recognition'); err.fallback = 'webspeech'; throw err; }
       throw e;

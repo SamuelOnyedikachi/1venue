@@ -52,7 +52,7 @@ Dockerfile already installs for PPTX slides.
    it. The model is asked for JSON: `summary`, `keyPoints` and, for spreadsheets, `dataCommentary`.
 4. The result is stored in `material_analyses`, keyed by the material and its original file. Opening the page again,
    or pressing Analyse again, returns the stored result and **costs nothing**. A new file means a new analysis.
-5. **AI points:** a new analysis costs the `analysis` weight (default **2**) from the user's shared daily AI pool.
+5. **Credits:** a new analysis is charged from the user's credit wallet. A failed call refunds the charge.
    Change it in `/admin` → AI weights, or with `AI_WEIGHT_ANALYSIS`. If the AI call fails, the points are refunded.
 
 With `AI_MOCK=true` or no `REPLICATE_API_TOKEN`, a local heuristic result with the same shape is stored instead, and the

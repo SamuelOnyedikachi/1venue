@@ -1,5 +1,6 @@
 /**
- * Plans and limits: the single place that says what Free, Premium and Organisation get.
+ * Plans and limits: the single place that says what Free, Pro, Business and Organisation get.
+ * 'premium' is kept as an alias of 'pro' for older subscriptions and saved admin settings.
  *
  * Values come from three layers, last wins:
  *   1. DEFAULTS below
@@ -11,8 +12,14 @@
  */
 const config = require('../config');
 
-const PLAN_IDS = ['free', 'premium', 'organisation'];
-const PAID = ['premium', 'organisation'];
+const PLAN_IDS = ['free', 'pro', 'business', 'organisation'];
+const PAID = ['pro', 'business', 'organisation'];
+const PLAN_ALIASES = { premium: 'pro' };
+function canonicalPlan(id) {
+  if (!id) return 'free';
+  const mapped = PLAN_ALIASES[id] || id;
+  return PLAN_IDS.includes(mapped) ? mapped : 'free';
+}
 const INTERVALS = ['month', 'year'];
 // Short-link add-ons per venue (paid plans): slug4 = 4+ characters (₦10,000), slug3 = 3+ (₦25,000). Links are
 // never shorter than 3. Admin prices saved before this change used the keys { slug3: ₦10k price, slug2: ₦25k price };
@@ -28,7 +35,7 @@ function legacySlugPrices(old) {
   if (old && old.slug2 != null) out.slug3 = old.slug2;
   return out;
 }
-const LIMIT_KEYS = ['venues', 'audience', 'meeting', 'speakerSeats', 'aiDaily', 'uploadMB'];
+const LIMIT_KEYS = ['venues', 'audience', 'meeting', 'speakerSeats', 'uploadMB', 'includedCredits'];
 const PRICE_KEYS = ['priceMonthKobo', 'priceYearKobo'];
 const AI_KINDS = ['ask', 'catchup', 'translate', 'title', 'summary', 'finetune', 'scripture', 'analysis', 'transcribe', 'whiteboard_ai'];
 // Phase 2/3 feature switches per plan (0 = off, 1 = on), editable from /admin like the limits.
@@ -78,17 +85,19 @@ function scaledRates(dayKobo) {
 
 const DEFAULTS = Object.freeze({
   plans: {
-    free: { venues: 1, audience: 100, meeting: 25, speakerSeats: 2, aiDaily: 20, uploadMB: 250, priceMonthKobo: 0, priceYearKobo: 0 },
-    premium: { venues: 3, audience: 300, meeting: 50, speakerSeats: 4, aiDaily: 200, uploadMB: 2048, priceMonthKobo: 500000, priceYearKobo: 5000000 },
-    organisation: { venues: 20, audience: 1000, meeting: 50, speakerSeats: 10, aiDaily: 1000, uploadMB: 10240, priceMonthKobo: 2500000, priceYearKobo: 25000000 },
+    free: { venues: 1, audience: 100, meeting: 25, speakerSeats: 2, uploadMB: 250, includedCredits: 0, priceMonthKobo: 0, priceYearKobo: 0 },
+    pro: { venues: 3, audience: 300, meeting: 50, speakerSeats: 4, uploadMB: 2048, includedCredits: 2000, priceMonthKobo: 1500000, priceYearKobo: 15000000 },
+    business: { venues: 10, audience: 500, meeting: 75, speakerSeats: 6, uploadMB: 5120, includedCredits: 5000, priceMonthKobo: 3500000, priceYearKobo: 35000000 },
+    organisation: { venues: 20, audience: 1000, meeting: 50, speakerSeats: 10, uploadMB: 10240, includedCredits: 12000, priceMonthKobo: 7500000, priceYearKobo: 75000000 },
   },
-  aiWeights: { ask: 1, translate: 1, title: 1, scripture: 1, summary: 2, catchup: 2, finetune: 2, analysis: 2, transcribe: 2, whiteboard_ai: 3 },
+  aiWeights: { ask: 1, translate: 1, title: 1, scripture: 1, summary: 1, catchup: 1, finetune: 1, analysis: 1, transcribe: 1, whiteboard_ai: 1 },
   slugAddons: { slug4: 1000000, slug3: 2500000 }, // kobo, one-off, per venue, paid plans only (4-char ₦10,000, 3-char ₦25,000)
   graceDays: 5,
   aiGuestPerIpDaily: 30, // points one guest IP may spend from a host's pool per day
   features: {
     free: { branding: 0, recurring: 0, reminders: 0, whatsapp: 0, exports: 0, analytics: 0, badge: 0, selfPromo: 1, ticketing: 0, replays: 0, orgMembers: 0, replayMB: 0, callVideo: 0, groupMembers: 8, callParticipants: 2, historyDays: 365 },
-    premium: { branding: 1, recurring: 1, reminders: 1, whatsapp: 1, exports: 1, analytics: 1, badge: 1, selfPromo: 1, ticketing: 0, replays: 0, orgMembers: 0, replayMB: 0, callVideo: 1, groupMembers: 32, callParticipants: 8, historyDays: 0 },
+    pro: { branding: 1, recurring: 1, reminders: 1, whatsapp: 1, exports: 1, analytics: 1, badge: 1, selfPromo: 1, ticketing: 0, replays: 0, orgMembers: 0, replayMB: 0, callVideo: 1, groupMembers: 32, callParticipants: 8, historyDays: 0 },
+    business: { branding: 1, recurring: 1, reminders: 1, whatsapp: 1, exports: 1, analytics: 1, badge: 1, selfPromo: 1, ticketing: 0, replays: 0, orgMembers: 0, replayMB: 0, callVideo: 1, groupMembers: 48, callParticipants: 12, historyDays: 0 },
     organisation: { branding: 1, recurring: 1, reminders: 1, whatsapp: 1, exports: 1, analytics: 1, badge: 1, selfPromo: 1, ticketing: 1, replays: 1, orgMembers: 25, replayMB: 51200, callVideo: 1, groupMembers: 64, callParticipants: 16, historyDays: 0 },
   },
   platform: Object.fromEntries(Object.entries(PLATFORM_KEYS).map(([k, [d]]) => [k, d])),
@@ -103,7 +112,7 @@ function envNum(name) { const v = process.env[name]; if (v == null || v === '') 
 function envDefaults() {
   const out = JSON.parse(JSON.stringify(DEFAULTS));
   for (const p of PLAN_IDS) for (const k of [...LIMIT_KEYS, ...PRICE_KEYS]) {
-    const v = envNum(`PLAN_${p.toUpperCase()}_${snake(k)}`);
+    const v = envNum(`PLAN_${p.toUpperCase()}_${snake(k)}`) ?? (p === 'pro' ? envNum(`PLAN_PREMIUM_${snake(k)}`) : null);
     if (v != null) out.plans[p][k] = v;
   }
   for (const k of AI_KINDS) { const v = envNum(`AI_WEIGHT_${k.toUpperCase()}`); if (v != null) out.aiWeights[k] = v; }
@@ -115,7 +124,7 @@ function envDefaults() {
   const g = envNum('BILLING_GRACE_DAYS'); if (g != null) out.graceDays = g;
   const ip = envNum('AI_GUEST_PER_IP_DAILY'); if (ip != null) out.aiGuestPerIpDaily = ip;
   for (const p of PLAN_IDS) for (const k of [...FEATURE_KEYS, ...EXTRA_LIMIT_KEYS]) {
-    const v = envNum(`PLAN_${p.toUpperCase()}_${snake(k)}`);
+    const v = envNum(`PLAN_${p.toUpperCase()}_${snake(k)}`) ?? (p === 'pro' ? envNum(`PLAN_PREMIUM_${snake(k)}`) : null);
     if (v != null) out.features[p][k] = FEATURE_KEYS.includes(k) ? (v ? 1 : 0) : v;
   }
   for (const [k, [, max]] of Object.entries(PLATFORM_KEYS)) { const v = envNum(`PLATFORM_${snake(k)}`); if (v != null && v <= max) out.platform[k] = v; }
@@ -133,9 +142,11 @@ function mergeSettings(base, patch) {
   const out = JSON.parse(JSON.stringify(base));
   if (!patch || typeof patch !== 'object') return out;
   const num = (v, label, max = 1e12) => { const n = nonNegInt(v); if (n == null || n > max) bad(`${label} must be a whole number from 0 to ${max}`); return n; };
-  if (patch.plans) for (const [p, vals] of Object.entries(patch.plans)) {
-    if (!PLAN_IDS.includes(p)) bad(`Unknown plan ${p}`);
+  if (patch.plans) for (const [raw, vals] of Object.entries(patch.plans)) {
+    const p = raw === 'premium' ? 'pro' : raw;
+    if (!PLAN_IDS.includes(p)) bad(`Unknown plan ${raw}`);
     for (const [k, v] of Object.entries(vals || {})) {
+      if (k === 'aiDaily') continue;
       if (![...LIMIT_KEYS, ...PRICE_KEYS].includes(k)) bad(`Unknown limit ${k}`);
       out.plans[p][k] = num(v, `${p}.${k}`);
     }
@@ -148,7 +159,8 @@ function mergeSettings(base, patch) {
   }
   if (patch.graceDays != null) out.graceDays = num(patch.graceDays, 'Grace days', 60);
   if (patch.aiGuestPerIpDaily != null) out.aiGuestPerIpDaily = num(patch.aiGuestPerIpDaily, 'Guest AI per IP', 1e6);
-  if (patch.features) for (const [p, vals] of Object.entries(patch.features)) {
+  if (patch.features) for (const [raw, vals] of Object.entries(patch.features)) {
+    const p = raw === 'premium' ? 'pro' : raw;
     if (!PLAN_IDS.includes(p)) bad(`Unknown plan ${p}`);
     for (const [k, v] of Object.entries(vals || {})) {
       if (FEATURE_KEYS.includes(k)) out.features[p][k] = num(v, `${p}.${k}`, 1);
@@ -184,9 +196,16 @@ let cache = null; let cacheAt = 0;
 const TTL = 30000;
 function db() { return require('../core/db'); }
 /** Saved settings written before the 4/3-character change keep their prices under the old names. */
+function remapPremium(obj) {
+  if (!obj || typeof obj !== 'object' || !obj.premium) return obj;
+  const { premium, ...rest } = obj;
+  return { ...rest, pro: { ...(rest.pro || {}), ...premium } };
+}
 function upgradeSaved(saved) {
   if (!saved || typeof saved !== 'object') return saved;
   const { slugAddonsV, promoPricingV, ...rest } = saved;
+  if (rest.plans) rest.plans = remapPremium(rest.plans);
+  if (rest.features) rest.features = remapPremium(rest.features);
   if (promoPricingV) rest.promoPricingV = promoPricingV;
   if (slugAddonsV !== SLUG_PRICES_V && rest.slugAddons) rest.slugAddons = legacySlugPrices(rest.slugAddons);
   // A flat promotion day price saved before per-placement pricing keeps the same all-placement total.
@@ -227,14 +246,14 @@ const ms = (d) => (d == null ? null : new Date(d).getTime());
 
 /** Which plan a subscription row grants at `now`. Grace keeps the paid plan; cancelled keeps it to period end. */
 function effectivePlan(sub, now = Date.now()) {
-  if (!sub || !PAID.includes(sub.plan)) return 'free';
+  if (!sub || !PAID.includes(canonicalPlan(sub.plan))) return 'free';
   const t = typeof now === 'number' ? now : ms(now);
   const end = ms(sub.current_period_end);
-  if (sub.status === 'comp') return end == null || t < end ? sub.plan : 'free';
+  if (sub.status === 'comp') return end == null || t < end ? canonicalPlan(sub.plan) : 'free';
   if (!['active', 'past_due', 'cancelled'].includes(sub.status)) return 'free';
-  if (end != null && t < end) return sub.plan;
+  if (end != null && t < end) return canonicalPlan(sub.plan);
   const grace = ms(sub.grace_until);
-  if (sub.status !== 'cancelled' && !sub.cancel_at_period_end && grace != null && t < grace) return sub.plan;
+  if (sub.status !== 'cancelled' && !sub.cancel_at_period_end && grace != null && t < grace) return canonicalPlan(sub.plan);
   return 'free';
 }
 function parseOverrides(v) {
@@ -247,21 +266,23 @@ function parseOverrides(v) {
 }
 /** Plan limits for a plan id with optional per-account overrides. */
 function limitsFor(settings, plan, overrides) {
-  const base = settings.plans[PLAN_IDS.includes(plan) ? plan : 'free'];
+  const id = canonicalPlan(plan);
+  const base = settings.plans[id] || settings.plans.free;
   const l = { ...base, ...parseOverrides(overrides) };
   return {
     venues: l.venues, audience: Math.min(l.audience, config.MAX_AUDIENCE), meeting: Math.min(l.meeting, config.MAX_PARTICIPANTS),
-    speakerSeats: Math.min(50, Math.max(1, l.speakerSeats)), aiDaily: l.aiDaily, uploadBytes: l.uploadMB * 1024 * 1024, uploadMB: l.uploadMB,
+    speakerSeats: Math.min(50, Math.max(1, l.speakerSeats)), uploadBytes: l.uploadMB * 1024 * 1024, uploadMB: l.uploadMB,
+    includedCredits: l.includedCredits || 0,
   };
 }
 /** Venue link rights: paid plans get clean links; shorter links need the venue's slug add-on and a paid plan. */
 function slugRights(plan, slugTier = 'none') {
-  const paid = PAID.includes(plan);
+  const paid = PAID.includes(canonicalPlan(plan));
   return { clean: paid, tier: paid && SLUG_TIERS.includes(slugTier) ? slugTier : 'none' };
 }
 /** Feature switches and extra limits for a plan: { branding: true, ..., orgMembers, replayMB }. */
 function featuresFor(settings, plan) {
-  const f = (settings.features || DEFAULTS.features)[PLAN_IDS.includes(plan) ? plan : 'free'];
+  const f = (settings.features || DEFAULTS.features)[canonicalPlan(plan)];
   const out = {};
   for (const k of FEATURE_KEYS) out[k] = !!f[k];
   for (const k of EXTRA_LIMIT_KEYS) out[k] = f[k] || 0;
@@ -308,10 +329,11 @@ function feeSplit(grossKobo, feeBps) {
 }
 function aiWeight(settings, kind) { const w = settings.aiWeights[kind]; return w == null ? 1 : w; }
 function priceFor(settings, plan, interval) {
-  if (!PAID.includes(plan) || !INTERVALS.includes(interval)) return null;
-  return settings.plans[plan][interval === 'year' ? 'priceYearKobo' : 'priceMonthKobo'];
+  const id = canonicalPlan(plan);
+  if (!PAID.includes(id) || !INTERVALS.includes(interval)) return null;
+  return settings.plans[id][interval === 'year' ? 'priceYearKobo' : 'priceMonthKobo'];
 }
-const planRank = (p) => PLAN_IDS.indexOf(p);
+const planRank = (p) => PLAN_IDS.indexOf(canonicalPlan(p));
 function addInterval(from, interval) {
   const d = new Date(from);
   const day = d.getUTCDate();
@@ -365,38 +387,68 @@ async function requireFeature(userId, feature, label) {
   return ent;
 }
 
-// ---------------------------------------------------------------- AI pool
+// ---------------------------------------------------------------- AI credits (wallet)
 /**
- * Spend AI points from one shared daily pool. In a room, the room host's pool pays (so guests
- * cannot bypass the host's allowance); outside a room the signed-in user's own pool pays.
- * Guests also have a per-IP daily cap so one person cannot drain a host's pool.
- * Returns { ok, cost, used, limit, left, refund() }.
+ * Spend wallet credits for an AI action. A light per-user hourly cap is the only
+ * remaining allowance (abuse guard). Guests must sign in. Returns
+ * { ok, cost, topUp, needSignIn, refund() }. cost is credits, not daily points.
  */
-async function takeAi({ kind, ownerId, guestIp }) {
+async function takeAi({ kind, ownerId, guestIp, seconds = 0, chars = 0 }) {
+  const rates = require('../features/wallet/rates');
+  const db = require('../core/db');
   const usage = require('./usage');
   const s = await getSettings();
-  const cost = aiWeight(s, kind);
-  const ent = await entitlements(ownerId, { settings: s });
-  const limit = ent.limits.aiDaily;
-  const key = ownerId ? `u:${ownerId}` : `ip:${guestIp || 'unknown'}`;
-  if (!cost) return { ok: true, cost: 0, used: await usage.used(key, 'ai'), limit, left: limit, refund: async () => {} };
-  if (limit <= 0) return { ok: false, cost, used: 0, limit, left: 0, refund: async () => {} };
-  if (guestIp && ownerId && s.aiGuestPerIpDaily > 0) {
-    const g = await usage.take(`ip:${guestIp}`, `ai-guest:${ownerId}`, cost, s.aiGuestPerIpDaily);
-    if (!g.ok) return { ok: false, cost, used: g.used, limit: s.aiGuestPerIpDaily, left: 0, guestCap: true, refund: async () => {} };
+  const cost = rates.aiCredits(kind, { seconds, chars });
+  if (!ownerId) return { ok: false, cost, needSignIn: true, topUp: false, refund: async () => {} };
+  if (!cost) return { ok: true, cost: 0, refund: async () => {} };
+  const hourly = rates.aiRatePerUserHourly();
+  const rate = await usage.take(`u:${ownerId}`, 'ai-hour', 1, hourly);
+  if (!rate.ok) return { ok: false, cost, limited: true, refund: async () => {} };
+  if (guestIp && s.aiGuestPerIpDaily > 0) {
+    const g = await usage.take(`ip:${guestIp}`, 'ai-guest', 1, s.aiGuestPerIpDaily);
+    if (!g.ok) {
+      await usage.refund(`u:${ownerId}`, 'ai-hour', 1).catch(() => {});
+      return { ok: false, cost, limited: true, guestCap: true, refund: async () => {} };
+    }
   }
-  const r = await usage.take(key, 'ai', cost, limit);
-  const refundGuest = async () => { if (guestIp && ownerId && s.aiGuestPerIpDaily > 0) await usage.refund(`ip:${guestIp}`, `ai-guest:${ownerId}`, cost).catch(() => {}); };
-  if (!r.ok) { await refundGuest(); return { ok: false, cost, used: r.used, limit, left: Math.max(0, limit - r.used), refund: async () => {} }; }
-  return { ok: true, cost, used: r.used, limit, left: Math.max(0, limit - r.used), refund: async () => { await usage.refund(key, 'ai', cost).catch(() => {}); await refundGuest(); } };
+  const units = Math.round(cost * rates.UNITS_PER_CREDIT);
+  try {
+    await db.tx(async (c) => {
+      await require('../features/wallet/spend').debitLocked(c, ownerId, units, { kind: 'ai' });
+    });
+  } catch (e) {
+    await usage.refund(`u:${ownerId}`, 'ai-hour', 1).catch(() => {});
+    if (e && e.status === 402) return { ok: false, cost, topUp: true, balanceCredits: e.balanceCredits, refund: async () => {} };
+    throw e;
+  }
+  return {
+    ok: true, cost,
+    refund: async () => {
+      try {
+        await db.tx(async (c) => {
+          await require('../features/wallet/spend').refundLocked(c, ownerId, units, { kind: 'ai' });
+        });
+      } catch (err) { console.warn('[ai] refund', err.message); }
+      await usage.refund(`u:${ownerId}`, 'ai-hour', 1).catch(() => {});
+    },
+  };
 }
-async function aiUsed(userId) { return require('./usage').used(`u:${userId}`, 'ai'); }
+async function aiUsed(userId) { return require('./usage').used(`u:${userId}`, 'ai-hour'); }
+function aiTopUpError() {
+  return Object.assign(new Error('Add credits to continue.'), { status: 402, topUp: true, expose: true });
+}
+function throwIfAiDenied(t) {
+  if (t && t.ok) return t;
+  if (t && t.needSignIn) throw Object.assign(new Error('Sign in to continue.'), { status: 401, expose: true });
+  if (t && t.topUp) throw aiTopUpError();
+  throw Object.assign(new Error('Please wait a moment and try again.'), { status: 429, expose: true });
+}
 
 module.exports = {
-  PLAN_IDS, PAID, INTERVALS, SLUG_TIERS, SLUG_FOR_SALE, SLUG_RANK, legacySlugPrices, LIMIT_KEYS, PRICE_KEYS, AI_KINDS, DEFAULTS, FEATURE_KEYS, EXTRA_LIMIT_KEYS, PLATFORM_KEYS,
+  PLAN_IDS, PAID, PLAN_ALIASES, INTERVALS, SLUG_TIERS, SLUG_FOR_SALE, SLUG_RANK, legacySlugPrices, LIMIT_KEYS, PRICE_KEYS, AI_KINDS, DEFAULTS, FEATURE_KEYS, EXTRA_LIMIT_KEYS, PLATFORM_KEYS,
   PROMO_PLACEMENTS, PROMO_KEYS, promoPricing, promoTiers, promoQuote, scaledRates,
-  featuresFor, platform, feeSplit, requireFeature, orgPlanFor,
+  featuresFor, platform, feeSplit, requireFeature, orgPlanFor, canonicalPlan,
   envDefaults, mergeSettings, diff, getSettings, saveSettings, resetSettings, clearCache,
   effectivePlan, parseOverrides, limitsFor, slugRights, aiWeight, priceFor, planRank, addInterval,
-  subscriptionOf, entitlements, takeAi, aiUsed,
+  subscriptionOf, entitlements, takeAi, aiUsed, aiTopUpError, throwIfAiDenied,
 };

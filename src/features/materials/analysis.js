@@ -118,7 +118,7 @@ async function callModel(m, x) {
 const inflight = new Map();
 /**
  * analyse(material, { userId, takeAi }) -> stored analysis. Cached per source file; only a fresh
- * analysis spends AI points (weight "analysis", default 2), and a failed call refunds them.
+ * analysis is charged from the credit wallet, and a failed call refunds the charge.
  */
 async function analyse(m, { userId, force = false, data, takeAi }) {
   const key = sourceKey(m);
@@ -129,7 +129,7 @@ async function analyse(m, { userId, force = false, data, takeAi }) {
     const x = await extracted(m);
     if (!String(x.text || '').trim()) throw fail(422, 'No readable text was found in this file');
     const t = await takeAi({ kind: 'analysis', ownerId: userId });
-    if (!t.ok) throw fail(429, `Not enough AI points left today (${t.left} of ${t.limit}). Upgrade your plan for more.`);
+    require('../../lib/plans').throwIfAiDenied(t);
     let r;
     try { r = await callModel(m, x); } catch (e) { await t.refund(); throw e; }
     const sheet = !!x.stats;
@@ -162,7 +162,7 @@ async function ask(m, { userId, question, takeAi }) {
   const x = await extracted(m);
   if (!String(x.text || '').trim()) throw fail(422, 'No readable text was found in this file');
   const t = await takeAi({ kind: 'analysis', ownerId: userId });
-  if (!t.ok) throw fail(429, `Not enough AI points left today (${t.left} of ${t.limit}). Upgrade your plan for more.`);
+  require('../../lib/plans').throwIfAiDenied(t);
   let answer, model;
   try {
     const token = config.STT.replicate.token;
