@@ -43,9 +43,9 @@ describe('out34 materials buy, purchased tab, gifts', () => {
   });
 
   it('bumps the cache versions', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v92-2026-11-23'/);
-    assert.match(read('public/index.html'), /app\.css\?v=78/);
-    assert.match(read('public/index.html'), /app\.js\?v=78/);
+    assert.match(read('public/sw.js'), /VERSION = 'v93-2026-11-26'/);
+    assert.match(read('public/index.html'), /app\.css\?v=79/);
+    assert.match(read('public/index.html'), /app\.js\?v=79/);
   });
 });
 

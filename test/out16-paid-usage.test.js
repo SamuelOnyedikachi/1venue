@@ -7,6 +7,7 @@ const { describe, it, test } = require('node:test');
 const root = path.join(__dirname, '..');
 const read = (p) => readFileSync(path.join(root, p), 'utf8');
 const skip = process.env.DB_DRIVER !== 'sqlite' && !process.env.DATABASE_URL ? 'set DATABASE_URL or DB_DRIVER=sqlite' : false;
+if (process.env.DB_DRIVER === 'sqlite') require('./helpers/server');
 
 describe('out16 instant overlay and paid-usage helpers', () => {
   it('renames Free Entry and Paid Entry, drops price/duration, and links to ticketing', () => {
@@ -51,9 +52,9 @@ describe('out16 instant overlay and paid-usage helpers', () => {
   });
 
   it('bumps the cache versions', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v92-2026-11-23'/);
-    assert.match(read('public/index.html'), /app\.css\?v=78/);
-    assert.match(read('public/index.html'), /app\.js\?v=78/);
+    assert.match(read('public/sw.js'), /VERSION = 'v93-2026-11-26'/);
+    assert.match(read('public/index.html'), /app\.css\?v=79/);
+    assert.match(read('public/index.html'), /app\.js\?v=79/);
   });
 });
 

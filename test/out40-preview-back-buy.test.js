@@ -9,10 +9,10 @@ const root = path.join(__dirname, '..');
 const read = (p) => readFileSync(path.join(root, p), 'utf8');
 
 describe('out40 preview back link and buy on material page', () => {
-  it('cache versions are v89 / ?v=78', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v92-2026-11-23'/);
-    assert.match(read('public/index.html'), /app\.css\?v=78/);
-    assert.match(read('public/index.html'), /app\.js\?v=78/);
+  it('cache versions are v89 / ?v=79', () => {
+    assert.match(read('public/sw.js'), /VERSION = 'v93-2026-11-26'/);
+    assert.match(read('public/index.html'), /app\.css\?v=79/);
+    assert.match(read('public/index.html'), /app\.js\?v=79/);
   });
 
   it('market and materials links pass from= and stash the return path', () => {

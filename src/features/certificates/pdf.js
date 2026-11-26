@@ -134,81 +134,78 @@ async function makeQr(url, { dark = '#111111', light = '#00000000', width = 240 
   });
 }
 
+const { composeBodySentence } = require('./wording');
+
+function fillVGradient(page, x, y, w, h, bottom, top, steps = 36) {
+  const sh = h / steps;
+  for (let i = 0; i < steps; i++) {
+    page.drawRectangle({
+      x, y: y + sh * i, width: w, height: sh + 0.5,
+      color: mix(bottom, top, steps === 1 ? 1 : i / (steps - 1)),
+    });
+  }
+}
+
+function diamond(page, cx, cy, r, color) {
+  page.drawSvgPath(`M ${cx} ${cy + r} L ${cx + r} ${cy} L ${cx} ${cy - r} L ${cx - r} ${cy} Z`, {
+    color, borderColor: color, borderWidth: 0.4,
+  });
+}
+
 function drawClassicFrame(page, accent, ink, paper) {
   page.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: paper });
-  const m = 22;
-  page.drawRectangle({ x: m, y: m, width: PAGE_W - m * 2, height: PAGE_H - m * 2, borderColor: accent, borderWidth: 2.4 });
-  page.drawRectangle({ x: m + 8, y: m + 8, width: PAGE_W - (m + 8) * 2, height: PAGE_H - (m + 8) * 2, borderColor: mix(accent, ink, 0.25), borderWidth: 0.7 });
-  // Corner ornaments
-  const arms = 18;
+  // faint inner wash
+  page.drawRectangle({ x: 18, y: 18, width: PAGE_W - 36, height: PAGE_H - 36, color: mix(paper, accent, 0.03) });
+  const m = 24;
+  page.drawRectangle({ x: m, y: m, width: PAGE_W - m * 2, height: PAGE_H - m * 2, borderColor: accent, borderWidth: 2.2 });
+  page.drawRectangle({ x: m + 7, y: m + 7, width: PAGE_W - (m + 7) * 2, height: PAGE_H - (m + 7) * 2, borderColor: mix(accent, ink, 0.2), borderWidth: 0.65 });
+  const arms = 20;
   const corners = [
-    [m + 8, PAGE_H - m - 8, 1, -1],
-    [PAGE_W - m - 8, PAGE_H - m - 8, -1, -1],
-    [m + 8, m + 8, 1, 1],
-    [PAGE_W - m - 8, m + 8, -1, 1],
+    [m + 7, PAGE_H - m - 7, 1, -1],
+    [PAGE_W - m - 7, PAGE_H - m - 7, -1, -1],
+    [m + 7, m + 7, 1, 1],
+    [PAGE_W - m - 7, m + 7, -1, 1],
   ];
   for (const [x, y, dx, dy] of corners) {
-    page.drawLine({ start: { x, y }, end: { x: x + arms * dx, y }, thickness: 1.6, color: accent });
-    page.drawLine({ start: { x, y }, end: { x, y: y + arms * dy }, thickness: 1.6, color: accent });
-    page.drawLine({ start: { x: x + 4 * dx, y: y + 4 * dy }, end: { x: x + (arms - 4) * dx, y: y + 4 * dy }, thickness: 0.6, color: mix(accent, ink, 0.3) });
-    page.drawLine({ start: { x: x + 4 * dx, y: y + 4 * dy }, end: { x: x + 4 * dx, y: y + (arms - 4) * dy }, thickness: 0.6, color: mix(accent, ink, 0.3) });
+    page.drawLine({ start: { x, y }, end: { x: x + arms * dx, y }, thickness: 1.5, color: accent });
+    page.drawLine({ start: { x, y }, end: { x, y: y + arms * dy }, thickness: 1.5, color: accent });
+    page.drawLine({ start: { x: x + 5 * dx, y: y + 5 * dy }, end: { x: x + (arms - 3) * dx, y: y + 5 * dy }, thickness: 0.55, color: mix(accent, ink, 0.25) });
+    page.drawLine({ start: { x: x + 5 * dx, y: y + 5 * dy }, end: { x: x + 5 * dx, y: y + (arms - 3) * dy }, thickness: 0.55, color: mix(accent, ink, 0.25) });
+    diamond(page, x + 11 * dx, y + 11 * dy, 3.2, accent);
   }
 }
 
-function drawSeal(page, cx, cy, r, accent, ink, fonts, fill) {
-  page.drawCircle({ x: cx, y: cy, size: r, borderColor: accent, borderWidth: 1.6, color: fill });
-  page.drawCircle({ x: cx, y: cy, size: r - 5, borderColor: mix(accent, ink, 0.2), borderWidth: 0.7 });
-  const ticks = 16;
-  for (let i = 0; i < ticks; i++) {
-    const a = (i / ticks) * Math.PI * 2;
-    const inner = r - 9;
-    const outer = r - 2.5;
-    page.drawLine({
-      start: { x: cx + Math.cos(a) * inner, y: cy + Math.sin(a) * inner },
-      end: { x: cx + Math.cos(a) * outer, y: cy + Math.sin(a) * outer },
-      thickness: 0.9, color: accent,
-    });
-  }
-  const label = '1VENUE';
-  const size = 6.2;
-  const w = fonts.sansSemi.widthOfTextAtSize(label, size);
-  page.drawText(label, { x: cx - w / 2, y: cy - size * 0.32, size, font: fonts.sansSemi, color: accent });
-}
-
-function drawModernBand(page, accent, paper) {
+function drawModernFrame(page, accent, paper) {
   page.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: paper });
-  const band = 54;
-  const dark = mix(accent, rgb(0, 0, 0), 0.28);
-  const light = mix(accent, rgb(1, 1, 1), 0.18);
-  const steps = 48;
-  for (let i = 0; i < steps; i++) {
-    const t = i / (steps - 1);
-    page.drawRectangle({
-      x: 0, y: (PAGE_H / steps) * i,
-      width: band, height: PAGE_H / steps + 0.4,
-      color: mix(dark, light, t),
-    });
-  }
-  page.drawRectangle({ x: band, y: 0, width: 3, height: PAGE_H, color: accent });
+  const dark = mix(accent, rgb(0, 0, 0), 0.22);
+  const light = mix(accent, rgb(1, 1, 1), 0.35);
+  fillVGradient(page, 0, PAGE_H - 28, PAGE_W, 28, light, dark, 16);
+  page.drawRectangle({ x: 0, y: PAGE_H - 30, width: PAGE_W, height: 2.2, color: accent });
+  page.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: 10, color: mix(accent, paper, 0.15) });
+  page.drawRectangle({ x: 0, y: 10, width: PAGE_W, height: 2, color: accent });
+  // soft accent bloom, top-right
+  page.drawCircle({ x: PAGE_W - 30, y: PAGE_H - 10, size: 160, color: accent, opacity: 0.08 });
+  page.drawCircle({ x: 40, y: 20, size: 90, color: accent, opacity: 0.05 });
 }
 
 function drawMinimal(page, accent, paper, ink) {
   page.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: paper });
-  page.drawRectangle({ x: 56, y: PAGE_H - 36, width: PAGE_W - 112, height: 2.2, color: accent });
-  page.drawRectangle({ x: 56, y: 22, width: PAGE_W - 112, height: 0.6, color: mix(ink, paper, 0.75) });
+  page.drawRectangle({ x: 72, y: PAGE_H - 32, width: PAGE_W - 144, height: 1.6, color: accent });
 }
 
-function drawElegant(page, gold, cream, bg) {
-  page.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: bg });
+function drawElegant(page, accent, gold, cream) {
+  const top = mix(cream, accent, 0.05);
+  const bottom = mix(cream, accent, 0.22);
+  fillVGradient(page, 0, 0, PAGE_W, PAGE_H, bottom, top, 48);
   const m = 26;
-  page.drawRectangle({ x: m, y: m, width: PAGE_W - m * 2, height: PAGE_H - m * 2, borderColor: gold, borderWidth: 1.1 });
-  page.drawRectangle({ x: m + 7, y: m + 7, width: PAGE_W - (m + 7) * 2, height: PAGE_H - (m + 7) * 2, borderColor: mix(gold, cream, 0.25), borderWidth: 0.5 });
-  // Short gold rules in the corners
-  const L = 28;
-  const corners = [[m + 7, PAGE_H - m - 7, 1, -1], [PAGE_W - m - 7, PAGE_H - m - 7, -1, -1], [m + 7, m + 7, 1, 1], [PAGE_W - m - 7, m + 7, -1, 1]];
+  page.drawRectangle({ x: m, y: m, width: PAGE_W - m * 2, height: PAGE_H - m * 2, borderColor: gold, borderWidth: 1.15 });
+  page.drawRectangle({ x: m + 6, y: m + 6, width: PAGE_W - (m + 6) * 2, height: PAGE_H - (m + 6) * 2, borderColor: mix(gold, accent, 0.25), borderWidth: 0.45 });
+  const L = 26;
+  const corners = [[m + 6, PAGE_H - m - 6, 1, -1], [PAGE_W - m - 6, PAGE_H - m - 6, -1, -1], [m + 6, m + 6, 1, 1], [PAGE_W - m - 6, m + 6, -1, 1]];
   for (const [x, y, dx, dy] of corners) {
-    page.drawLine({ start: { x, y }, end: { x: x + L * dx, y }, thickness: 1.1, color: gold });
-    page.drawLine({ start: { x, y }, end: { x, y: y + L * dy }, thickness: 1.1, color: gold });
+    page.drawLine({ start: { x, y }, end: { x: x + L * dx, y }, thickness: 1.05, color: gold });
+    page.drawLine({ start: { x, y }, end: { x, y: y + L * dy }, thickness: 1.05, color: gold });
+    diamond(page, x + 9 * dx, y + 9 * dy, 2.6, gold);
   }
 }
 
@@ -229,7 +226,6 @@ async function certificatePdf(opts = {}) {
   const name = safeText(opts.name, 'Participant');
   const title = safeText(opts.certTitle || opts.heading || opts.kindTitle, 'Certificate of Attendance');
   const opener = safeText(opts.opener, 'This is to certify that');
-  const body = safeText(opts.body, 'has successfully attended');
   const programme = safeText(opts.programme || opts.title, 'Event');
   const description = safeText(opts.description, '');
   const date = safeText(opts.date, '');
@@ -237,7 +233,10 @@ async function certificatePdf(opts = {}) {
   const code = safeText(opts.code, '');
   const url = safeText(opts.url, 'https://1venue.live');
   const accentHex = opts.accent || '#2563eb';
-  const signatories = Array.isArray(opts.signatories) ? opts.signatories.slice(0, 3) : [];
+  const signatories = (Array.isArray(opts.signatories) ? opts.signatories : []).filter((s) => s && safeText(s.name)).slice(0, 3);
+  const sentence = composeBodySentence({
+    body: opts.body, bodyId: opts.bodyId, programme, issuerName, date, description,
+  });
 
   const bytes = loadFontBytes();
   const doc = await PDFDocument.create();
@@ -253,174 +252,127 @@ async function certificatePdf(opts = {}) {
   const page = doc.addPage([PAGE_W, PAGE_H]);
 
   const accent = hexRgb(accentHex);
-  const elegant = design === 'elegant';
-  const paper = elegant ? rgb(0.09, 0.08, 0.07) : (design === 'minimal' ? rgb(0.98, 0.98, 0.96) : rgb(0.995, 0.99, 0.98));
-  const ink = elegant ? rgb(0.95, 0.92, 0.85) : rgb(0.12, 0.11, 0.1);
-  const muted = elegant ? rgb(0.82, 0.77, 0.66) : rgb(0.38, 0.36, 0.34);
-  const gold = elegant ? mix(rgb(0.86, 0.71, 0.38), hexRgb(accentHex), 0.16) : accent;
+  const cream = rgb(0.99, 0.98, 0.955);
+  const paper = design === 'minimal' ? rgb(0.985, 0.985, 0.975)
+    : design === 'elegant' ? cream
+    : design === 'modern' ? rgb(0.997, 0.996, 0.992)
+    : rgb(0.995, 0.99, 0.975);
+  const ink = rgb(0.14, 0.12, 0.11);
+  const muted = rgb(0.32, 0.3, 0.28);
+  const gold = mix(rgb(0.78, 0.62, 0.3), accent, 0.22);
 
   if (design === 'classic') drawClassicFrame(page, accent, ink, paper);
-  else if (design === 'modern') drawModernBand(page, accent, paper);
+  else if (design === 'modern') drawModernFrame(page, accent, paper);
   else if (design === 'minimal') drawMinimal(page, accent, paper, ink);
-  else drawElegant(page, gold, ink, paper);
+  else drawElegant(page, accent, gold, cream);
 
-  const left = design === 'modern' ? 86 : 64;
-  const right = PAGE_W - 64;
-  const width = right - left;
-  const mid = design === 'modern' ? (left + right) / 2 + 8 : PAGE_W / 2;
-  const contentW = design === 'modern' ? width - 8 : width;
+  const mid = PAGE_W / 2;
+  const left = 72;
+  const right = PAGE_W - 72;
+  const contentW = right - left;
+  const titleColor = design === 'elegant' ? mix(accent, gold, 0.45) : accent;
 
   const logoBytes = await bytesFromUrl(opts.issuerLogoUrl || opts.logoUrl);
   const logo = logoBytes ? await embedImage(doc, logoBytes) : null;
-  const qrDark = elegant ? '#f3ead8' : '#1a1816';
-  const qrImg = await embedImage(doc, await makeQr(url, { dark: qrDark }));
+  const qrImg = await embedImage(doc, await makeQr(url, { dark: '#1a1816' }));
 
-  // Content from the top
-  let y = design === 'minimal' ? PAGE_H - 70 : PAGE_H - 62;
-  if (design === 'classic') y = PAGE_H - 70;
+  const titleSize = fitSize(fonts.serifBold, title, contentW, 26, 14);
+  const openerSize = 13;
+  const nameSize = fitSize(fonts.serifBold, name, contentW - 8, 44, 16);
+  const bodySize = 13;
+  const sentLines = wrapLines(fonts.sans, sentence, bodySize, contentW * 0.92, 4);
+  const logoBox = logo ? imageBox(logo, 108, 44) : null;
+  const showOrg = !logoBox && !!issuerName;
 
-  if (logo) {
-    const box = imageBox(logo, 92, 42);
-    const lx = design === 'modern' ? left : mid - box.w / 2;
-    page.drawImage(logo, { x: lx, y: y - box.h + 8, width: box.w, height: box.h });
-    y -= box.h + 10;
-  }
+  let blockH = 0;
+  if (logoBox) blockH += logoBox.h + 24;
+  else if (showOrg) blockH += 12 + 24;
+  else blockH += 6;
+  blockH += titleSize + 10 + 14 + openerSize + 16 + nameSize + 22;
+  blockH += sentLines.length * (bodySize + 5) + 6;
+  if (signatories.length) blockH += 36 + 40;
 
-  const titleSize = fitSize(fonts.serifBold, title, contentW, design === 'minimal' ? 22 : 24, 13);
-  if (design === 'modern') {
-    drawLeft(page, title.toUpperCase(), fonts.sansSemi, Math.min(12, titleSize - 4), left, y, accent);
+  const framed = design === 'classic' || design === 'elegant';
+  const topSafe = design === 'modern' ? 58 : (design === 'minimal' ? 52 : 62);
+  const botSafe = 86;
+  const availTop = PAGE_H - topSafe;
+  const availBot = botSafe;
+  let contentTop = (availTop + availBot + blockH) / 2;
+  if (contentTop > availTop) contentTop = availTop;
+  let y = contentTop;
+
+  if (logoBox) {
+    y -= logoBox.h;
+    page.drawImage(logo, { x: mid - logoBox.w / 2, y, width: logoBox.w, height: logoBox.h });
+    y -= 24;
+  } else if (showOrg) {
+    y -= 11;
+    drawCentered(page, issuerName, fonts.sansSemi, 10, y, muted, mid, contentW);
+    y -= 24;
   } else {
-    const color = elegant ? gold : accent;
-    drawCentered(page, title, fonts.serifBold, titleSize, y, color, mid, contentW);
+    y -= 6;
   }
-  y -= design === 'minimal' ? 22 : 20;
 
-  // Decorative rule
-  const ruleW = design === 'minimal' ? 64 : 88;
-  const ruleColor = elegant ? gold : accent;
-  page.drawRectangle({ x: (design === 'modern' ? left : mid - ruleW / 2), y: y + 6, width: ruleW, height: design === 'elegant' ? 0.7 : 1.1, color: ruleColor });
+  y -= titleSize;
+  drawCentered(page, title, fonts.serifBold, titleSize, y, titleColor, mid, contentW);
+  y -= 10;
+  const ruleW = design === 'minimal' ? 56 : 84;
+  page.drawRectangle({ x: mid - ruleW / 2, y, width: ruleW, height: design === 'elegant' ? 0.7 : 1.15, color: titleColor });
   y -= 16;
 
-  const openerSize = 12;
-  if (design === 'modern') drawLeft(page, opener, fonts.serifItalic, openerSize, left, y, muted);
-  else drawCentered(page, opener, fonts.serifItalic, openerSize, y, muted, mid, contentW);
-  y -= 36;
+  y -= openerSize;
+  drawCentered(page, opener, fonts.serifItalic, openerSize, y, muted, mid, contentW);
+  y -= 16;
 
-  const nameSize = fitSize(fonts.serifBold, name, contentW - 8, 42, 16);
-  if (design === 'modern') drawLeft(page, name, fonts.serifBold, nameSize, left, y, ink);
-  else drawCentered(page, name, fonts.serifBold, nameSize, y, ink, mid, contentW);
-  y -= 10;
-  // underline under the name
+  y -= nameSize;
+  drawCentered(page, name, fonts.serifBold, nameSize, y, ink, mid, contentW);
+  y -= 8;
   const nameW = fonts.serifBold.widthOfTextAtSize(name, nameSize);
-  const underlineW = Math.min(contentW, Math.max(nameW + 8, 160));
-  const ux = design === 'modern' ? left : mid - underlineW / 2;
-  page.drawRectangle({ x: ux, y: y + 2, width: underlineW, height: 0.6, color: mix(muted, paper, 0.3) });
-  y -= 22;
+  const underlineW = Math.min(contentW * 0.55, Math.max(nameW * 0.55, 72));
+  page.drawRectangle({ x: mid - underlineW / 2, y: y + 2, width: underlineW, height: 0.55, color: mix(titleColor, paper, 0.35) });
+  y -= 18;
 
-  const bodyLine = body;
-  const bodySize = 12.5;
-  if (design === 'modern') drawLeft(page, bodyLine, fonts.serif, bodySize, left, y, muted);
-  else drawCentered(page, bodyLine, fonts.serif, bodySize, y, muted, mid, contentW);
-  y -= 22;
-
-  const progSize = fitSize(fonts.serifBold, programme, contentW, 18, 11);
-  const progLines = wrapLines(fonts.serifBold, programme, progSize, contentW, 3);
-  for (const ln of progLines) {
-    if (design === 'modern') drawLeft(page, ln, fonts.serifBold, progSize, left, y, ink);
-    else drawCentered(page, ln, fonts.serifBold, progSize, y, ink, mid, contentW);
-    y -= progSize + 4;
-  }
-  y -= 4;
-
-  if (description) {
-    const dSize = 10.5;
-    const dLines = wrapLines(fonts.serifItalic, description, dSize, contentW * 0.92, 3);
-    for (const ln of dLines) {
-      if (design === 'modern') drawLeft(page, ln, fonts.serifItalic, dSize, left, y, muted);
-      else drawCentered(page, ln, fonts.serifItalic, dSize, y, muted, mid, contentW);
-      y -= dSize + 3;
-    }
-    y -= 4;
+  for (const ln of sentLines) {
+    y -= bodySize;
+    drawCentered(page, ln, fonts.sans, bodySize, y, muted, mid, contentW);
+    y -= 5;
   }
 
-  if (date) {
-    if (design === 'modern') drawLeft(page, date, fonts.sans, 11, left, y, muted);
-    else drawCentered(page, date, fonts.sans, 11, y, muted, mid, contentW);
-    y -= 20;
-  }
-
-  if (issuerName) {
-    const issued = `Issued by ${issuerName}`;
-    if (design === 'modern') drawLeft(page, issued, fonts.sansSemi, 10, left, y, ink);
-    else drawCentered(page, issued, fonts.sansSemi, 10, y, ink, mid, contentW);
-    y -= 18;
-  }
-
-  // Signatories along a row, above the footer
-  const footerY = 52;
-  const sigY = Math.max(footerY + 58, Math.min(y - 10, 150));
   if (signatories.length) {
-    const slots = signatories.length;
-    const usable = contentW;
-    const slotW = usable / slots;
-    for (let i = 0; i < slots; i++) {
-      const s = signatories[i] || {};
-      const cx = (design === 'modern' ? left : left) + slotW * i + slotW / 2;
+    y -= 36;
+    const slotW = contentW / signatories.length;
+    const sigBase = y;
+    for (let i = 0; i < signatories.length; i++) {
+      const s = signatories[i];
+      const cx = left + slotW * i + slotW / 2;
       const sigName = safeText(s.name, 'Signatory');
       const role = safeText(s.role, '');
-      let drawn = false;
-      if (s.image || s.signatureUrl) {
-        const bytesImg = s.image || await bytesFromUrl(s.signatureUrl);
-        const img = bytesImg ? await embedImage(doc, bytesImg) : null;
-        if (img) {
-          const box = imageBox(img, Math.min(124, slotW - 16), 36);
-          page.drawImage(img, { x: cx - box.w / 2, y: sigY + 14, width: box.w, height: box.h });
-          drawn = true;
-        }
-      }
-      if (!drawn) {
-        const scriptSize = fitSize(fonts.script, sigName, slotW - 16, 22, 12);
-        const sw = fonts.script.widthOfTextAtSize(sigName, scriptSize);
-        page.drawText(sigName, { x: cx - sw / 2, y: sigY + 18, size: scriptSize, font: fonts.script, color: ink });
-      }
-      const lineW = Math.min(slotW - 20, 130);
-      page.drawRectangle({ x: cx - lineW / 2, y: sigY + 10, width: lineW, height: 0.6, color: mix(muted, paper, 0.2) });
-      const nSize = 8.5;
-      const nw = fonts.sansSemi.widthOfTextAtSize(sigName, nSize);
-      page.drawText(sigName, { x: cx - nw / 2, y: sigY - 4, size: nSize, font: fonts.sansSemi, color: ink });
+      const scriptSize = fitSize(fonts.script, sigName, slotW - 16, 26, 14);
+      const sw = fonts.script.widthOfTextAtSize(sigName, scriptSize);
+      page.drawText(sigName, { x: cx - sw / 2, y: sigBase, size: scriptSize, font: fonts.script, color: ink });
       if (role) {
-        const rw = fonts.sans.widthOfTextAtSize(role, 7.5);
-        page.drawText(role, { x: cx - rw / 2, y: sigY - 16, size: 7.5, font: fonts.sans, color: muted });
+        const rSize = 9.5;
+        const rw = fonts.sansSemi.widthOfTextAtSize(role, rSize);
+        page.drawText(role, { x: cx - rw / 2, y: sigBase - 16, size: rSize, font: fonts.sansSemi, color: ink });
       }
     }
   }
 
-  if (design === 'classic') {
-    drawSeal(page, PAGE_W - 92, 108, 28, accent, ink, fonts, paper);
+  // Footer: 1venue + certificate ID on the left, QR alone on the right
+  const markY = framed ? 40 : (design === 'minimal' ? 28 : 26);
+  const markColor = muted;
+  const markW = drawMark(page, fonts, markColor, left, markY);
+  if (code) {
+    const gap = 8;
+    const cSize = 8;
+    const label = code;
+    page.drawText(label, { x: left + markW + gap, y: markY, size: cSize, font: fonts.sansSemi, color: muted });
   }
-
-  // Footer: 1venue mark left, QR + code right — kept inside bordered frames
-  const framed = design === 'classic' || design === 'elegant';
-  const markColor = elegant ? gold : muted;
-  const markY = framed ? 42 : (design === 'minimal' ? 44 : 28);
-  drawMark(page, fonts, markColor, left, markY);
-
   if (qrImg) {
-    const qs = 42;
+    const qs = 40;
     const qx = right - qs;
-    const qy = framed ? 40 : (design === 'minimal' ? 42 : 26);
+    const qy = framed ? 36 : (design === 'minimal' ? 24 : 22);
     page.drawImage(qrImg, { x: qx, y: qy, width: qs, height: qs });
-    const cap = 'Verify';
-    const capW = fonts.sans.widthOfTextAtSize(cap, 6.5);
-    page.drawText(cap, { x: qx + (qs - capW) / 2, y: qy - 9, size: 6.5, font: fonts.sans, color: muted });
-    if (code) {
-      const cw = fonts.sansSemi.widthOfTextAtSize(code, 6.5);
-      page.drawText(code, { x: qx - cw - 8, y: qy + qs / 2 - 3, size: 6.5, font: fonts.sansSemi, color: muted });
-    }
-  } else if (code) {
-    const label = `Certificate no. ${code}`;
-    const lw = fonts.sans.widthOfTextAtSize(label, 7);
-    page.drawText(label, { x: right - lw, y: markY, size: 7, font: fonts.sans, color: muted });
   }
 
   doc.setTitle(`${title} — ${name}`);

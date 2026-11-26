@@ -157,8 +157,10 @@ export async function mount(view, { slug }) {
   const ticketSlot = h('section', { class: 'ev-panel ev-slot' });
   const replaySlot = h('section', { class: 'ev-panel ev-slot' });
   const meetingAccess = ev.category === 'meeting' && ev.meetingAccessMode === 'paid_entry'
-    ? h('div', { class: 'ev-card' }, sectionHead('Paid meeting entry', 'wallet'),
-      h('p', { class: 'small', style: { margin: 0 } }, `${ev.meetingEntryPriceCredits} credits · ${ev.meetingDurationMin} minutes advertised. Sign in and ask to join; credits are charged only when the host accepts you.`))
+    ? h('div', { class: 'ev-card' }, sectionHead('Paid entry', 'wallet'),
+      h('p', { class: 'small', style: { margin: 0 } }, ev.meetingEntryPriceCredits && ev.meetingDurationMin
+        ? `${ev.meetingEntryPriceCredits} credits · ${ev.meetingDurationMin} minutes advertised. Sign in and ask to join; credits are charged only when the host accepts you.`
+        : 'Participants are billed for the time they spend in the meeting, and the host earns a share. The host is also billed. Sign in with credits to join.'))
     : null;
   const speakersBlock = speakers.length ? h('div', null, sectionHead('Speakers', 'stage'), h('div', { class: 'speaker-cards' }, speakers.map((sp) => h(sp.userId ? 'a' : 'div', { class: 'card speaker-card', href: sp.userId ? profilePath({ username: sp.username, id: sp.userId }) : null, 'data-link': sp.userId ? '' : null, style: { '--c1': c1, '--c2': c2 } },
     h('div', { class: 'band' }), avatar(sp.name, sp.avatarUrl, 'xl ring'), h('strong', { class: 'row', style: { alignItems: 'center', justifyContent: 'center', gap: '.25rem' } }, sp.name, verifiedDot(sp), sp.status && sp.status !== 'active' ? h('span', { class: 'chip sm' }, sp.status) : null), h('span', { class: 'muted small' }, sp.headline || 'Speaker'))))) : null;

@@ -19,22 +19,11 @@ module.exports = function routes(route, kit) {
     return { hosting: hosting.map((e) => ({ ...e, live: liveInfo(e) })), going };
   });
 
-  async function syncCertInvites(ev, user) {
-    const settings = ev && ev.settings;
-    const certs = settings && settings.certs;
-    if (!certs || !Array.isArray(certs.signatories) || !certs.signatories.some((s) => s.source === 'account' || s.username)) return ev;
-    try {
-      const saved = await require('../certificates/service').saveEventCerts(ev.id, user, certs);
-      if (saved) ev.settings = { ...settings, certs: saved };
-    } catch (e) { console.warn('[certs] invite on event save', e.message); }
-    return ev;
-  }
   route('POST', '/api/events', async (ctx) => {
     const u = await requireUser(ctx.req, ctx.res);
     const b = await ctx.body();
     const ev = await data.createEvent(u, b);
     if (Array.isArray(b.speakers)) ev.speakers = await data.setSpeakers(ev.id, b.speakers, { actor: u });
-    await syncCertInvites(ev, u);
     return ev;
   });
   route('GET', '/api/events/([\\w-]+)', async (ctx, [slug]) => {
@@ -53,7 +42,6 @@ module.exports = function routes(route, kit) {
     const ev = await data.updateEvent(int(id), u.id, b);
     if (!ev) throw httpError(404, 'Event not found or not yours');
     if (Array.isArray(b.speakers)) ev.speakers = await data.setSpeakers(ev.id, b.speakers, { actor: u });
-    await syncCertInvites(ev, u);
     return ev;
   });
   route('DELETE', '/api/events/(\\d+)', async (ctx, [id]) => {

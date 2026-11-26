@@ -1,4 +1,4 @@
-import { h, I, api, toast, toastErr, uploadFile, debounce, avatar } from './ui.js';
+import { h, I, toast, toastErr, uploadFile, debounce } from './ui.js';
 
 const DESIGNS = [
   ['classic', 'Classic'],
@@ -42,6 +42,18 @@ function inp(value, attrs, oninput) {
   return el;
 }
 
+function miniCert(id, accent) {
+  return h('div', { class: 'cert-mini', 'data-design': id, style: { '--cert-accent': accent } },
+    h('div', { class: 'cert-mini-frame' },
+      h('div', { class: 'cert-mini-org' }),
+      h('div', { class: 'cert-mini-title' }),
+      h('div', { class: 'cert-mini-open' }),
+      h('div', { class: 'cert-mini-name' }),
+      h('div', { class: 'cert-mini-sent' }),
+      h('div', { class: 'cert-mini-sigs' }, h('i'), h('i')),
+      h('div', { class: 'cert-mini-foot' }, h('span'), h('span', { class: 'qr' }))));
+}
+
 export function certEditor(certs = {}, { accent = '#2563eb', eventTitle, startsAt, endsAt, hostName, hostLogo, onChange } = {}) {
   const v = (fn, fallback = '') => {
     try { const x = typeof fn === 'function' ? fn() : fn; return x || fallback; } catch { return fallback; }
@@ -62,7 +74,9 @@ export function certEditor(certs = {}, { accent = '#2563eb', eventTitle, startsA
   let issuerLogoUrl = certs.issuerLogoUrl || '';
   let dateStart = certs.dateStart || '';
   let dateEnd = certs.dateEnd || '';
-  let signatories = Array.isArray(certs.signatories) ? certs.signatories.map((s) => ({ ...s })) : [];
+  let signatories = Array.isArray(certs.signatories)
+    ? certs.signatories.map((s) => ({ name: s.name || '', role: s.role || '' })).filter((s) => s.name || s.role)
+    : [];
 
   function payload() {
     return {
@@ -73,11 +87,7 @@ export function certEditor(certs = {}, { accent = '#2563eb', eventTitle, startsA
       description, programme,
       issuerName, issuerLogoUrl,
       dateStart, dateEnd,
-      signatories: signatories.map((s) => ({
-        name: s.name || '', role: s.role || '', source: s.source || 'typed',
-        username: s.username || '', userId: s.userId || null,
-        signatureUrl: s.signatureUrl || null, requestId: s.requestId || null, status: s.status || null,
-      })),
+      signatories: signatories.map((s) => ({ name: s.name || '', role: s.role || '' })),
       eventTitle: v(eventTitle, ''),
       startsAt: dateStart || v(startsAt, ''),
       endsAt: dateEnd || v(endsAt, ''),
@@ -92,6 +102,7 @@ export function certEditor(certs = {}, { accent = '#2563eb', eventTitle, startsA
   const previewStatus = h('div', { class: 'tiny muted cert-live-status' }, 'Live preview');
   let previewUrl = '';
   const refreshPreview = debounce(async () => {
+    if (!enabled) return;
     previewStatus.textContent = 'Updating preview…';
     try {
       const res = await fetch('/api/certs/preview', {
@@ -123,7 +134,7 @@ export function certEditor(certs = {}, { accent = '#2563eb', eventTitle, startsA
   const openerIn = inp(openerCustom, { placeholder: 'Opening line', maxlength: '160' }, (el) => { openerCustom = el.value; emit(); });
   const bodySel = sel(BODIES, bodyId, (val) => { bodyId = val; emit(); paintFields(); });
   const bodyIn = inp(bodyCustom, { placeholder: 'Body line', maxlength: '160' }, (el) => { bodyCustom = el.value; emit(); });
-  const descIn = h('textarea', { class: 'textarea', rows: 2, maxlength: '280', placeholder: 'Optional short line, for example “for completing the workshop”' });
+  const descIn = h('textarea', { class: 'textarea', rows: 2, maxlength: '280', placeholder: 'Optional short line, folded into the same sentence' });
   descIn.value = description;
   descIn.addEventListener('input', () => { description = descIn.value; emit(); });
 
@@ -147,94 +158,22 @@ export function certEditor(certs = {}, { accent = '#2563eb', eventTitle, startsA
     } catch (e) { toastErr(e); }
   };
 
-  const fields = h('div', { class: 'cert-fields col' });
   const sigBox = h('div', { class: 'cert-sigs col' });
-
-  async function lookupUser(s) {
-    const handle = String(s.username || '').trim().replace(/^@/, '');
-    if (!handle) return;
-    try {
-      const u = await api('/api/certs/lookup?username=' + encodeURIComponent(handle));
-      s.userId = u.id;
-      s.username = u.username;
-      s.name = s.name || u.displayName || u.username;
-      s._found = u;
-      s._error = '';
-      emit(); paintSigs();
-    } catch (e) {
-      s.userId = null;
-      s._found = null;
-      s._error = e.message || 'No account with that username';
-      paintSigs();
-    }
-  }
-
-  async function uploadSig(s, file) {
-    try {
-      const res = await fetch('/api/certs/signature/clean', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ dataUrl: await fileToDataUrl(file) }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || data.message || 'Could not clean that signature');
-      s.signatureUrl = data.url;
-      s._preview = data.dataUrl || data.url;
-      s.source = 'upload';
-      emit(); paintSigs();
-      toast('Signature cleaned', { icon: 'check' });
-    } catch (e) { toastErr(e); }
-  }
-
   function paintSigs() {
     const cards = signatories.map((s, i) => {
-      const source = s.source || 'typed';
       const nameIn = inp(s.name, { placeholder: 'Name', maxlength: '80' }, (el) => { s.name = el.value; emit(); });
       const roleIn = inp(s.role, { placeholder: 'Role, e.g. Director', maxlength: '80' }, (el) => { s.role = el.value; emit(); });
-      const userIn = inp(s.username, { placeholder: '1venue username', maxlength: '40' }, (el) => { s.username = el.value.replace(/^@/, ''); });
-      userIn.addEventListener('change', () => lookupUser(s));
-      const file = h('input', { type: 'file', accept: 'image/*', hidden: true });
-      file.onchange = () => { const f = file.files && file.files[0]; file.value = ''; if (f) uploadSig(s, f); };
-      const tabs = h('div', { class: 'cert-sig-tabs' },
-        ...[['typed', 'Type'], ['upload', 'Upload'], ['account', '1venue account']].map(([id, label]) => h('button', {
-          type: 'button', class: 'chip' + (source === id ? ' on' : ''),
-          onclick: () => { s.source = id; emit(); paintSigs(); },
-        }, label)));
-      let body;
-      if (source === 'upload') {
-        body = h('div', { class: 'col', style: { gap: '.35rem' } },
-          (s._preview || s.signatureUrl)
-            ? h('img', { class: 'cert-sig-ink', src: s._preview || s.signatureUrl, alt: 'Cleaned signature' })
-            : h('p', { class: 'tiny muted', style: { margin: 0 } }, 'Upload a photo of a signature. Paper is removed and the ink is trimmed tight before it is saved.'),
-          h('button', { type: 'button', class: 'btn sm', onclick: () => file.click() }, I('upload', 14), ' ', s.signatureUrl ? 'Replace signature' : 'Upload signature'),
-          file);
-      } else if (source === 'account') {
-        body = h('div', { class: 'col', style: { gap: '.35rem' } },
-          h('div', { class: 'row', style: { gap: '.35rem', alignItems: 'center' } }, userIn,
-            h('button', { type: 'button', class: 'btn sm', onclick: () => lookupUser(s) }, 'Find')),
-          s._found ? h('div', { class: 'row cert-sig-found', style: { gap: '.4rem', alignItems: 'center' } },
-            avatar(s._found.displayName || s._found.username, s._found.avatarUrl, 'sm'),
-            h('span', { class: 'grow' }, h('b', null, s._found.displayName || s._found.username), h('div', { class: 'tiny muted' }, '@' + s._found.username))) : null,
-          s._error ? h('p', { class: 'tiny err', style: { margin: 0 } }, s._error) : null,
-          s.status === 'signed' || s.signatureUrl
-            ? h('p', { class: 'tiny', style: { margin: 0 } }, 'Signed. It will appear on certificates.')
-            : h('p', { class: 'tiny muted', style: { margin: 0 } }, 'They will get a Notification to draw or approve their signature. Until then, their name is written in a script font. Save certificates to send the invite.'));
-      } else {
-        body = h('p', { class: 'tiny muted', style: { margin: 0 } }, 'Their name will be written in a handwriting font on the certificate.');
-      }
       return h('div', { class: 'cert-sig-card' },
         h('div', { class: 'row', style: { justifyContent: 'space-between', alignItems: 'center' } },
           h('b', { class: 'tiny' }, 'Signatory ' + (i + 1)),
           h('button', { type: 'button', class: 'icon-btn sm', title: 'Remove', onclick: () => { signatories.splice(i, 1); emit(); paintSigs(); } }, I('x', 14))),
-        tabs, nameIn, roleIn, body);
+        nameIn, roleIn,
+        h('p', { class: 'tiny muted', style: { margin: 0 } }, 'Their name is written in a handwriting font, with the role underneath.'));
     });
     const add = signatories.length < 3
-      ? h('button', { type: 'button', class: 'btn sm', onclick: () => { signatories.push({ name: '', role: '', source: 'typed' }); emit(); paintSigs(); } }, I('userPlus', 14), ' Add signatory')
+      ? h('button', { type: 'button', class: 'btn sm', onclick: () => { signatories.push({ name: '', role: '' }); emit(); paintSigs(); } }, I('userPlus', 14), ' Add signatory')
       : h('p', { class: 'tiny muted', style: { margin: 0 } }, 'Up to three signatories.');
-    sigBox.replaceChildren(
-      h('div', { class: 'tiny muted' }, 'Signatories'),
-      ...cards, add);
+    sigBox.replaceChildren(h('div', { class: 'tiny muted' }, 'Signatories'), ...cards, add);
   }
 
   function paintFields() {
@@ -248,7 +187,7 @@ export function certEditor(certs = {}, { accent = '#2563eb', eventTitle, startsA
       type: 'button', class: 'cert-pick' + (design === id ? ' on' : ''), 'data-design': id,
       style: { '--cert-accent': accent },
       onclick: () => { design = id; emit(); paintPicks(); },
-    }, h('div', { class: 'cert-pick-art' }), h('b', null, label))));
+    }, miniCert(id, accent), h('b', null, label))));
   }
 
   function paint() {
@@ -291,14 +230,6 @@ export function certEditor(certs = {}, { accent = '#2563eb', eventTitle, startsA
 
   el.get = () => payload();
   el.setAccent = (a) => { accent = a; paintPicks(); emit(); };
+  el.preview = previewWrap;
   return el;
-}
-
-function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result);
-    r.onerror = () => reject(new Error('Could not read that file'));
-    r.readAsDataURL(file);
-  });
 }

@@ -82,7 +82,31 @@ function linkedInUrl(cert) {
   return `https://www.linkedin.com/profile/add?${params}`;
 }
 
+
+function composeBodySentence({ body, bodyId, programme, issuerName, date, description } = {}) {
+  const prog = String(programme || '').trim();
+  const org = String(issuerName || '').trim();
+  const when = String(date || '').trim();
+  const desc = String(description || '').trim().replace(/^[.,;\s]+/, '').replace(/[.,]\s*$/, '');
+  const raw = String(body || '').trim();
+  let lead;
+  if (bodyId === 'custom' && raw) lead = raw.replace(/[.,]\s*$/, '');
+  else if (bodyId === 'completed' || /^has completed\b/i.test(raw)) lead = 'has completed';
+  else if (bodyId === 'participation' || /^for active participation/i.test(raw)) lead = 'for active participation in';
+  else lead = 'attended';
+  const mid = prog ? `${lead} ${prog}` : lead;
+  const bits = [mid];
+  if (org) bits.push(`hosted by ${org}`);
+  if (when) bits.push(`on ${when}`);
+  let sentence = bits[0];
+  if (bits.length === 2) sentence = `${bits[0]}, ${bits[1]}`;
+  else if (bits.length >= 3) sentence = `${bits[0]}, ${bits[1]}, ${bits[2]}`;
+  if (desc) sentence += `, ${desc}`;
+  if (!/[.!?]$/.test(sentence)) sentence += '.';
+  return sentence.replace(/\s+/g, ' ').trim();
+}
+
 module.exports = {
   DESIGNS, TITLE_KINDS, TITLES, OPENER_IDS, OPENERS, BODY_IDS, BODIES,
-  catalogue, pickId, formatOne, formatDateRange, linkedInUrl,
+  catalogue, pickId, formatOne, formatDateRange, linkedInUrl, composeBodySentence,
 };

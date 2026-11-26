@@ -60,26 +60,34 @@ export async function mount(view, params) {
     if (k === category) o.selected = true;
     catSel.append(o);
   });
-  const accessMode = h('select', { class: 'input' },
-    h('option', { value: 'host_funded' }, 'Host-funded'),
-    h('option', { value: 'paid_entry' }, 'Paid entry'));
-  accessMode.value = meetingAccessMode;
-  const meetingDuration = h('input', { class: 'input', type: 'number', min: 1, max: 720, step: 1, value: String(ev.meetingDurationMin || 60), inputmode: 'numeric' });
-  const entryPrice = h('input', { class: 'input', type: 'number', min: 1, step: 1, value: String(ev.meetingEntryPriceCredits || 30), inputmode: 'numeric' });
-  const paidEntryFields = h('div', { class: 'grid2', hidden: meetingAccessMode !== 'paid_entry' },
-    field('Advertised duration (minutes)', 'clock', meetingDuration),
-    field('Entry price (credits)', 'coin', entryPrice));
-  const meetingAccess = h('div', { class: 'card pad layer col', style: { gap: '.8rem' }, hidden: category !== 'meeting' },
-    field('Who pays for this meeting?', 'wallet', accessMode),
-    h('p', { class: 'tiny muted' }, 'Paid-entry attendees must sign in. They are charged when you accept them.'),
-    paidEntryFields);
+  const fundIc = h('span', { class: 'im-tog-ic' });
+  const fundLab = h('span', { class: 'im-tog-lab' }, 'Free entry');
+  const fundBtn = h('button', { class: 'im-tog on', type: 'button', 'aria-label': 'Free entry' }, fundIc);
+  const fundHint = h('p', { class: 'tiny muted', style: { margin: 0 } });
+  const paintFund = () => {
+    const paid = meetingAccessMode === 'paid_entry';
+    fundIc.innerHTML = icon(paid ? 'users' : 'user', { size: 22 });
+    fundLab.textContent = paid ? 'Paid entry' : 'Free entry';
+    fundBtn.setAttribute('aria-label', fundLab.textContent);
+    fundBtn.classList.toggle('on', true);
+    fundHint.textContent = paid
+      ? 'Participants pay to join, and you earn a share of that. You are also billed for hosting. Everyone must sign in.'
+      : 'Only you, the host, are billed for the meeting.';
+  };
+  fundBtn.onclick = () => {
+    meetingAccessMode = meetingAccessMode === 'paid_entry' ? 'host_funded' : 'paid_entry';
+    paintFund();
+  };
+  paintFund();
+  const meetingAccess = h('div', { class: 'card pad layer col create-fund', style: { gap: '.7rem' }, hidden: category !== 'meeting' },
+    h('div', { class: 'tiny muted' }, 'Entry'),
+    h('div', { class: 'im-tog-wrap im-tog-fund' }, fundBtn, fundLab),
+    fundHint);
   const syncMeetingAccess = () => {
     meetingAccess.hidden = category !== 'meeting';
-    if (category !== 'meeting') { meetingAccessMode = 'host_funded'; accessMode.value = 'host_funded'; }
-    else meetingAccessMode = accessMode.value;
-    paidEntryFields.hidden = meetingAccessMode !== 'paid_entry';
+    if (category !== 'meeting') meetingAccessMode = 'host_funded';
+    paintFund();
   };
-  accessMode.onchange = () => { meetingAccessMode = accessMode.value; paidEntryFields.hidden = meetingAccessMode !== 'paid_entry'; };
   catSel.onchange = () => { category = catSel.value; catTouched = true; syncMeetingAccess(); preview(); };
 
   const visSeg = h('div', { class: 'seg' }, [['public', 'Public', 'globe'], ['unlisted', 'Unlisted', 'link'], ['private', 'Private', 'lock']].map(([v, l, ic]) =>
@@ -392,8 +400,8 @@ export async function mount(view, params) {
       startsAt: starts.value ? new Date(starts.value).toISOString() : null,
       endsAt: ends.value ? new Date(ends.value).toISOString() : null,
       meetingAccessMode: category === 'meeting' ? meetingAccessMode : 'host_funded',
-      meetingDurationMin: category === 'meeting' && meetingAccessMode === 'paid_entry' ? Number(meetingDuration.value) : null,
-      meetingEntryPriceCredits: category === 'meeting' && meetingAccessMode === 'paid_entry' ? Number(entryPrice.value) : null,
+      meetingDurationMin: null,
+      meetingEntryPriceCredits: null,
       settings: { ...((editing && editing.settings) || {}), certs: certsEl.get() },
     };
     if (!editing || speakersLoaded) {
@@ -449,6 +457,7 @@ export async function mount(view, params) {
           h('span', { class: 'preview-eye', html: icon('eye', { size: 14 }) }),
           h('span', null, 'Preview')),
         prev,
+        certsEl.preview,
         h('div', { class: 'card pad layer small muted' }, h('strong', null, 'Just need a quick call? '), h('a', { href: '/create?instant=1', 'data-link': '', style: { color: 'var(--accent)', fontWeight: '700' } }, 'Start an instant meeting')))),
     h('div', { class: 'row wrap create-actions', style: { gap: '.6rem' } }, submit, liveNow));
 

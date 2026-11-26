@@ -29,23 +29,10 @@ function normalizeSignatories(list) {
   const out = [];
   for (const s of list.slice(0, 3)) {
     if (!s || typeof s !== 'object') continue;
-    const username = String(s.username || '').trim().replace(/^@/, '').slice(0, 40);
     const name = String(s.name || '').trim().slice(0, 80);
     const role = String(s.role || '').trim().slice(0, 80);
-    const source = ['typed', 'upload', 'account'].includes(s.source)
-      ? s.source
-      : (s.userId || username ? 'account' : (s.signatureUrl ? 'upload' : 'typed'));
-    if (!name && !username) continue;
-    out.push({
-      name,
-      role,
-      source,
-      username,
-      userId: s.userId ? Number(s.userId) : null,
-      signatureUrl: String(s.signatureUrl || '').trim().slice(0, 500) || null,
-      requestId: s.requestId ? Number(s.requestId) : null,
-      status: s.status || null,
-    });
+    if (!name) continue;
+    out.push({ name, role });
   }
   return out;
 }
@@ -84,6 +71,12 @@ function normalizeCerts(input, fallback = {}) {
 }
 
 function code() { return crypto.randomBytes(5).toString('hex').toUpperCase(); }
+
+function isUniqueViolation(e) {
+  if (!e) return false;
+  if (e.code === '23505') return true;
+  return /UNIQUE constraint failed|duplicate key value|unique constraint/i.test(String(e.message || e));
+}
 
 function dateLabelFrom(snap, cert) {
   if (snap && snap.dateLabel) return snap.dateLabel;
@@ -146,19 +139,7 @@ async function userSignatureUrl(userId) {
 }
 
 async function resolveSignatories(list) {
-  const out = [];
-  for (const s of normalizeSignatories(list || [])) {
-    let signatureUrl = s.signatureUrl;
-    if (!signatureUrl && s.requestId) {
-      const req = await one('SELECT signature_url, status, name, role FROM cert_sign_requests WHERE id=$1', [s.requestId]).catch(() => null);
-      if (req && req.signature_url) signatureUrl = req.signature_url;
-      if (req && req.status) s.status = req.status;
-      if (req && !s.name && req.name) s.name = req.name;
-    }
-    if (!signatureUrl && s.userId) signatureUrl = await userSignatureUrl(s.userId);
-    out.push({ ...s, signatureUrl: signatureUrl || null, status: signatureUrl ? 'signed' : (s.status || (s.source === 'account' ? 'pending' : null)) });
-  }
-  return out;
+  return normalizeSignatories(list || []);
 }
 
 function pdfPayload(cert, extras = {}) {
@@ -168,6 +149,7 @@ function pdfPayload(cert, extras = {}) {
     certTitle: extras.title || cert.title || snap.title || 'Certificate of Attendance',
     opener: extras.opener || cert.opener || snap.opener,
     body: extras.body || cert.body || snap.body,
+    bodyId: extras.bodyId || cert.bodyId || snap.bodyId,
     programme: extras.programme || cert.programme || snap.programme || cert.eventTitle || cert.title,
     description: extras.description != null ? extras.description : (cert.description || snap.description || ''),
     date: extras.date || cert.dateLabel || dateLabelFrom(snap, cert),
@@ -197,6 +179,7 @@ async function previewPdf(settings, { name, url, code: previewCode } = {}) {
     certTitle: certs.title,
     opener: certs.opener,
     body: certs.body,
+    bodyId: certs.bodyId,
     programme,
     description: certs.description,
     date,
@@ -351,18 +334,24 @@ async function issueForMeeting(meeting) {
     const u = byId.get(Number(userId));
     const name = (u && u.display_name) || (logs.find((r) => Number(r.user_id) === userId) || {}).display_name || 'Participant';
     let row;
-    try {
-      row = await one(
-        `INSERT INTO certificates (code, history_id, event_id, user_id, attendee_name, event_title, host_name, design, accent, snapshot)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-         ON CONFLICT (history_id, user_id) DO NOTHING RETURNING *`,
-        [code(), meeting.historyId, meeting.eventId || (ev && ev.id) || null, userId, String(name).slice(0, 120), String(title).slice(0, 200), String(hostName).slice(0, 120), certs.design, accent, snapJson]
-      );
-    } catch (e) {
-      console.warn('[certs] insert', e.message);
-      continue;
+    let skipped = false;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        row = await one(
+          `INSERT INTO certificates (code, history_id, event_id, user_id, attendee_name, event_title, host_name, design, accent, snapshot)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           ON CONFLICT (history_id, user_id) DO NOTHING RETURNING *`,
+          [code(), meeting.historyId, meeting.eventId || (ev && ev.id) || null, userId, String(name).slice(0, 120), String(title).slice(0, 200), String(hostName).slice(0, 120), certs.design, accent, snapJson]
+        );
+        break;
+      } catch (e) {
+        if (isUniqueViolation(e) && attempt < 4) continue;
+        console.warn('[certs] insert', e.message);
+        skipped = true;
+        break;
+      }
     }
-    if (!row) continue;
+    if (skipped || !row) continue;
     const cert = certOut(row);
     issued.push(cert);
     deliver(u, cert).catch((e) => console.warn('[certs] deliver', e.message));
@@ -397,9 +386,7 @@ async function saveEventCerts(eventId, user, patch) {
   const ev = await one('SELECT * FROM events WHERE id=$1 AND host_user_id=$2', [eventId, userId]);
   if (!ev) return null;
   const settings = parseSettings(ev.settings);
-  const host = typeof user === 'object' ? user : { id: userId, displayName: ev.host_name };
   const certs = normalizeCerts(patch, settings.certs);
-  certs.signatories = await ensureSignatories(certs.signatories, { eventId, host, eventTitle: ev.title });
   settings.certs = certs;
   await q('UPDATE events SET settings=$2, updated_at=NOW() WHERE id=$1', [eventId, JSON.stringify(settings)]);
   return settings.certs;

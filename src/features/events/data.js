@@ -92,18 +92,19 @@ function validateEventInput(b, partial = false) {
     if (!['host_funded', 'paid_entry'].includes(b.meetingAccessMode)) { const e = new Error('Choose host-funded or paid entry'); e.status = 400; throw e; }
     out.meeting_access_mode = b.meetingAccessMode;
   }
-  if (b.meetingDurationMin != null) {
+  if (b.meetingDurationMin === null) out.meeting_duration_min = null;
+  else if (b.meetingDurationMin != null) {
     const duration = Number(b.meetingDurationMin);
     if (!Number.isInteger(duration) || duration < 1 || duration > 720) { const e = new Error('Advertised duration must be 1 to 720 minutes'); e.status = 400; throw e; }
     out.meeting_duration_min = duration;
   }
-  if (b.meetingEntryPriceCredits != null) {
+  if (b.meetingEntryPriceCredits === null) out.meeting_entry_units = null;
+  else if (b.meetingEntryPriceCredits != null) {
     const credits = Number(b.meetingEntryPriceCredits);
     if (!Number.isSafeInteger(credits) || credits < 1 || credits > Math.floor(Number.MAX_SAFE_INTEGER / UNITS_PER_CREDIT)) { const e = new Error('Entry price must be a positive whole number of credits'); e.status = 400; throw e; }
     out.meeting_entry_units = credits * UNITS_PER_CREDIT;
   }
   if ((out.meeting_access_mode === 'paid_entry' || b.meetingAccessMode === 'paid_entry') && (out.category || b.category || 'meeting') !== 'meeting') { const e = new Error('Paid entry is available for meetings'); e.status = 400; throw e; }
-  if (b.meetingAccessMode === 'paid_entry' && (out.meeting_duration_min == null || out.meeting_entry_units == null)) { const e = new Error('Paid entry requires an advertised duration and entry price'); e.status = 400; throw e; }
   return out;
 }
 /** Clamp requested speaker seats to the host's plan (the browser picker is capped too). */
@@ -139,7 +140,6 @@ async function updateEvent(id, userId, b) {
   const duration = v.meeting_duration_min ?? current.meeting_duration_min;
   const entry = v.meeting_entry_units ?? current.meeting_entry_units;
   if (mode === 'paid_entry' && category !== 'meeting') { const e = new Error('Paid entry is available for meetings'); e.status = 400; throw e; }
-  if (mode === 'paid_entry' && (!duration || !entry)) { const e = new Error('Paid entry requires an advertised duration and entry price'); e.status = 400; throw e; }
   await clampSeats(userId, v);
   if (b.status && ['draft', 'scheduled', 'cancelled'].includes(b.status)) v.status = b.status;
   const keys = Object.keys(v);
