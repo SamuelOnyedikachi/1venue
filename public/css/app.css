@@ -11226,17 +11226,85 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
 .pr-status:empty {
   display: none;
 }
-.pr-grid {
+.pr-slider {
+  position: relative;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1.1rem;
-  align-items: stretch;
+  grid-template-columns: 2.25rem minmax(0, 1fr) 2.25rem;
+  align-items: center;
+  gap: 0.45rem;
   margin-top: 1rem;
+}
+.pr-slider::before,
+.pr-slider::after {
+  content: "";
+  position: absolute;
+  top: 1.1rem;
+  bottom: 0.35rem;
+  width: 2.6rem;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.2s var(--ease);
+}
+.pr-slider::before {
+  left: 2.7rem;
+  background: linear-gradient(to right, var(--bg), transparent);
+}
+.pr-slider::after {
+  right: 2.7rem;
+  background: linear-gradient(to left, var(--bg), transparent);
+}
+.pr-slider.at-start::before,
+.pr-slider.at-end::after {
+  opacity: 0;
+}
+.pr-track {
+  display: flex;
+  align-items: stretch;
+  gap: 1.1rem;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 1.1rem 0 0.35rem;
+}
+.pr-track::-webkit-scrollbar {
+  display: none;
+}
+.pr-nav {
+  position: relative;
+  z-index: 2;
+  width: 2.25rem;
+  height: 2.25rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--s1);
+  box-shadow: var(--shadow-1);
+  color: var(--text);
+  cursor: pointer;
+}
+.pr-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.pr-nav:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .pr-card {
   position: relative;
   display: flex;
   flex-direction: column;
+  flex: 0 0 300px;
+  width: 300px;
+  max-width: 320px;
+  scroll-snap-align: start;
   gap: 0.6rem;
   padding: 1.6rem 1.4rem 1.5rem;
   border-radius: var(--r-lg);
@@ -11548,12 +11616,11 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
 .pr-center {
   text-align: center;
 }
-@media (max-width: 900px) {
-  .pr-grid {
-    grid-template-columns: minmax(0, 1fr);
-    max-width: 480px;
-    margin-inline: auto;
-    gap: 1.6rem;
+@media (max-width: 700px) {
+  .pr-card {
+    flex-basis: 85%;
+    width: 85%;
+    max-width: none;
   }
   .pr-blurb {
     min-height: 0;
@@ -11561,8 +11628,13 @@ body[data-page="messages"] .main { display: flex; flex-direction: column; min-he
 }
 @media (prefers-reduced-motion: reduce) {
   .pr-toggle::before,
-  .pr-compare-link svg {
+  .pr-compare-link svg,
+  .pr-slider::before,
+  .pr-slider::after {
     transition: none;
+  }
+  .pr-track {
+    scroll-behavior: auto;
   }
 }
 /* --- src/20-pages/profile.css --- */

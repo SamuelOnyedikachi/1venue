@@ -16,9 +16,9 @@ describe('native PiP back-to-tab and styled mini call bar', () => {
   });
 
   it('bumps the service worker and cache-bust query', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v95-2026-11-26'/);
-    assert.match(read('public/index.html'), /app\.css\?v=81/);
-    assert.match(read('public/index.html'), /app\.js\?v=81/);
+    assert.match(read('public/sw.js'), /VERSION = 'v96-2026-11-26'/);
+    assert.match(read('public/index.html'), /app\.css\?v=82/);
+    assert.match(read('public/index.html'), /app\.js\?v=82/);
   });
 
   it('treats a parked PiP close on a focused tab as return-to-meeting, not the mini bar', () => {

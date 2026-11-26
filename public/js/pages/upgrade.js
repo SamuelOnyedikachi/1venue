@@ -90,7 +90,52 @@ export async function mount(view) {
   const current = me ? (me.plan === 'premium' ? 'pro' : me.plan) : 'free';
   const rank = ['free', 'pro', 'business', 'organisation', 'enterprise'];
   const status = h('p', { class: 'small pr-status', role: 'status', 'aria-live': 'polite' });
-  const grid = h('div', { class: 'pr-grid pr-grid-5' });
+  const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const track = h('div', { class: 'pr-track', tabindex: '0', role: 'region', 'aria-label': 'Plans' });
+  const prev = h('button', { class: 'pr-nav pr-nav-prev', type: 'button', 'aria-label': 'Previous plans', html: icon('chevronLeft', { size: 20 }) });
+  const next = h('button', { class: 'pr-nav pr-nav-next', type: 'button', 'aria-label': 'Next plans', html: icon('chevronRight', { size: 20 }) });
+  const slider = h('div', { class: 'pr-slider at-start' }, prev, track, next);
+  let primed = false;
+
+  function step() {
+    const card = track.querySelector('.pr-card');
+    if (!card) return 300;
+    const gap = parseFloat(getComputedStyle(track).columnGap || getComputedStyle(track).gap) || 16;
+    return card.getBoundingClientRect().width + gap;
+  }
+  function syncNav() {
+    const max = Math.max(0, track.scrollWidth - track.clientWidth);
+    const atStart = track.scrollLeft <= 4;
+    const atEnd = track.scrollLeft >= max - 4;
+    prev.disabled = atStart;
+    next.disabled = atEnd;
+    slider.classList.toggle('at-start', atStart);
+    slider.classList.toggle('at-end', atEnd);
+  }
+  function go(dir) {
+    track.scrollBy({ left: dir * step(), behavior: reduced() ? 'auto' : 'smooth' });
+  }
+  function showPreferred() {
+    const el = (state.user && track.querySelector('.pr-card.current')) || track.querySelector('.pr-card.popular') || track.querySelector('.pr-card.current');
+    if (!el) { syncNav(); return; }
+    const tr = track.getBoundingClientRect();
+    const cr = el.getBoundingClientRect();
+    if (!(cr.left >= tr.left - 2 && cr.right <= tr.right + 2)) {
+      const delta = (cr.left - tr.left) - (tr.width - cr.width) / 2;
+      track.scrollTo({ left: track.scrollLeft + delta, behavior: 'auto' });
+    }
+    syncNav();
+  }
+  prev.onclick = () => go(-1);
+  next.onclick = () => go(1);
+  track.addEventListener('scroll', syncNav, { passive: true });
+  track.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
+    else if (e.key === 'Home') { e.preventDefault(); track.scrollTo({ left: 0, behavior: reduced() ? 'auto' : 'smooth' }); }
+    else if (e.key === 'End') { e.preventDefault(); track.scrollTo({ left: track.scrollWidth, behavior: reduced() ? 'auto' : 'smooth' }); }
+  });
+  new ResizeObserver(syncNav).observe(track);
   const save = Math.max(0, ...table.plans.filter((p) => p.priceMonthKobo > 0 && p.priceYearKobo > 0).map((p) => Math.round((1 - p.priceYearKobo / (p.priceMonthKobo * 12)) * 100)));
   const seg = (id, label) => h('button', { type: 'button', class: 'pr-seg', role: 'radio', 'data-id': id, onclick: () => { interval = id; paint(); } }, label);
   const toggle = h('div', { class: 'pr-toggle', role: 'radiogroup', 'aria-label': 'Billing interval' }, seg('month', 'Monthly'), seg('year', 'Yearly'));
@@ -140,7 +185,13 @@ export async function mount(view) {
   function paint() {
     toggle.querySelectorAll('.pr-seg').forEach((b) => { const on = b.dataset.id === interval; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
     toggle.dataset.on = interval;
-    grid.replaceChildren(...plans.map(card));
+    const keep = primed ? track.scrollLeft : null;
+    track.replaceChildren(...plans.map(card));
+    requestAnimationFrame(() => {
+      if (keep == null) showPreferred();
+      else { track.scrollLeft = keep; syncNav(); }
+      primed = true;
+    });
   }
 
   const display = (p, v) => (p.id === 'enterprise' ? 'Custom' : v);
@@ -159,7 +210,7 @@ export async function mount(view) {
   view.append(h('div', { class: 'pr-page' },
     h('header', { class: 'pr-head' }, h('h1', { html: icon('sparkles', { size: 26 }) + 'Pricing' }),
       h('div', { class: 'pr-toggle-row' }, toggle, savePill)),
-    status, grid,
+    status, slider,
     h('div', { class: 'pr-foot' }, compareLink),
     compare,
     addonCard(addons, !!me, table.shortLinkReleaseDays),
